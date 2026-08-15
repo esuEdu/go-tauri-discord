@@ -56,10 +56,24 @@
 
 ### **Server (Backend)**
 
-- **Language:** Go (1.22+)
-- **Text Networking:** Goroutine-based WebSockets
-- **Voice/Video Routing:** Pion WebRTC / WebSockets Signaling
-- **Database:** PostgreSQL / SQLite (GORM)
+- **Language:** Go (1.26+)
+- **Architecture:** Modular monolith — one binary, feature packages, interfaces only at the seams that will actually be cut later
+- **Text Networking:** One multiplexed WebSocket per client (`/gateway`), goroutine-based fanout routed per topic
+- **Voice/Video Routing:** Pion WebRTC / WebSocket signalling *(not yet implemented)*
+- **Database:** PostgreSQL 17 with `pgx` + [`sqlc`](https://sqlc.dev) (compile-time checked SQL, no ORM)
+- **Migrations:** [`goose`](https://github.com/pressly/goose), pinned as a Go tool dependency
+
+**Why Postgres and not SQLite:** a chat server issues many small concurrent
+writes (messages, presence, read state, voice state) and SQLite serialises
+every writer. Postgres additionally provides `LISTEN/NOTIFY`, `JSONB`,
+full-text search, and partitioning for when `messages` grows. Supporting both
+dialects would double the migration and query surface for no user-visible
+gain.
+
+**Why no ORM:** the hot path is keyset pagination over messages joined to
+authors and attachments — exactly where an ORM produces N+1 queries. `sqlc`
+generates type-safe Go from the same SQL that ships, so schema drift is a
+build failure rather than a runtime one.
 
 ---
 
@@ -68,24 +82,33 @@
 Vocalis is organized as a monorepo for streamlined local development and synchronized API releases:
 
 ```
-vocalis/
-├── client/                  # Desktop Application
-│   ├── src/                 # React UI components, state management
-│   ├── src-tauri/           # Tauri Rust configuration, native hooks
-│   ├── package.json
-│   └── vite.config.ts
+go-tauri-discord/
+├── client/                       # Desktop application
+│   └── src/types/events.gen.ts   # Generated from server/pkg/events — do not edit
 │
-├── server/                  # Go Central Backend
-│   ├── cmd/                 # Application entrypoints (server binary)
-│   ├── internal/            # Core server logic
-│   │   └── models/          # Database schemas
-│   ├── go.mod
-│   └── go.sum
+├── server/
+│   ├── cmd/api/                  # The one binary: REST API + gateway
+│   ├── internal/
+│   │   ├── config/               # Env -> typed config, loaded once
+│   │   ├── domain/               # Entities, error kinds, permission bitfield
+│   │   ├── auth/                 # Register/login, JWT + refresh rotation
+│   │   ├── guild/                # Guilds, channels, members, roles, permissions
+│   │   ├── message/              # History, keyset pagination
+│   │   ├── gateway/              # WebSocket hub: sessions, replay, fanout
+│   │   ├── db/
+│   │   │   ├── migrations/       # goose SQL migrations
+│   │   │   ├── queries/          # sqlc source SQL
+│   │   │   └── gen/              # sqlc output — do not edit
+│   │   └── platform/
+│   │       ├── httpx/            # Router, middleware, error mapping
+│   │       ├── bus/              # Event publish side
+│   │       └── pubsub/           # Broker interface + in-memory impl
+│   ├── pkg/events/               # Wire contract — source of truth for both sides
+│   ├── sqlc.yaml
+│   └── tygo.yaml
 │
-├── shared/                  # Shared API specs, types, and WebSocket contracts
-│   └── events.json
-│
-├── Makefile                 # Unified development task runner
+├── docker-compose.yml            # Postgres (+ MinIO behind a profile)
+├── Makefile                      # Unified development task runner
 └── README.md
 ```
 
@@ -106,40 +129,113 @@ Ensure you have the following tools installed on your development machine:
 
 ### Quick Start (Development)
 
-1. **Clone the Repository:**
+1. **Clone and configure:**
 
     ```bash
-    git clone https://github.com/your-username/vocalis.git
-    cd vocalis
+    git clone https://github.com/esuEdu/go-tauri-discord.git
+    cd go-tauri-discord
+    cp .env.example .env
     ```
 
-2. **Install Frontend Dependencies:**
-
-    ```bash
-    cd client
-    npm install
-    cd ..
-    ```
-
-3. **Run Both Server and Client in Development Mode:**
-
-    If you have `make` installed, simply run:
+2. **Start Postgres, run migrations, and boot the server:**
 
     ```bash
     make dev
     ```
 
-    _Alternatively, start them in separate terminal windows:_
+    This starts the `postgres` container, waits for it to become healthy,
+    applies migrations, and runs the API on `:8080`. Check it with
+    `curl localhost:8080/healthz`.
+
+3. **Run the desktop client** (separate terminal):
 
     ```bash
-    # Terminal 1: Go Server
-    cd server
-    go run cmd/server/main.go
-
-    # Terminal 2: Tauri Desktop App
-    cd client
-    npm run tauri dev
+    cd client && npm install
+    make dev-client
     ```
+
+### Common tasks
+
+Run `make help` for the full list.
+
+| Command | What it does |
+| --- | --- |
+| `make dev` | Postgres + migrations + server |
+| `make migration name=add_reactions` | Scaffold a new migration |
+| `make migrate` / `make migrate-down` | Apply / roll back migrations |
+| `make db-reset` | Drop the volume and rebuild the schema |
+| `make sqlc` | Regenerate the query layer from SQL |
+| `make types` | Regenerate client TypeScript from `pkg/events` |
+| `make check` | Vet, format check, and `go test -race` |
+
+`goose`, `tygo` and `sqlc` need no global install — the first two are pinned
+as Go tool dependencies in `server/go.mod`.
+
+---
+
+## 🔌 Architecture Notes
+
+### Authentication
+
+Two tokens. The **access token** is a short-lived HS256 JWT verified locally
+on every request, so the hot path never touches the database. The **refresh
+token** is opaque random bytes stored only as a SHA-256 hash and rotated on
+every use; presenting a revoked token is treated as theft. The desktop client
+keeps the refresh token in the OS keychain, never in `localStorage`.
+
+### The gateway
+
+One WebSocket per client at `GET /gateway`, multiplexing every event that
+client may see — not one connection per channel. Frames share an envelope:
+
+```jsonc
+{ "op": 0, "t": "MESSAGE_CREATE", "s": 42, "d": { /* payload */ } }
+```
+
+| Op | Direction | Meaning |
+| --- | --- | --- |
+| 0 | server → client | Dispatch (carries `t` and `s`) |
+| 1 | client → server | Heartbeat |
+| 2 | client → server | Identify (authenticate a new session) |
+| 3 | server → client | Hello (sent immediately on connect) |
+| 4 | server → client | Heartbeat ack |
+| 5 | client → server | Resume (replay missed events) |
+| 6 | server → client | Invalid session — re-identify from scratch |
+
+Handshake: the server sends **HELLO**, the client replies **IDENTIFY** (or
+**RESUME**), and the server answers with **READY** — always the first
+dispatch — followed by live events.
+
+`s` is a per-session sequence number. Sessions outlive their connection by 90
+seconds, keeping a 256-frame replay buffer, so a brief network drop is
+recovered with **RESUME** rather than a full refetch. Clients must ignore any
+frame whose `s` is not greater than the last one processed.
+
+Fanout is routed **per topic, not per session**: one broker subscription and
+one forwarding goroutine exist per active topic regardless of how many
+sessions listen. A client that falls more than 256 frames behind is
+disconnected on purpose — it reconnects and resumes, which is far cheaper
+than letting one slow client stall delivery for everyone else.
+
+### Scaling past one node
+
+`internal/platform/pubsub.Broker` is the seam. Today it is an in-process
+implementation; swapping in NATS (whose server embeds into this binary,
+preserving the single-executable story) is the only change needed — nothing
+in the feature packages moves.
+
+### Permissions
+
+A 64-bit bitfield on roles, plus per-channel allow/deny overwrites, resolved
+in `domain.ResolvePermissions` in this order: guild owner and Administrator
+short-circuit to everything; role permissions are unioned; role overwrites
+apply denies before allows; the member-specific overwrite wins last.
+
+### Preventing client/server drift
+
+Wire types are defined once in `server/pkg/events` and generated into
+`client/src/types/events.gen.ts` by `make types`. `make verify-generated`
+fails CI when the checked-in output is stale.
 
 ---
 
@@ -157,16 +253,23 @@ Built installers and binaries will be output to `client/src-tauri/target/release
 ### Build Backend Server Binary
 
 ```bash
-cd server
-go build -o bin/vocalis-server cmd/server/main.go
+make build   # -> server/bin/vocalis-server
 ```
+
+`JWT_SECRET` (32+ bytes) is required when `ENV=production`; the server
+refuses to start without it. Generate one with `openssl rand -base64 48`.
 
 ---
 
 ## 📋 Roadmap
 
 - [x] Initial project structure & monorepo design
-- [ ] WebSocket-based text channels & messaging history
+- [x] Postgres schema, migrations, and type-safe query layer
+- [x] Auth: registration, login, JWT access + rotating refresh tokens
+- [x] Guilds, channels, members, roles, permission resolution
+- [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
+- [x] Text messages with keyset-paginated history
+- [ ] Attachments and avatars on S3-compatible storage
 - [ ] P2P / SFU WebRTC voice channels
 - [ ] High-FPS screen sharing with window selection
 - [ ] Push-to-Talk with native global shortcuts
