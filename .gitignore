@@ -1,12 +1,22 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
+# ---------------------------------------------------------------------------
+# go-tauri-discord — monorepo (Go server + Tauri/Rust + React/TS client)
+# ---------------------------------------------------------------------------
+
+# ===========================
+# Go (server/)
+# ===========================
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+
+# Compiled server binaries
+server/bin/
+bin/
+vocalis-server
+vocalis-server.exe
 
 # Test binary, built with `go test -c`
 *.test
@@ -24,9 +34,119 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
+# ===========================
+# Node / React / Vite (client/)
+# ===========================
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Build output
+dist/
+dist-ssr/
+build/
+out/
+*.local
+
+# Vite / bundler caches
+.vite/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ===========================
+# Tauri / Rust (client/src-tauri/)
+# ===========================
+target/
+**/target/
+debug/
+**/*.rs.bk
+*.pdb
+
+# Tauri build artifacts & generated files
+client/src-tauri/gen/
+client/src-tauri/WixTools/
+client/src-tauri/.tauri/
+
+# Signing keys — never commit these
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+tauri-private.key
+*.tauri.key
+
+# ===========================
+# Secrets & local config
+# ===========================
+.env
+.env.*
+!.env.example
+!.env.sample
+*.env.local
+secrets.json
+config.local.*
+
+# ===========================
+# Databases (SQLite dev data)
+# ===========================
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+tmp/
+uploads/
+
+# ===========================
+# Editors / IDEs
+# ===========================
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+!.vscode/launch.json.example
+
+# ===========================
+# OS files
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
