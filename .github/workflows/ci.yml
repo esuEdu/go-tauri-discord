@@ -50,5 +50,8 @@ jobs:
       - name: Vet, format and test
         run: make check
 
+      - name: End-to-end against the real API and gateway
+        run: cd server && go test -tags=e2e -race -count=1 ./internal/app/
+
       - name: Verify generated code is current
         run: make verify-generated

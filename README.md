@@ -167,6 +167,7 @@ Run `make help` for the full list.
 | `make sqlc` | Regenerate the query layer from SQL |
 | `make types` | Regenerate client TypeScript from `pkg/events` |
 | `make check` | Vet, format check, and `go test -race` |
+| `make e2e` | Drive the real API and gateway against Postgres, no client needed |
 
 `goose`, `tygo` and `sqlc` need no global install — the first two are pinned
 as Go tool dependencies in `server/go.mod`.
@@ -230,6 +231,22 @@ A 64-bit bitfield on roles, plus per-channel allow/deny overwrites, resolved
 in `domain.ResolvePermissions` in this order: guild owner and Administrator
 short-circuit to everything; role permissions are unioned; role overwrites
 apply denies before allows; the member-specific overwrite wins last.
+
+### Testing without the desktop client
+
+`make e2e` starts the real server in-process against Postgres and drives it
+over HTTP and a genuine websocket — registration, guild creation, keyset
+pagination, permission boundaries, gateway IDENTIFY/READY, live fanout, and
+RESUME replay. It brings the database up and migrates first, so a single
+command is enough:
+
+```bash
+make e2e
+```
+
+The suite is behind the `e2e` build tag, so `make test` stays fast and
+database-free. Usernames are randomised per run, so repeated runs against the
+same database do not collide.
 
 ### Preventing client/server drift
 

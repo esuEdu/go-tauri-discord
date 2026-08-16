@@ -76,8 +76,12 @@ build: ## Build the server binary into server/bin/
 	cd $(SERVER_DIR) && go build -o bin/vocalis-server ./cmd/api
 
 .PHONY: test
-test: ## Run the Go test suite with the race detector
+test: ## Run the unit test suite with the race detector
 	cd $(SERVER_DIR) && go test -race ./...
+
+.PHONY: e2e
+e2e: db-up migrate ## Drive the real API and gateway against Postgres
+	cd $(SERVER_DIR) && go test -tags=e2e -race -count=1 -v ./internal/app/
 
 .PHONY: lint
 lint: ## Vet and check formatting
