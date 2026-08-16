@@ -67,9 +67,21 @@ verify-generated: generate ## Fail if generated code is stale (for CI)
 dev: db-up migrate ## Start Postgres, migrate, then run the server
 	cd $(SERVER_DIR) && go run ./cmd/api
 
+.PHONY: client-install
+client-install: ## Install client dependencies
+	cd $(CLIENT_DIR) && npm install
+
 .PHONY: dev-client
-dev-client: ## Run the Tauri desktop client
+dev-client: ## Run the Tauri desktop client (needs Rust)
 	cd $(CLIENT_DIR) && npm run tauri dev
+
+.PHONY: dev-web
+dev-web: ## Run the client in a browser at :1420 (no Rust needed)
+	cd $(CLIENT_DIR) && npm run dev
+
+.PHONY: client-check
+client-check: ## Typecheck and build the client
+	cd $(CLIENT_DIR) && npm run build
 
 .PHONY: build
 build: ## Build the server binary into server/bin/

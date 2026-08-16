@@ -232,6 +232,37 @@ in `domain.ResolvePermissions` in this order: guild owner and Administrator
 short-circuit to everything; role permissions are unioned; role overwrites
 apply denies before allows; the member-specific overwrite wins last.
 
+### Desktop client
+
+```bash
+make client-install     # once
+make dev                # terminal 1: Postgres, migrations, API on :8080
+make dev-client         # terminal 2: native window (needs Rust)
+```
+
+No Rust yet? `make dev-web` serves the same UI at http://localhost:1420 in a
+browser. The Tauri shell wraps that identical Vite app, so nothing is wasted
+by starting there. Install Rust with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+The client covers registration and login, creating and joining servers,
+channel switching, message history with scroll-back paging, sending and
+deleting, and live updates over the gateway with a connection indicator in the
+status bar.
+
+`src/gateway.ts` owns the socket and hides reconnection from the UI: it tracks
+the sequence number, RESUMEs after a drop, discards replayed duplicates, and
+backs off exponentially with jitter so a server restart does not produce a
+retry storm.
+
+**Adding a friend to a server** is currently manual: click *Copy this server's
+id* in the sidebar, send them the id, and they paste it into *join by server
+id*. That endpoint is unauthenticated by design gap rather than intent — see
+issue #2, which replaces it with invite codes.
+
 ### Testing without the desktop client
 
 `make e2e` starts the real server in-process against Postgres and drives it
