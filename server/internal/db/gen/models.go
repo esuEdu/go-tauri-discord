@@ -53,6 +53,18 @@ type GuildMember struct {
 	JoinedAt time.Time
 }
 
+type Invite struct {
+	Code      string
+	GuildID   uuid.UUID
+	ChannelID *uuid.UUID
+	InviterID uuid.UUID
+	MaxUses   *int32
+	Uses      int32
+	ExpiresAt *time.Time
+	RevokedAt *time.Time
+	CreatedAt time.Time
+}
+
 type MemberRole struct {
 	GuildID uuid.UUID
 	UserID  uuid.UUID
