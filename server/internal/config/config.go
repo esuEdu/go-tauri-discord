@@ -17,6 +17,8 @@ type Config struct {
 	RefreshTokenTTL time.Duration
 	CORSOrigins     []string
 
+	UIDir string
+
 	HeartbeatInterval time.Duration
 }
 
@@ -32,6 +34,7 @@ func Load() (Config, error) {
 		AccessTokenTTL:    envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:   envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		HeartbeatInterval: envDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		UIDir:             env("UI_DIR", ""),
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}

@@ -232,6 +232,77 @@ in `domain.ResolvePermissions` in this order: guild owner and Administrator
 short-circuit to everything; role permissions are unioned; role overwrites
 apply denies before allows; the member-specific overwrite wins last.
 
+### Desktop client
+
+```bash
+make client-install     # once
+make dev                # terminal 1: Postgres, migrations, API on :8080
+make dev-client         # terminal 2: native window (needs Rust)
+```
+
+No Rust yet? `make dev-web` serves the same UI at http://localhost:1420 in a
+browser. The Tauri shell wraps that identical Vite app, so nothing is wasted
+by starting there. Install Rust with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+The client covers registration and login, creating and joining servers,
+channel switching, message history with scroll-back paging, sending and
+deleting, and live updates over the gateway with a connection indicator in the
+status bar.
+
+`src/gateway.ts` owns the socket and hides reconnection from the UI: it tracks
+the sequence number, RESUMEs after a drop, discards replayed duplicates, and
+backs off exponentially with jitter so a server restart does not produce a
+retry storm.
+
+**Adding a friend to a server** is currently manual: click *Copy this server's
+id* in the sidebar, send them the id, and they paste it into *join by server
+id*. That endpoint is unauthenticated by design gap rather than intent — see
+issue #2, which replaces it with invite codes.
+
+### Sharing a running instance
+
+The Go server can serve the built UI, so the whole app lives on one port and
+one tunnel exposes it:
+
+```bash
+make share
+```
+
+That builds the UI, serves it with the API on one port, opens a Cloudflare
+tunnel, and prints the public link:
+
+```
+  Send this to your friends:
+      https://classroom-asthma-carried-ascii.trycloudflare.com
+```
+
+Send that URL to anyone. No CORS configuration and no rebuild are needed: the
+client talks to whatever origin it was served from, and the gateway authorises
+a websocket whose `Origin` matches the request `Host`. Ctrl-C stops the server
+and the tunnel together. `make serve` does the same without exposing anything.
+
+The URL is random and changes on every restart, so send the current one. A
+stable hostname needs a named tunnel and a free Cloudflare account.
+
+Your friends open the link, register an account, and then need the server id
+to get in: click **Copy this server's id** in the sidebar, send it to them,
+and they paste it into **join by server id**.
+
+Requires `cloudflared` (`brew install cloudflared`).
+
+`make share` creates `.env` with a generated `JWT_SECRET` on first run. That
+matters — the development fallback secret is committed to this public
+repository, so an instance exposed with the default would let anyone forge a
+token for any account.
+
+Before exposing an instance, know what is still open: there is no rate
+limiting (#3), registration is unrestricted, and anyone holding a server id
+can join that server (#2). Fine among friends, not fine in public.
+
 ### Testing without the desktop client
 
 `make e2e` starts the real server in-process against Postgres and drives it
