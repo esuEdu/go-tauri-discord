@@ -269,13 +269,30 @@ The Go server can serve the built UI, so the whole app lives on one port and
 one tunnel exposes it:
 
 ```bash
-make share                                      # builds the UI, serves it on :8080
-cloudflared tunnel --url http://localhost:8080  # prints a public https URL
+make share
+```
+
+That builds the UI, serves it with the API on one port, opens a Cloudflare
+tunnel, and prints the public link:
+
+```
+  Send this to your friends:
+      https://classroom-asthma-carried-ascii.trycloudflare.com
 ```
 
 Send that URL to anyone. No CORS configuration and no rebuild are needed: the
 client talks to whatever origin it was served from, and the gateway authorises
-a websocket whose `Origin` matches the request `Host`.
+a websocket whose `Origin` matches the request `Host`. Ctrl-C stops the server
+and the tunnel together. `make serve` does the same without exposing anything.
+
+The URL is random and changes on every restart, so send the current one. A
+stable hostname needs a named tunnel and a free Cloudflare account.
+
+Your friends open the link, register an account, and then need the server id
+to get in: click **Copy this server's id** in the sidebar, send it to them,
+and they paste it into **join by server id**.
+
+Requires `cloudflared` (`brew install cloudflared`).
 
 `make share` creates `.env` with a generated `JWT_SECRET` on first run. That
 matters — the development fallback secret is committed to this public

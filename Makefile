@@ -77,12 +77,34 @@ $(CLIENT_DIR)/node_modules: $(CLIENT_DIR)/package.json
 	@touch $@
 
 .PHONY: share
-share: db-up migrate .env $(CLIENT_DIR)/node_modules ## Build the UI and serve it with the API on one port
+share: db-up migrate .env $(CLIENT_DIR)/node_modules ## Serve the app and print a public link for friends
 	cd $(CLIENT_DIR) && npm run build
-	@echo ""
-	@echo "  Everything on http://localhost:8080"
-	@echo "  Expose it with:  cloudflared tunnel --url http://localhost:8080"
-	@echo ""
+	@command -v cloudflared >/dev/null || { echo "cloudflared not found. brew install cloudflared"; exit 1; }
+	@trap 'kill 0' EXIT INT TERM; \
+	set -a; . ./.env; set +a; \
+	( cd $(SERVER_DIR) && UI_DIR=../$(CLIENT_DIR)/dist go run ./cmd/api ) & \
+	printf "starting server"; \
+	until curl -sf http://localhost:8080/healthz >/dev/null 2>&1; do printf "."; sleep 1; done; \
+	echo; \
+	cloudflared tunnel --url http://localhost:8080 > .tunnel.log 2>&1 & \
+	printf "opening tunnel"; \
+	for i in $$(seq 1 40); do \
+	  url=$$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' .tunnel.log 2>/dev/null | head -1); \
+	  if [ -n "$$url" ]; then break; fi; printf "."; sleep 1; \
+	done; \
+	echo; echo; \
+	if [ -n "$$url" ]; then \
+	  echo "  Send this to your friends:"; \
+	  echo "      $$url"; \
+	else \
+	  echo "  Tunnel did not start. See .tunnel.log"; \
+	fi; \
+	echo; echo "  Local: http://localhost:8080    Ctrl-C stops everything."; echo; \
+	wait
+
+.PHONY: serve
+serve: db-up migrate .env $(CLIENT_DIR)/node_modules ## Serve the app on :8080 without a public link
+	cd $(CLIENT_DIR) && npm run build
 	set -a; . ./.env; set +a; \
 	cd $(SERVER_DIR) && UI_DIR=../$(CLIENT_DIR)/dist go run ./cmd/api
 
