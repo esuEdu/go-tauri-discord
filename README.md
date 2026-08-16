@@ -263,6 +263,29 @@ id* in the sidebar, send them the id, and they paste it into *join by server
 id*. That endpoint is unauthenticated by design gap rather than intent — see
 issue #2, which replaces it with invite codes.
 
+### Sharing a running instance
+
+The Go server can serve the built UI, so the whole app lives on one port and
+one tunnel exposes it:
+
+```bash
+make share                                      # builds the UI, serves it on :8080
+cloudflared tunnel --url http://localhost:8080  # prints a public https URL
+```
+
+Send that URL to anyone. No CORS configuration and no rebuild are needed: the
+client talks to whatever origin it was served from, and the gateway authorises
+a websocket whose `Origin` matches the request `Host`.
+
+`make share` creates `.env` with a generated `JWT_SECRET` on first run. That
+matters — the development fallback secret is committed to this public
+repository, so an instance exposed with the default would let anyone forge a
+token for any account.
+
+Before exposing an instance, know what is still open: there is no rate
+limiting (#3), registration is unrestricted, and anyone holding a server id
+can join that server (#2). Fine among friends, not fine in public.
+
 ### Testing without the desktop client
 
 `make e2e` starts the real server in-process against Postgres and drives it

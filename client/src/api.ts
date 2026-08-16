@@ -1,6 +1,6 @@
 import type { Channel, Guild, Message, User } from "./types/events.gen";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export interface TokenPair {
   access_token: string;

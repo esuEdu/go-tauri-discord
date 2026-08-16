@@ -76,6 +76,22 @@ $(CLIENT_DIR)/node_modules: $(CLIENT_DIR)/package.json
 	cd $(CLIENT_DIR) && npm install
 	@touch $@
 
+.PHONY: share
+share: db-up migrate .env $(CLIENT_DIR)/node_modules ## Build the UI and serve it with the API on one port
+	cd $(CLIENT_DIR) && npm run build
+	@echo ""
+	@echo "  Everything on http://localhost:8080"
+	@echo "  Expose it with:  cloudflared tunnel --url http://localhost:8080"
+	@echo ""
+	set -a; . ./.env; set +a; \
+	cd $(SERVER_DIR) && UI_DIR=../$(CLIENT_DIR)/dist go run ./cmd/api
+
+# A generated secret, because the development default is committed to this
+# public repository and would let anyone forge a token for any account.
+.env:
+	@sed 's|^JWT_SECRET=.*|JWT_SECRET='"$$(openssl rand -base64 48 | tr -d '\n')"'|' .env.example > .env
+	@echo "created .env with a freshly generated JWT_SECRET"
+
 .PHONY: dev
 dev: db-up migrate ## Start Postgres, migrate, then run only the server
 	cd $(SERVER_DIR) && go run ./cmd/api

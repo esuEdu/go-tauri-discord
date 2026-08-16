@@ -12,8 +12,11 @@ import {
   type Ready,
 } from "./types/events.gen";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
-const GATEWAY_URL = BASE.replace(/^http/, "ws") + "/gateway";
+// Same origin as the page unless explicitly overridden, so a tunnelled or
+// deployed host needs no rebuild and no configuration.
+const GATEWAY_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/^http/, "ws") + "/gateway"
+  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/gateway`;
 
 export type ConnectionState = "connecting" | "ready" | "reconnecting" | "closed";
 
