@@ -63,8 +63,21 @@ verify-generated: generate ## Fail if generated code is stale (for CI)
 	@git diff --exit-code -- $(SERVER_DIR)/internal/db/gen $(CLIENT_DIR)/src/types \
 		|| (echo "generated code is out of date; run 'make generate' and commit" && exit 1)
 
+.PHONY: up
+up: db-up migrate $(CLIENT_DIR)/node_modules ## Run everything: Postgres, API and client
+	@echo ""
+	@echo "  API   http://localhost:8080"
+	@echo "  App   http://localhost:1420"
+	@echo "  Ctrl-C stops both."
+	@echo ""
+	@trap 'kill 0' EXIT INT TERM; 	( cd $(SERVER_DIR) && go run ./cmd/api ) & 	( cd $(CLIENT_DIR) && npm run dev ) & 	wait
+
+$(CLIENT_DIR)/node_modules: $(CLIENT_DIR)/package.json
+	cd $(CLIENT_DIR) && npm install
+	@touch $@
+
 .PHONY: dev
-dev: db-up migrate ## Start Postgres, migrate, then run the server
+dev: db-up migrate ## Start Postgres, migrate, then run only the server
 	cd $(SERVER_DIR) && go run ./cmd/api
 
 .PHONY: client-install
