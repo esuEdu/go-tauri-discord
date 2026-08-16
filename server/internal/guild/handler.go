@@ -2,6 +2,7 @@ package guild
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
@@ -21,7 +22,10 @@ func NewHandler(svc *Service, pub *bus.Publisher) *Handler {
 func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/guilds", h.create)
 	mux.HandleFunc("GET /api/v1/guilds", h.list)
-	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/@me", h.join)
+	mux.HandleFunc("POST /api/v1/guilds/{guildID}/invites", h.createInvite)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/invites", h.listInvites)
+	mux.HandleFunc("POST /api/v1/invites/{code}", h.redeemInvite)
+	mux.HandleFunc("DELETE /api/v1/invites/{code}", h.revokeInvite)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members", h.members)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/channels", h.listChannels)
 	mux.HandleFunc("POST /api/v1/guilds/{guildID}/channels", h.createChannel)
@@ -56,14 +60,63 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, mapSlice(guilds, PublicGuild))
 }
 
-func (h *Handler) join(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
 	guildID, err := httpx.PathUUID(r, "guildID")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
+	var in struct {
+		MaxUses        *int32 `json:"max_uses"`
+		ExpiresInHours *int   `json:"expires_in_hours"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var expiresIn *time.Duration
+	if in.ExpiresInHours != nil {
+		d := time.Duration(*in.ExpiresInHours) * time.Hour
+		expiresIn = &d
+	}
+
+	invite, err := h.svc.CreateInvite(r.Context(), auth.MustUserID(r.Context()), guildID, in.MaxUses, expiresIn)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, invite)
+}
+
+func (h *Handler) listInvites(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	invites, err := h.svc.ListInvites(r.Context(), auth.MustUserID(r.Context()), guildID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, invites)
+}
+
+func (h *Handler) redeemInvite(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUserID(r.Context())
-	if err := h.svc.Join(r.Context(), userID, guildID); err != nil {
+	guild, err := h.svc.RedeemInvite(r.Context(), userID, r.PathValue("code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(guild))
+	httpx.JSON(w, http.StatusOK, PublicGuild(guild))
+}
+
+func (h *Handler) revokeInvite(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.RevokeInvite(r.Context(), auth.MustUserID(r.Context()), r.PathValue("code")); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

@@ -33,12 +33,13 @@ type TxRunner interface {
 }
 
 type Service struct {
-	repo Repository
-	tx   TxRunner
+	repo    Repository
+	invites InviteRepository
+	tx      TxRunner
 }
 
-func NewService(repo Repository, tx TxRunner) *Service {
-	return &Service{repo: repo, tx: tx}
+func NewService(repo Repository, invites InviteRepository, tx TxRunner) *Service {
+	return &Service{repo: repo, invites: invites, tx: tx}
 }
 
 const maxGuildNameLen = 100
@@ -171,21 +172,6 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 		return dbgen.Channel{}, domain.Internal(err)
 	}
 	return ch, nil
-}
-
-func (s *Service) Join(ctx context.Context, userID, guildID uuid.UUID) error {
-	if _, err := s.repo.GetGuild(ctx, guildID); err != nil {
-		if db.IsNoRows(err) {
-			return domain.NotFound("guild")
-		}
-		return domain.Internal(err)
-	}
-	if _, err := s.repo.AddGuildMember(ctx, dbgen.AddGuildMemberParams{
-		GuildID: guildID, UserID: userID,
-	}); err != nil {
-		return domain.Internal(err)
-	}
-	return nil
 }
 
 func (s *Service) MemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID, error) {
