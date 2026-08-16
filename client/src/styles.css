@@ -337,3 +337,19 @@ input:focus {
 .dot.closed {
   background: var(--danger);
 }
+
+.invite-button {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.invite-link {
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.error.banner {
+  grid-area: main;
+  align-self: start;
+  margin: 12px;
+}

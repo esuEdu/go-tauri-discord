@@ -23,7 +23,9 @@ export function Sidebar({
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [joinID, setJoinID] = useState("");
+  const [code, setCode] = useState("");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function createGuild(e: React.FormEvent) {
@@ -39,17 +41,36 @@ export function Sidebar({
     }
   }
 
-  async function joinGuild(e: React.FormEvent) {
+  async function joinByCode(e: React.FormEvent) {
     e.preventDefault();
-    const id = joinID.trim();
-    if (!id) return;
+    const trimmed = code.trim();
+    if (!trimmed) return;
     setError(null);
     try {
-      await api.joinGuild(id);
-      setJoinID("");
+      await api.redeemInvite(trimmed);
+      setCode("");
       onGuildsChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not join");
+    }
+  }
+
+  async function makeInvite() {
+    if (!activeGuild) return;
+    setError(null);
+    try {
+      const invite = await api.createInvite(activeGuild.id);
+      const link = `${location.origin}/?invite=${invite.code}`;
+      setInviteLink(link);
+      try {
+        await navigator.clipboard.writeText(link);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        setCopied(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not create invite");
     }
   }
 
@@ -99,23 +120,26 @@ export function Sidebar({
           ))}
 
         <div className="join-box">
-          {/* Until invites land (issue #2), joining means pasting a guild id. */}
-          <form className="inline-form" onSubmit={joinGuild}>
+          {activeGuild && (
+            <>
+              <button className="invite-button" onClick={() => void makeInvite()}>
+                {copied ? "Link copied" : "Invite a friend"}
+              </button>
+              {inviteLink && (
+                <input className="invite-link" readOnly value={inviteLink} onFocus={(e) => e.target.select()} />
+              )}
+            </>
+          )}
+
+          <form className="inline-form" onSubmit={joinByCode}>
             <input
-              placeholder="join by server id"
-              value={joinID}
-              onChange={(e) => setJoinID(e.target.value)}
+              placeholder="invite code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
             />
             <button type="submit">Join</button>
           </form>
-          {activeGuild && (
-            <button
-              className="link copy-id"
-              onClick={() => void navigator.clipboard.writeText(activeGuild.id)}
-            >
-              Copy this server's id
-            </button>
-          )}
+
           {error && <div className="error inline">{error}</div>}
         </div>
       </aside>

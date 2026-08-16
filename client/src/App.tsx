@@ -6,8 +6,14 @@ import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
 import type { Channel, Guild, User } from "./types/events.gen";
 
+function pendingInviteCode(): string | null {
+  return new URLSearchParams(location.search).get("invite");
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [invite, setInvite] = useState<string | null>(pendingInviteCode);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>("closed");
 
@@ -48,6 +54,33 @@ export default function App() {
       return list[0] ?? null;
     });
   }, []);
+
+  useEffect(() => {
+    if (!user || !invite) return;
+    let cancelled = false;
+
+    api
+      .redeemInvite(invite)
+      .then((guild) => {
+        if (cancelled) return;
+        setActiveGuild(guild);
+        void loadGuilds();
+      })
+      .catch((err) => {
+        if (!cancelled) setInviteError(err.message);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setInvite(null);
+        const url = new URL(location.href);
+        url.searchParams.delete("invite");
+        history.replaceState({}, "", url);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, invite, loadGuilds]);
 
   useEffect(() => {
     if (!user) return;
@@ -99,7 +132,7 @@ export default function App() {
   }
 
   if (booting) return <div className="boot">Loading…</div>;
-  if (!user) return <Login onAuthenticated={setUser} />;
+  if (!user) return <Login onAuthenticated={setUser} inviteCode={invite} />;
 
   return (
     <div className="app">
@@ -124,6 +157,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {inviteError && <div className="error banner">{inviteError}</div>}
 
       <footer className="statusbar">
         <span className={`dot ${connection}`} />
