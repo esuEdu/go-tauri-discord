@@ -134,6 +134,10 @@ dev-web: ## Run the client in a browser at :1420 (no Rust needed)
 client-check: ## Typecheck and build the client
 	cd $(CLIENT_DIR) && npm run build
 
+.PHONY: client-build
+client-build: ## Bundle the desktop app (needs Rust)
+	cd $(CLIENT_DIR) && npm run tauri build
+
 .PHONY: build
 build: ## Build the server binary into server/bin/
 	cd $(SERVER_DIR) && go build -o bin/vocalis-server ./cmd/api
