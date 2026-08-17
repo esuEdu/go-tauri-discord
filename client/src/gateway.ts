@@ -40,6 +40,7 @@ export class Gateway {
   private closedByUs = false;
 
   private listeners = new Map<string, Set<Listener>>();
+  private controlListeners = new Map<number, Set<Listener>>();
   private stateListeners = new Set<(s: ConnectionState) => void>();
 
   on(event: EventType | string, fn: Listener): () => void {
@@ -50,6 +51,20 @@ export class Gateway {
     }
     set.add(fn);
     return () => set!.delete(fn);
+  }
+
+  onControl(op: number, fn: Listener): () => void {
+    let set = this.controlListeners.get(op);
+    if (!set) {
+      set = new Set();
+      this.controlListeners.set(op, set);
+    }
+    set.add(fn);
+    return () => set!.delete(fn);
+  }
+
+  sendRaw(frame: Partial<Frame>) {
+    this.send(frame);
   }
 
   onStateChange(fn: (s: ConnectionState) => void): () => void {
@@ -132,6 +147,14 @@ export class Gateway {
         this.setState("connecting");
         this.send({ op: OpIdentify, d: { token: this.token } });
         return;
+
+      default: {
+        const set = this.controlListeners.get(frame.op);
+        if (set) {
+          for (const fn of set) fn(frame.d);
+        }
+        return;
+      }
 
       case OpDispatch: {
         if (typeof frame.s === "number") {

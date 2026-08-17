@@ -118,17 +118,6 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     }
   }
 
-  if (channel.kind === "voice") {
-    return (
-      <div className="chat">
-        <header className="chat-header">
-          <strong>🔊 {channel.name}</strong>
-        </header>
-        <div className="empty">Voice channels are not implemented yet.</div>
-      </div>
-    );
-  }
-
   return (
     <div className="chat">
       <header className="chat-header">
