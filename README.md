@@ -301,9 +301,9 @@ matters — the development fallback secret is committed to this public
 repository, so an instance exposed with the default would let anyone forge a
 token for any account.
 
-Before exposing an instance, know what is still open: there is no rate
-limiting (#3) and registration is unrestricted. Fine among friends, not fine
-in public.
+Registration, login, messages and typing are rate limited, so a shared link is
+no longer wide open. It is still an instance on your laptop behind a tunnel
+that terminates TLS at Cloudflare — fine among friends, not fine in public.
 
 ### Testing without the desktop client
 
@@ -320,6 +320,32 @@ make e2e
 The suite is behind the `e2e` build tag, so `make test` stays fast and
 database-free. Usernames are randomised per run, so repeated runs against the
 same database do not collide.
+
+### Rate limiting
+
+Token buckets, keyed by account for authenticated routes and by client IP for
+public ones. Exceeding a limit returns `429` with `Retry-After`.
+
+Keying public routes on IP only works if the server knows the real client
+address. Behind `make share`, cloudflared connects from loopback, so without
+trusted-proxy handling every visitor would share one bucket and the first few
+registrations would lock out everyone else. `TRUSTED_PROXIES` defaults to
+loopback and the client address is read from `CF-Connecting-IP` or the
+rightmost untrusted hop of `X-Forwarded-For`. Peers outside that list have
+their headers ignored, so the limit cannot be bypassed by claiming a different
+address.
+
+Failed attempts consume tokens. Wrong passwords and rejected registrations are
+exactly what an attacker generates, so making them free would defeat the
+limit. Login is additionally throttled per account, because throttling by IP
+alone does not stop guessing distributed across many addresses.
+
+Limits are set with `REGISTER_PER_HOUR`, `LOGIN_PER_MINUTE`,
+`MESSAGES_PER_MINUTE` and `MAX_SESSIONS_PER_USER`; `RATE_LIMIT_DISABLED=true`
+turns the whole thing off for local work.
+
+Buckets live in memory, which shares the single-node constraint of the event
+broker — both move to a shared backend together when a second node appears.
 
 ### Preventing client/server drift
 
