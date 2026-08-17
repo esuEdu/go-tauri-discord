@@ -11,12 +11,11 @@ import {
   type Hello,
   type Ready,
 } from "./types/events.gen";
+import { gatewayURL } from "./server";
 
 // Same origin as the page unless explicitly overridden, so a tunnelled or
 // deployed host needs no rebuild and no configuration.
-const GATEWAY_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace(/^http/, "ws") + "/gateway"
-  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/gateway`;
+
 
 export type ConnectionState = "connecting" | "ready" | "reconnecting" | "closed";
 
@@ -87,7 +86,7 @@ export class Gateway {
   private open() {
     this.setState(this.sessionID ? "reconnecting" : "connecting");
 
-    const socket = new WebSocket(GATEWAY_URL);
+    const socket = new WebSocket(gatewayURL());
     this.socket = socket;
 
     socket.onmessage = (ev) => this.handle(JSON.parse(ev.data as string) as Frame);

@@ -1,6 +1,5 @@
+import { apiBase } from "./server";
 import type { Channel, Guild, Message, User } from "./types/events.gen";
-
-const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export interface TokenPair {
   access_token: string;
@@ -72,7 +71,7 @@ export class Api {
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
 
-    const res = await fetch(BASE + path, {
+    const res = await fetch(apiBase() + path, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -103,7 +102,7 @@ export class Api {
 
   private async tryRefresh(): Promise<boolean> {
     try {
-      const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
+      const res = await fetch(`${apiBase()}/api/v1/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: this.refreshToken }),
