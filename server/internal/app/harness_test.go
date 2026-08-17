@@ -30,6 +30,11 @@ type harness struct {
 	t      *testing.T
 	server *httptest.Server
 	token  string
+	email  string
+}
+
+func randomSuffix() string {
+	return strings.ReplaceAll(uuid.NewString()[:8], "-", "")
 }
 
 func newHarness(t *testing.T) *harness {
@@ -47,12 +52,17 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	cfg := config.Config{
-		Env:               "test",
-		JWTSecret:         []byte("test-secret-that-is-long-enough-to-pass"),
-		AccessTokenTTL:    15 * time.Minute,
-		RefreshTokenTTL:   24 * time.Hour,
-		HeartbeatInterval: 30 * time.Second,
-		CORSOrigins:       []string{"*"},
+		Env:                "test",
+		TrustedProxies:     []string{"127.0.0.1/32", "::1/128"},
+		RegisterPerHour:    10,
+		LoginPerMinute:     20,
+		MessagesPerMinute:  60,
+		MaxSessionsPerUser: 5,
+		JWTSecret:          []byte("test-secret-that-is-long-enough-to-pass"),
+		AccessTokenTTL:     15 * time.Minute,
+		RefreshTokenTTL:    24 * time.Hour,
+		HeartbeatInterval:  30 * time.Second,
+		CORSOrigins:        []string{"*"},
 	}
 
 	broker := pubsub.NewMemory()
@@ -107,6 +117,34 @@ func (h *harness) do(method, path string, body, out any) int {
 	return resp.StatusCode
 }
 
+func (h *harness) raw(method, path string, body any) *http.Response {
+	h.t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			h.t.Fatalf("marshal request: %v", err)
+		}
+		reader = bytes.NewReader(raw)
+	}
+
+	req, err := http.NewRequest(method, h.server.URL+path, reader)
+	if err != nil {
+		h.t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if h.token != "" {
+		req.Header.Set("Authorization", "Bearer "+h.token)
+	}
+
+	resp, err := h.server.Client().Do(req)
+	if err != nil {
+		h.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	return resp
+}
+
 func (h *harness) mustDo(method, path string, wantStatus int, body, out any) {
 	h.t.Helper()
 	if got := h.do(method, path, body, out); got != wantStatus {
@@ -119,7 +157,7 @@ func (h *harness) mustDo(method, path string, wantStatus int, body, out any) {
 func (h *harness) registerUser() (userID uuid.UUID, refreshToken string) {
 	h.t.Helper()
 
-	name := "e2e" + strings.ReplaceAll(uuid.NewString()[:8], "-", "")
+	name := "e2e" + randomSuffix()
 	var out struct {
 		User   events.User `json:"user"`
 		Tokens struct {
@@ -134,6 +172,7 @@ func (h *harness) registerUser() (userID uuid.UUID, refreshToken string) {
 	}, &out)
 
 	h.token = out.Tokens.AccessToken
+	h.email = name + "@example.test"
 	return out.User.ID, out.Tokens.RefreshToken
 }
 
