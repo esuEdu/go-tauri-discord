@@ -8,6 +8,15 @@ export interface TokenPair {
   expires_at: string;
 }
 
+export interface Invite {
+  code: string;
+  guild_id: string;
+  guild_name: string;
+  member_count: number;
+  uses: number;
+  max_uses: number | null;
+}
+
 export interface AuthResponse {
   user: User;
   tokens: TokenPair;
@@ -150,9 +159,19 @@ export class Api {
     return this.request<Guild>("POST", "/api/v1/guilds", { name });
   }
 
-  // Joining by raw guild id is a stand-in until invites land (issue #2).
-  joinGuild(guildID: string): Promise<void> {
-    return this.request<void>("PUT", `/api/v1/guilds/${guildID}/members/@me`);
+  createInvite(guildID: string, maxUses?: number): Promise<Invite> {
+    return this.request<Invite>("POST", `/api/v1/guilds/${guildID}/invites`, {
+      max_uses: maxUses ?? null,
+      expires_in_hours: null,
+    });
+  }
+
+  previewInvite(code: string): Promise<Invite> {
+    return this.request<Invite>("GET", `/api/v1/invites/${code}`);
+  }
+
+  redeemInvite(code: string): Promise<Guild> {
+    return this.request<Guild>("POST", `/api/v1/invites/${code}`);
   }
 
   channels(guildID: string): Promise<Channel[]> {

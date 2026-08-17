@@ -1,14 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { User } from "../types/events.gen";
 
-export function Login({ onAuthenticated }: { onAuthenticated: (u: User) => void }) {
+interface Props {
+  onAuthenticated: (u: User) => void;
+  inviteCode?: string | null;
+}
+
+export function Login({ onAuthenticated, inviteCode }: Props) {
+  const [invitedTo, setInvitedTo] = useState<string | null>(null);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    let cancelled = false;
+    api
+      .previewInvite(inviteCode)
+      .then((i) => !cancelled && setInvitedTo(i.guild_name))
+      .catch(() => undefined);
+    setMode("register");
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,7 +51,11 @@ export function Login({ onAuthenticated }: { onAuthenticated: (u: User) => void 
       <form className="login-card" onSubmit={submit}>
         <h1>Vocalis</h1>
         <p className="muted">
-          {mode === "login" ? "Welcome back." : "Create an account."}
+          {invitedTo
+            ? `You have been invited to ${invitedTo}.`
+            : mode === "login"
+              ? "Welcome back."
+              : "Create an account."}
         </p>
 
         {mode === "register" && (

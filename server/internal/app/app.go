@@ -24,7 +24,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 
 	tokens := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
 	authSvc := auth.NewService(pool, tokens, cfg.RefreshTokenTTL)
-	guildSvc := guild.NewService(pool, pool)
+	guildSvc := guild.NewService(pool, pool, pool)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
 	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins))
@@ -35,7 +35,9 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	authHandler := auth.NewHandler(authSvc)
 	authHandler.Routes(mux)
 	protected.HandleFunc("GET /api/v1/users/@me", authHandler.Me)
-	guild.NewHandler(guildSvc, publisher).Routes(protected)
+	guildHandler := guild.NewHandler(guildSvc, publisher)
+	guildHandler.Routes(protected)
+	guildHandler.PublicRoutes(mux)
 	message.NewHandler(messageSvc).Routes(protected)
 
 	mux.HandleFunc("GET /gateway", gw.Handler())

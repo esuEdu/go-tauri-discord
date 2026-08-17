@@ -258,10 +258,10 @@ the sequence number, RESUMEs after a drop, discards replayed duplicates, and
 backs off exponentially with jitter so a server restart does not produce a
 retry storm.
 
-**Adding a friend to a server** is currently manual: click *Copy this server's
-id* in the sidebar, send them the id, and they paste it into *join by server
-id*. That endpoint is unauthenticated by design gap rather than intent — see
-issue #2, which replaces it with invite codes.
+**Adding a friend to a server** uses invite links. *Invite a friend* copies a
+link carrying an 8-character code; opening it previews the server and joins
+automatically after registration. Invites can be limited by use count and
+expiry, and revoked without removing anyone who already joined.
 
 ### Sharing a running instance
 
@@ -288,9 +288,11 @@ and the tunnel together. `make serve` does the same without exposing anything.
 The URL is random and changes on every restart, so send the current one. A
 stable hostname needs a named tunnel and a free Cloudflare account.
 
-Your friends open the link, register an account, and then need the server id
-to get in: click **Copy this server's id** in the sidebar, send it to them,
-and they paste it into **join by server id**.
+Your friends open the link, register, and they are in. Click **Invite a
+friend** in the sidebar to copy a link like
+`https://<host>/?invite=LBJJqars` — opening it shows which server they have
+been invited to, and joining happens automatically once they have an account.
+An invite code can also be pasted directly into the **invite code** box.
 
 Requires `cloudflared` (`brew install cloudflared`).
 
@@ -300,8 +302,8 @@ repository, so an instance exposed with the default would let anyone forge a
 token for any account.
 
 Before exposing an instance, know what is still open: there is no rate
-limiting (#3), registration is unrestricted, and anyone holding a server id
-can join that server (#2). Fine among friends, not fine in public.
+limiting (#3) and registration is unrestricted. Fine among friends, not fine
+in public.
 
 ### Testing without the desktop client
 
