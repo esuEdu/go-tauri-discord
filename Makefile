@@ -6,6 +6,10 @@ CLIENT_DIR   := client
 DATABASE_URL ?= postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable
 MIGRATIONS   := internal/db/migrations
 
+ifneq ($(wildcard $(HOME)/.cargo/bin/cargo),)
+export PATH := $(HOME)/.cargo/bin:$(PATH)
+endif
+
 GOOSE := cd $(SERVER_DIR) && GOOSE_DRIVER=postgres GOOSE_DBSTRING="$(DATABASE_URL)" go tool goose -dir $(MIGRATIONS)
 
 .PHONY: help
@@ -123,7 +127,7 @@ client-install: ## Install client dependencies
 	cd $(CLIENT_DIR) && npm install
 
 .PHONY: dev-client
-dev-client: ## Run the Tauri desktop client (needs Rust)
+dev-client: require-rust ## Run the Tauri desktop client (needs Rust)
 	cd $(CLIENT_DIR) && npm run tauri dev
 
 .PHONY: dev-web
@@ -135,8 +139,17 @@ client-check: ## Typecheck and build the client
 	cd $(CLIENT_DIR) && npm run build
 
 .PHONY: client-build
-client-build: ## Bundle the desktop app (needs Rust)
+client-build: require-rust ## Bundle the desktop app (needs Rust)
 	cd $(CLIENT_DIR) && npm run tauri build
+
+.PHONY: require-rust
+require-rust:
+	@command -v cargo >/dev/null || { \
+		echo "cargo not found."; \
+		echo "Install: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; \
+		echo "Then open a new terminal, or run: . \"$$HOME/.cargo/env\""; \
+		exit 1; \
+	}
 
 .PHONY: build
 build: ## Build the server binary into server/bin/
