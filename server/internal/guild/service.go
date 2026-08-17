@@ -174,6 +174,17 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 	return ch, nil
 }
 
+func (s *Service) Channel(ctx context.Context, channelID uuid.UUID) (dbgen.Channel, error) {
+	channel, err := s.repo.GetChannel(ctx, channelID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return dbgen.Channel{}, domain.NotFound("channel")
+		}
+		return dbgen.Channel{}, domain.Internal(err)
+	}
+	return channel, nil
+}
+
 func (s *Service) MemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID, error) {
 	ids, err := s.repo.ListGuildMemberIDs(ctx, guildID)
 	if err != nil {

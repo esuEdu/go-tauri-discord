@@ -26,6 +26,9 @@ type Config struct {
 	LoginPerMinute    int
 	MessagesPerMinute int
 
+	ICEServers    []string
+	VoiceDisabled bool
+
 	HeartbeatInterval time.Duration
 }
 
@@ -48,6 +51,8 @@ func Load() (Config, error) {
 		RegisterPerHour:    envInt("REGISTER_PER_HOUR", 10),
 		LoginPerMinute:     envInt("LOGIN_PER_MINUTE", 20),
 		MessagesPerMinute:  envInt("MESSAGES_PER_MINUTE", 60),
+		ICEServers:         strings.Split(env("ICE_SERVERS", "stun:stun.l.google.com:19302"), ","),
+		VoiceDisabled:      env("VOICE_DISABLED", "") == "true",
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}

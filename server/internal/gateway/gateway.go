@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
@@ -23,12 +24,22 @@ type Gateway struct {
 	heartbeat   time.Duration
 	origins     []string
 	maxSessions int
+	voice       VoiceEngine
 
 	mu       sync.RWMutex
 	sessions map[string]*session
 	byUser   map[uuid.UUID]map[*session]struct{}
 	topics   map[string]*topicRoute
 	closed   bool
+}
+
+type VoiceEngine interface {
+	Join(channelID, userID uuid.UUID) error
+	Leave(userID uuid.UUID)
+	Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error
+	AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error
+	ChannelOf(userID uuid.UUID) (uuid.UUID, bool)
+	Participants(channelID uuid.UUID) []uuid.UUID
 }
 
 type topicRoute struct {
@@ -51,6 +62,10 @@ func New(authSvc *auth.Service, guilds *guild.Service, broker pubsub.Broker, hea
 		byUser:      make(map[uuid.UUID]map[*session]struct{}),
 		topics:      make(map[string]*topicRoute),
 	}
+}
+
+func (g *Gateway) AttachVoice(engine VoiceEngine) {
+	g.voice = engine
 }
 
 func (g *Gateway) sessionsFor(userID uuid.UUID) int {
@@ -118,6 +133,7 @@ func (g *Gateway) unregister(s *session) {
 
 	s.kill()
 	if lastSession {
+		g.leaveVoice(s.userID)
 		g.broadcastPresence(s.userID, "offline")
 	}
 }
