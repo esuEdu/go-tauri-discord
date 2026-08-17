@@ -80,6 +80,10 @@ func (g *Gateway) handshake(ctx context.Context, conn *websocket.Conn) (*session
 			return nil, errors.New("authentication failed")
 		}
 
+		if g.sessionsFor(user.ID) >= g.maxSessions {
+			return nil, errors.New("too many concurrent sessions for this account")
+		}
+
 		guilds, err := g.guilds.ListForUser(hsCtx, user.ID)
 		if err != nil {
 			return nil, errors.New("could not load guilds")
