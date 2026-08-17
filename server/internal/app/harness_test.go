@@ -79,6 +79,13 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, server: server}
 }
 
+func (h *harness) newUser() *harness {
+	h.t.Helper()
+	other := &harness{t: h.t, server: h.server}
+	other.registerUser()
+	return other
+}
+
 func (h *harness) do(method, path string, body, out any) int {
 	h.t.Helper()
 
@@ -215,6 +222,44 @@ func (s *socket) read() events.Frame {
 
 // readUntil skips frames that do not match, so an unrelated dispatch such as
 // PRESENCE_UPDATE cannot desynchronise an assertion.
+func (s *socket) readAny() *events.Frame {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	typ, data, err := s.conn.Read(ctx)
+	if err != nil || typ != websocket.MessageText {
+		return nil
+	}
+	var frame events.Frame
+	if json.Unmarshal(data, &frame) != nil {
+		return nil
+	}
+	return &frame
+}
+
+func (s *socket) quietFor(within time.Duration, match func(events.Frame) bool) bool {
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Until(deadline))
+		typ, data, err := s.conn.Read(ctx)
+		cancel()
+		if err != nil {
+			return true
+		}
+		if typ != websocket.MessageText {
+			continue
+		}
+		var frame events.Frame
+		if json.Unmarshal(data, &frame) != nil {
+			continue
+		}
+		if match(frame) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *socket) readUntil(what string, match func(events.Frame) bool) events.Frame {
 	s.t.Helper()
 
