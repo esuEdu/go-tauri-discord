@@ -17,11 +17,12 @@ import (
 )
 
 type Gateway struct {
-	auth      *auth.Service
-	guilds    *guild.Service
-	broker    pubsub.Broker
-	heartbeat time.Duration
-	origins   []string
+	auth        *auth.Service
+	guilds      *guild.Service
+	broker      pubsub.Broker
+	heartbeat   time.Duration
+	origins     []string
+	maxSessions int
 
 	mu       sync.RWMutex
 	sessions map[string]*session
@@ -35,17 +36,27 @@ type topicRoute struct {
 	members map[*session]struct{}
 }
 
-func New(authSvc *auth.Service, guilds *guild.Service, broker pubsub.Broker, heartbeat time.Duration, origins []string) *Gateway {
-	return &Gateway{
-		auth:      authSvc,
-		guilds:    guilds,
-		broker:    broker,
-		heartbeat: heartbeat,
-		origins:   origins,
-		sessions:  make(map[string]*session),
-		byUser:    make(map[uuid.UUID]map[*session]struct{}),
-		topics:    make(map[string]*topicRoute),
+func New(authSvc *auth.Service, guilds *guild.Service, broker pubsub.Broker, heartbeat time.Duration, origins []string, maxSessions int) *Gateway {
+	if maxSessions < 1 {
+		maxSessions = 1
 	}
+	return &Gateway{
+		auth:        authSvc,
+		guilds:      guilds,
+		broker:      broker,
+		heartbeat:   heartbeat,
+		origins:     origins,
+		maxSessions: maxSessions,
+		sessions:    make(map[string]*session),
+		byUser:      make(map[uuid.UUID]map[*session]struct{}),
+		topics:      make(map[string]*topicRoute),
+	}
+}
+
+func (g *Gateway) sessionsFor(userID uuid.UUID) int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.byUser[userID])
 }
 
 func (g *Gateway) register(s *session, guildIDs []uuid.UUID) {

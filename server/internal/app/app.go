@@ -12,25 +12,41 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
+	"github.com/esuEdu/go-tauri-discord/internal/platform/ratelimit"
 )
 
 type App struct {
 	Handler http.Handler
 	Gateway *gateway.Gateway
+	limits  *limits
 }
 
 func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	publisher := bus.NewPublisher(broker)
 
+	lim := newLimits(cfg)
+	trusted := ratelimit.ParsePrefixes(cfg.TrustedProxies)
+
 	tokens := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
-	authSvc := auth.NewService(pool, tokens, cfg.RefreshTokenTTL)
+	var loginThrottle auth.Throttle
+	if !cfg.RateLimitDisabled {
+		loginThrottle = lim.loginAccount
+	}
+	authSvc := auth.NewService(pool, tokens, cfg.RefreshTokenTTL, loginThrottle)
 	guildSvc := guild.NewService(pool, pool, pool)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
-	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins))
+	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)
 
 	mux := http.NewServeMux()
-	protected := httpx.Guarded{Mux: mux, MW: authSvc.RequireAuth}
+	guard := authSvc.RequireAuth
+	if !cfg.RateLimitDisabled {
+		authedLimit := lim.authedMiddleware()
+		guard = func(next http.Handler) http.Handler {
+			return authSvc.RequireAuth(authedLimit(next))
+		}
+	}
+	protected := httpx.Guarded{Mux: mux, MW: guard}
 
 	authHandler := auth.NewHandler(authSvc)
 	authHandler.Routes(mux)
@@ -49,17 +65,24 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 		mux.HandleFunc("/", spaHandler(cfg.UIDir))
 	}
 
-	handler := httpx.Chain(mux,
+	middleware := []httpx.Middleware{
 		httpx.Recover,
 		httpx.RequestID,
 		httpx.Logger,
 		httpx.CORS(cfg.CORSOrigins),
-	)
+	}
+	if !cfg.RateLimitDisabled {
+		middleware = append(middleware, lim.publicMiddleware(trusted))
+	}
+	handler := httpx.Chain(mux, middleware...)
 
-	return &App{Handler: handler, Gateway: gw}
+	return &App{Handler: handler, Gateway: gw, limits: lim}
 }
 
-func (a *App) Close() { a.Gateway.Close() }
+func (a *App) Close() {
+	a.Gateway.Close()
+	a.limits.stop()
+}
 
 func healthz(pool *db.Pool, gw *gateway.Gateway) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -17,7 +17,14 @@ type Config struct {
 	RefreshTokenTTL time.Duration
 	CORSOrigins     []string
 
-	UIDir string
+	UIDir              string
+	TrustedProxies     []string
+	MaxSessionsPerUser int
+
+	RateLimitDisabled bool
+	RegisterPerHour   int
+	LoginPerMinute    int
+	MessagesPerMinute int
 
 	HeartbeatInterval time.Duration
 }
@@ -28,13 +35,19 @@ const devJWTSecret = "dev-only-insecure-secret-change-me-0123456789"
 
 func Load() (Config, error) {
 	c := Config{
-		Env:               env("ENV", "development"),
-		HTTPAddr:          env("HTTP_ADDR", ":8080"),
-		DatabaseURL:       env("DATABASE_URL", "postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable"),
-		AccessTokenTTL:    envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL:   envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
-		HeartbeatInterval: envDuration("HEARTBEAT_INTERVAL", 30*time.Second),
-		UIDir:             env("UI_DIR", ""),
+		Env:                env("ENV", "development"),
+		HTTPAddr:           env("HTTP_ADDR", ":8080"),
+		DatabaseURL:        env("DATABASE_URL", "postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable"),
+		AccessTokenTTL:     envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:    envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		HeartbeatInterval:  envDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		UIDir:              env("UI_DIR", ""),
+		MaxSessionsPerUser: envInt("MAX_SESSIONS_PER_USER", 5),
+		TrustedProxies:     strings.Split(env("TRUSTED_PROXIES", "127.0.0.1/32,::1/128"), ","),
+		RateLimitDisabled:  env("RATE_LIMIT_DISABLED", "") == "true",
+		RegisterPerHour:    envInt("REGISTER_PER_HOUR", 10),
+		LoginPerMinute:     envInt("LOGIN_PER_MINUTE", 20),
+		MessagesPerMinute:  envInt("MESSAGES_PER_MINUTE", 60),
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}
@@ -60,6 +73,17 @@ func Load() (Config, error) {
 func env(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		return v
+	}
+	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return fallback
+	}
+	if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		return n
 	}
 	return fallback
 }

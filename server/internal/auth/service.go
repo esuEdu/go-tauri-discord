@@ -25,14 +25,19 @@ type Repository interface {
 	RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID) error
 }
 
+type Throttle interface {
+	Allow(key string) (bool, time.Duration)
+}
+
 type Service struct {
 	repo       Repository
 	tokens     *TokenIssuer
 	refreshTTL time.Duration
+	logins     Throttle
 }
 
-func NewService(repo Repository, tokens *TokenIssuer, refreshTTL time.Duration) *Service {
-	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL}
+func NewService(repo Repository, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle) *Service {
+	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL, logins: logins}
 }
 
 type TokenPair struct {
@@ -88,7 +93,15 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (dbgen.User, TokenPair, error) {
-	user, err := s.repo.GetUserByEmail(ctx, strings.TrimSpace(email))
+	email = strings.TrimSpace(email)
+
+	if s.logins != nil {
+		if allowed, _ := s.logins.Allow(strings.ToLower(email)); !allowed {
+			return dbgen.User{}, TokenPair{}, domain.RateLimited("too many sign-in attempts for this account")
+		}
+	}
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if db.IsNoRows(err) {
 
