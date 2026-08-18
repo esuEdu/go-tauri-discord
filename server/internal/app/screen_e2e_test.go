@@ -53,6 +53,10 @@ func TestScreenVideoReachesAnotherMember(t *testing.T) {
 			if _, _, err := remote.Read(buf); err != nil {
 				t.Fatalf("no RTP arrived on the forwarded screen track: %v", err)
 			}
+			if mid := viewer.midOf(remote); mid == viewer.reservedMid() {
+				t.Fatalf("the presenter's screen arrived on mid %q, which is the viewer's own "+
+					"upload slot; a viewer that sets a direction on that slot silences the share", mid)
+			}
 			return
 		case <-ctx.Done():
 			t.Fatal("the viewer never received the presenter's screen through the SFU")
@@ -94,5 +98,41 @@ func TestScreenShareAnnouncesWhoIsSharing(t *testing.T) {
 	}
 	if update.StreamID == "" {
 		t.Error("screen update carried no stream id")
+	}
+}
+
+func TestScreenShareRetractionIsAnnounced(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Screen Stops")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	watcher := owner.dial()
+	watcher.identify(owner.token)
+
+	presenter := newVoiceClient(t, owner)
+	presenter.pump()
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+	presenter.share()
+
+	started := watcher.readEvent(events.EventVoiceScreenUpdate)
+	var begin events.VoiceScreenUpdate
+	decode(t, started.D, &begin)
+	if !begin.Active {
+		t.Fatal("the first screen update was not a start")
+	}
+
+	presenter.stopSharing()
+
+	stopped := watcher.readEvent(events.EventVoiceScreenUpdate)
+	var end events.VoiceScreenUpdate
+	decode(t, stopped.D, &end)
+	if end.Active {
+		t.Error("stopping a share never produced an inactive update, so viewers keep a frozen tile")
+	}
+	if end.StreamID != begin.StreamID {
+		t.Errorf("retraction named stream %q, want %q", end.StreamID, begin.StreamID)
 	}
 }

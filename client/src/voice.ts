@@ -217,7 +217,9 @@ class VoiceClient {
     if (transceiver.sender.track !== track) {
       void transceiver.sender.replaceTrack(track);
     }
-    transceiver.direction = track ? "sendonly" : "inactive";
+    if (transceiver.direction !== "sendonly") {
+      transceiver.direction = "sendonly";
+    }
   }
 
   private attachRemote(event: RTCTrackEvent) {

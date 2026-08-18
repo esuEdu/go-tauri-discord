@@ -9,7 +9,10 @@ function ScreenTile({ label, stream, muted }: { label: string; stream: MediaStre
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (ref.current) ref.current.srcObject = stream;
+    const element = ref.current;
+    if (!element) return;
+    element.srcObject = stream;
+    void element.play().catch(() => undefined);
   }, [stream]);
 
   return (

@@ -24,8 +24,9 @@ type voiceClient struct {
 	remote chan *webrtc.TrackRemote
 	done   chan struct{}
 
-	mu     sync.Mutex
-	screen *webrtc.TrackLocalStaticSample
+	mu        sync.Mutex
+	screen    *webrtc.TrackLocalStaticSample
+	screenMid string
 }
 
 func newVoiceClient(t *testing.T, h *harness) *voiceClient {
@@ -110,6 +111,7 @@ func (c *voiceClient) pump() {
 				}); err != nil {
 					continue
 				}
+				c.rememberScreenMid(sdp.ScreenMid)
 				c.attachScreen(sdp.ScreenMid)
 				answer, err := c.pc.CreateAnswer(nil)
 				if err != nil {
@@ -160,6 +162,33 @@ func (c *voiceClient) streamSilence() {
 			}
 		}
 	}()
+}
+
+func (c *voiceClient) rememberScreenMid(mid *string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if mid != nil {
+		c.screenMid = *mid
+	}
+}
+
+func (c *voiceClient) reservedMid() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.screenMid
+}
+
+func (c *voiceClient) midOf(track *webrtc.TrackRemote) string {
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if receiver := transceiver.Receiver(); receiver != nil {
+			for _, candidate := range receiver.Tracks() {
+				if candidate == track {
+					return transceiver.Mid()
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func (c *voiceClient) attachScreen(mid *string) {
@@ -218,6 +247,27 @@ func (c *voiceClient) share() {
 			}
 		}
 	}()
+}
+
+func (c *voiceClient) stopSharing() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	mid := c.screenMid
+	c.screen = nil
+	c.mu.Unlock()
+
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if transceiver.Mid() != mid {
+			continue
+		}
+		if sender := transceiver.Sender(); sender != nil {
+			if err := sender.ReplaceTrack(nil); err != nil {
+				c.t.Logf("clear screen track: %v", err)
+			}
+		}
+	}
+	c.sock.write(events.Frame{Op: events.OpVoiceResync})
 }
 
 func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {

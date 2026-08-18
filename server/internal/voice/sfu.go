@@ -413,7 +413,9 @@ func (s *SFU) syncLocked(r *room) bool {
 			if sent[id] || p.owned[id] {
 				continue
 			}
-			if _, err := p.pc.AddTrack(track); err != nil {
+			if _, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
+				Direction: webrtc.RTPTransceiverDirectionSendonly,
+			}); err != nil {
 				return false
 			}
 			changed = true
