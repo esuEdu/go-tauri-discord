@@ -278,7 +278,42 @@ func (s *SFU) Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error {
 	if err := p.pc.SetRemoteDescription(sdp); err != nil {
 		return err
 	}
-	return p.drainCandidates()
+	if err := p.drainCandidates(); err != nil {
+		return err
+	}
+	s.refreshSubscribedScreens(userID)
+	return nil
+}
+
+func (s *SFU) refreshSubscribedScreens(userID uuid.UUID) {
+	s.mu.Lock()
+	channelID, ok := s.homes[userID]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		s.mu.Unlock()
+		return
+	}
+	p := r.peers[userID]
+	if p == nil {
+		s.mu.Unlock()
+		return
+	}
+
+	asks := make([]func(), 0, len(r.keyframes))
+	for id, ask := range r.keyframes {
+		if !p.owned[id] {
+			asks = append(asks, ask)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, ask := range asks {
+		go ask()
+	}
 }
 
 func (s *SFU) AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error {

@@ -158,15 +158,24 @@ func TestScreenSubscriberTriggersAKeyframeRequest(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	presenter.share()
 
+	time.Sleep(time.Second)
+	presenter.drainKeyframes()
+
 	viewer := newVoiceClient(t, friend)
 	viewer.pump()
 	viewer.join(voiceChannel)
 	viewer.streamSilence()
 
-	select {
-	case <-presenter.keyframes:
-	case <-time.After(20 * time.Second):
-		t.Fatal("the SFU never asked the presenter for a keyframe, so a viewer joining " +
-			"mid-stream only ever receives frames it cannot decode and shows black")
+	deadline := time.After(2 * time.Second)
+	seen := 0
+	for seen < 2 {
+		select {
+		case <-presenter.keyframes:
+			seen++
+		case <-deadline:
+			t.Fatalf("the presenter got %d keyframe requests in the two seconds after a viewer "+
+				"subscribed; the idle ticker alone can produce one, so the subscribe path is not "+
+				"asking and the viewer waits for a natural keyframe while showing black", seen)
+		}
 	}
 }

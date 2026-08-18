@@ -186,6 +186,16 @@ func (c *voiceClient) streamSilence() {
 	}()
 }
 
+func (c *voiceClient) drainKeyframes() {
+	for {
+		select {
+		case <-c.keyframes:
+		default:
+			return
+		}
+	}
+}
+
 func (c *voiceClient) rememberScreenMid(mid *string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
