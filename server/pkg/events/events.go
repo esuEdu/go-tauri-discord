@@ -17,6 +17,10 @@ const (
 	OpHeartbeatAck   Opcode = 4
 	OpResume         Opcode = 5
 	OpInvalidSession Opcode = 6
+	OpVoiceState     Opcode = 7
+	OpVoiceOffer     Opcode = 8
+	OpVoiceAnswer    Opcode = 9
+	OpVoiceCandidate Opcode = 10
 )
 
 type EventType string
@@ -116,6 +120,24 @@ type TypingStart struct {
 type PresenceUpdate struct {
 	UserID uuid.UUID `json:"user_id"`
 	Status string    `json:"status"`
+}
+
+type VoiceStateRequest struct {
+	ChannelID *uuid.UUID `json:"channel_id"`
+	SelfMute  bool       `json:"self_mute"`
+	SelfDeaf  bool       `json:"self_deaf"`
+}
+
+type SessionDescription struct {
+	Type string `json:"type"`
+	SDP  string `json:"sdp"`
+}
+
+type ICECandidate struct {
+	Candidate        string  `json:"candidate"`
+	SDPMid           *string `json:"sdp_mid"`
+	SDPMLineIndex    *uint16 `json:"sdp_mline_index"`
+	UsernameFragment *string `json:"username_fragment"`
 }
 
 type VoiceStateUpdate struct {

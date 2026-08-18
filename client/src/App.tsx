@@ -4,6 +4,7 @@ import { gateway, type ConnectionState } from "./gateway";
 import { Chat } from "./components/Chat";
 import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
+import { Voice } from "./components/Voice";
 import type { Channel, Guild, User } from "./types/events.gen";
 
 function pendingInviteCode(): string | null {
@@ -148,7 +149,11 @@ export default function App() {
 
       <main className="main">
         {activeChannel ? (
-          <Chat channel={activeChannel} selfID={user.id} />
+          activeChannel.kind === "voice" ? (
+            <Voice channel={activeChannel} selfID={user.id} />
+          ) : (
+            <Chat channel={activeChannel} selfID={user.id} />
+          )
         ) : (
           <div className="empty">
             {guilds.length === 0

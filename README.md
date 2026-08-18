@@ -271,6 +271,19 @@ link carrying an 8-character code; opening it previews the server and joins
 automatically after registration. Invites can be limited by use count and
 expiry, and revoked without removing anyone who already joined.
 
+### Voice
+
+Voice channels carry audio through a Pion SFU. Each participant holds one peer
+connection to the server, which forwards their audio to everyone else, so a
+channel of N members costs N connections rather than N squared.
+
+The server is always the offerer, which removes SDP glare entirely: clients
+only ever answer. Joining requires the `Connect` permission on the channel.
+`ICE_SERVERS` configures STUN, and `VOICE_DISABLED=true` turns voice off.
+
+Screen sharing is not implemented. It becomes a second track on the same peer
+connection once someone wants it.
+
 ### Sharing a running instance
 
 The Go server can serve the built UI, so the whole app lives on one port and
@@ -394,7 +407,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
 - [ ] Attachments and avatars on S3-compatible storage
-- [ ] P2P / SFU WebRTC voice channels
+- [x] SFU WebRTC voice channels
 - [ ] High-FPS screen sharing with window selection
 - [ ] Push-to-Talk with native global shortcuts
 - [ ] Noise suppression & acoustic echo cancellation

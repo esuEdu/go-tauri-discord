@@ -353,3 +353,32 @@ input:focus {
   align-self: start;
   margin: 12px;
 }
+
+.voice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+
+.voice-members {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 60px;
+}
+
+.voice-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-controls .leave {
+  background: var(--danger);
+}

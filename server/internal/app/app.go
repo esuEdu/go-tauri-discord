@@ -1,6 +1,7 @@
 package app
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
@@ -13,12 +14,14 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/ratelimit"
+	"github.com/esuEdu/go-tauri-discord/internal/voice"
 )
 
 type App struct {
 	Handler http.Handler
 	Gateway *gateway.Gateway
 	limits  *limits
+	voice   *voice.SFU
 }
 
 func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
@@ -37,6 +40,8 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
 	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)
+
+	application := &App{Gateway: gw, limits: lim}
 
 	mux := http.NewServeMux()
 	guard := authSvc.RequireAuth
@@ -76,12 +81,26 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	}
 	handler := httpx.Chain(mux, middleware...)
 
-	return &App{Handler: handler, Gateway: gw, limits: lim}
+	if !cfg.VoiceDisabled {
+		sfu, err := voice.New(gw, cfg.ICEServers)
+		if err != nil {
+			slog.Error("voice disabled: could not start the SFU", "error", err)
+		} else {
+			gw.AttachVoice(sfu)
+			application.voice = sfu
+		}
+	}
+
+	application.Handler = handler
+	return application
 }
 
 func (a *App) Close() {
 	a.Gateway.Close()
 	a.limits.stop()
+	if a.voice != nil {
+		a.voice.Close()
+	}
 }
 
 func healthz(pool *db.Pool, gw *gateway.Gateway) http.HandlerFunc {

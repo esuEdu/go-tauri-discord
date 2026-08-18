@@ -12,6 +12,10 @@ export const OpHello: Opcode = 3;
 export const OpHeartbeatAck: Opcode = 4;
 export const OpResume: Opcode = 5;
 export const OpInvalidSession: Opcode = 6;
+export const OpVoiceState: Opcode = 7;
+export const OpVoiceOffer: Opcode = 8;
+export const OpVoiceAnswer: Opcode = 9;
+export const OpVoiceCandidate: Opcode = 10;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -93,6 +97,21 @@ export interface TypingStart {
 export interface PresenceUpdate {
   user_id: string;
   status: string;
+}
+export interface VoiceStateRequest {
+  channel_id?: string;
+  self_mute: boolean;
+  self_deaf: boolean;
+}
+export interface SessionDescription {
+  type: string;
+  sdp: string;
+}
+export interface ICECandidate {
+  candidate: string;
+  sdp_mid?: string;
+  sdp_mline_index?: number /* uint16 */;
+  username_fragment?: string;
 }
 export interface VoiceStateUpdate {
   guild_id: string;

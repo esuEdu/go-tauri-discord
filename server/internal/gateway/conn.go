@@ -180,8 +180,15 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			return
 		}
 
-		if frame.Op == events.OpHeartbeat {
+		switch frame.Op {
+		case events.OpHeartbeat:
 			sess.enqueueControl(mustJSON(events.Frame{Op: events.OpHeartbeatAck}))
+		case events.OpVoiceState:
+			g.handleVoiceState(sess, frame.D)
+		case events.OpVoiceAnswer:
+			g.handleVoiceAnswer(sess, frame.D)
+		case events.OpVoiceCandidate:
+			g.handleVoiceCandidate(sess, frame.D)
 		}
 	}
 }
