@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
@@ -24,9 +25,29 @@ type voiceClient struct {
 	remote chan *webrtc.TrackRemote
 	done   chan struct{}
 
+	keyframes chan struct{}
+
 	mu        sync.Mutex
 	screen    *webrtc.TrackLocalStaticSample
 	screenMid string
+}
+
+func (c *voiceClient) watchKeyframeRequests(sender *webrtc.RTPSender) {
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		for _, packet := range packets {
+			if _, ok := packet.(*rtcp.PictureLossIndication); !ok {
+				continue
+			}
+			select {
+			case c.keyframes <- struct{}{}:
+			default:
+			}
+		}
+	}
 }
 
 func newVoiceClient(t *testing.T, h *harness) *voiceClient {
@@ -47,12 +68,13 @@ func newVoiceClient(t *testing.T, h *harness) *voiceClient {
 	}
 
 	c := &voiceClient{
-		t:      t,
-		sock:   h.dial(),
-		pc:     pc,
-		track:  track,
-		remote: make(chan *webrtc.TrackRemote, 4),
-		done:   make(chan struct{}),
+		t:         t,
+		sock:      h.dial(),
+		pc:        pc,
+		track:     track,
+		remote:    make(chan *webrtc.TrackRemote, 4),
+		keyframes: make(chan struct{}, 4),
+		done:      make(chan struct{}),
 	}
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
@@ -205,9 +227,12 @@ func (c *voiceClient) attachScreen(mid *string) {
 		}
 		sender := transceiver.Sender()
 		if sender == nil {
-			if _, err := c.pc.AddTrack(track); err != nil {
+			added, err := c.pc.AddTrack(track)
+			if err != nil {
 				c.t.Logf("attach screen track: %v", err)
+				return
 			}
+			go c.watchKeyframeRequests(added)
 			return
 		}
 		if sender.Track() != track {

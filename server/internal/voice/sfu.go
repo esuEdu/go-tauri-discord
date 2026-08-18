@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -37,6 +38,7 @@ type room struct {
 	peers     map[uuid.UUID]*peer
 	tracks    map[string]*webrtc.TrackLocalStaticRTP
 	screens   map[uuid.UUID]string
+	keyframes map[string]func()
 }
 
 type peer struct {
@@ -52,9 +54,10 @@ type peer struct {
 }
 
 const (
-	signalAttempts = 25
-	signalBackoff  = 2 * time.Second
-	rtpBufferSize  = 1500
+	signalAttempts   = 25
+	signalBackoff    = 2 * time.Second
+	rtpBufferSize    = 1500
+	keyframeInterval = 3 * time.Second
 )
 
 func New(signaler Signaler, iceServers []string) (*SFU, error) {
@@ -120,6 +123,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 			peers:     make(map[uuid.UUID]*peer),
 			tracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
 			screens:   make(map[uuid.UUID]string),
+			keyframes: make(map[string]func()),
 		}
 		s.rooms[channelID] = r
 	}
@@ -167,23 +171,46 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 		return
 	}
 
+	askKeyframe := func() {
+		_ = p.pc.WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{MediaSSRC: uint32(remote.SSRC())},
+		})
+	}
+
 	s.mu.Lock()
 	r.tracks[local.ID()] = local
 	p.owned[local.ID()] = true
 	if screen {
 		r.screens[p.userID] = local.StreamID()
+		r.keyframes[local.ID()] = askKeyframe
 	}
 	s.signalLocked(r)
 	s.mu.Unlock()
 
 	if screen {
 		s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), true)
+
+		stop := make(chan struct{})
+		defer close(stop)
+		go func() {
+			ticker := time.NewTicker(keyframeInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					askKeyframe()
+				}
+			}
+		}()
 	}
 
 	defer func() {
 		s.mu.Lock()
 		delete(r.tracks, local.ID())
 		delete(p.owned, local.ID())
+		delete(r.keyframes, local.ID())
 		if screen && r.screens[p.userID] == local.StreamID() {
 			delete(r.screens, p.userID)
 		}
@@ -424,6 +451,9 @@ func (s *SFU) syncLocked(r *room) bool {
 				Direction: webrtc.RTPTransceiverDirectionSendonly,
 			}); err != nil {
 				return false
+			}
+			if ask := r.keyframes[id]; ask != nil {
+				go ask()
 			}
 			changed = true
 		}

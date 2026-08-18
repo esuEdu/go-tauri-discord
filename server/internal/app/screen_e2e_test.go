@@ -140,3 +140,33 @@ func TestScreenShareRetractionIsAnnounced(t *testing.T) {
 		t.Errorf("retraction named stream %q, want %q", end.StreamID, begin.StreamID)
 	}
 }
+
+func TestScreenSubscriberTriggersAKeyframeRequest(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Keyframes")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	presenter.pump()
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+	presenter.share()
+
+	viewer := newVoiceClient(t, friend)
+	viewer.pump()
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+
+	select {
+	case <-presenter.keyframes:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the SFU never asked the presenter for a keyframe, so a viewer joining " +
+			"mid-stream only ever receives frames it cannot decode and shows black")
+	}
+}

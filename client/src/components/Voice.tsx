@@ -5,7 +5,7 @@ import type { Channel, VoiceStateUpdate } from "../types/events.gen";
 
 const emptyScreens: ScreenState = { sharing: false, canShare: false, local: null, remote: [] };
 
-function ScreenTile({ label, stream, muted }: { label: string; stream: MediaStream; muted: boolean }) {
+function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -17,7 +17,7 @@ function ScreenTile({ label, stream, muted }: { label: string; stream: MediaStre
 
   return (
     <figure className="screen-tile">
-      <video ref={ref} autoPlay playsInline muted={muted} />
+      <video ref={ref} autoPlay playsInline muted />
       <figcaption className="muted">{label}</figcaption>
     </figure>
   );
@@ -67,15 +67,12 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
       <div className="voice-panel">
         {here && (screens.local || screens.remote.length > 0) && (
           <div className="screen-grid">
-            {screens.local && (
-              <ScreenTile label="Your screen" stream={screens.local} muted />
-            )}
+            {screens.local && <ScreenTile label="Your screen" stream={screens.local} />}
             {screens.remote.map((screen) => (
               <ScreenTile
                 key={screen.stream.id}
                 label={screen.userID ? `${screen.userID.slice(0, 8)}'s screen` : "A shared screen"}
                 stream={screen.stream}
-                muted={false}
               />
             ))}
           </div>
