@@ -5,6 +5,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,9 @@ type voiceClient struct {
 	track  *webrtc.TrackLocalStaticSample
 	remote chan *webrtc.TrackRemote
 	done   chan struct{}
+
+	mu     sync.Mutex
+	screen *webrtc.TrackLocalStaticSample
 }
 
 func newVoiceClient(t *testing.T, h *harness) *voiceClient {
@@ -106,6 +110,7 @@ func (c *voiceClient) pump() {
 				}); err != nil {
 					continue
 				}
+				c.attachScreen(sdp.ScreenMid)
 				answer, err := c.pc.CreateAnswer(nil)
 				if err != nil {
 					continue
@@ -152,6 +157,64 @@ func (c *voiceClient) streamSilence() {
 				return
 			case <-ticker.C:
 				_ = c.track.WriteSample(media.Sample{Data: silence, Duration: 20 * time.Millisecond})
+			}
+		}
+	}()
+}
+
+func (c *voiceClient) attachScreen(mid *string) {
+	c.mu.Lock()
+	track := c.screen
+	c.mu.Unlock()
+
+	if track == nil || mid == nil {
+		return
+	}
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if transceiver.Mid() != *mid {
+			continue
+		}
+		sender := transceiver.Sender()
+		if sender == nil {
+			if _, err := c.pc.AddTrack(track); err != nil {
+				c.t.Logf("attach screen track: %v", err)
+			}
+			return
+		}
+		if sender.Track() != track {
+			if err := sender.ReplaceTrack(track); err != nil {
+				c.t.Logf("replace screen track: %v", err)
+			}
+		}
+		return
+	}
+}
+
+func (c *voiceClient) share() {
+	c.t.Helper()
+
+	track, err := webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "screen", "vocalis-screen")
+	if err != nil {
+		c.t.Fatalf("create screen track: %v", err)
+	}
+
+	c.mu.Lock()
+	c.screen = track
+	c.mu.Unlock()
+
+	c.sock.write(events.Frame{Op: events.OpVoiceResync})
+
+	go func() {
+		ticker := time.NewTicker(33 * time.Millisecond)
+		defer ticker.Stop()
+		frame := make([]byte, 128)
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				_ = track.WriteSample(media.Sample{Data: frame, Duration: 33 * time.Millisecond})
 			}
 		}
 	}()
