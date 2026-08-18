@@ -217,27 +217,32 @@ class VoiceClient {
     if (transceiver.sender.track !== track) {
       void transceiver.sender.replaceTrack(track);
     }
+    if (this.display && transceiver.sender.setStreams) {
+      transceiver.sender.setStreams(this.display);
+    }
     if (transceiver.direction !== "sendonly") {
       transceiver.direction = "sendonly";
     }
   }
 
   private attachRemote(event: RTCTrackEvent) {
-    const [stream] = event.streams;
-    if (!stream) return;
-
     if (event.track.kind === "video") {
-      this.videoStreams.set(stream.id, stream);
+      const key = event.streams[0]?.id ?? event.track.id;
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      this.videoStreams.set(key, stream);
       this.emitScreens();
       const forget = () => {
-        this.videoStreams.delete(stream.id);
-        this.owners.delete(stream.id);
+        this.videoStreams.delete(key);
+        this.owners.delete(key);
         this.emitScreens();
       };
       event.track.onended = forget;
-      stream.onremovetrack = forget;
+      event.streams[0]?.addEventListener("removetrack", forget);
       return;
     }
+
+    const [stream] = event.streams;
+    if (!stream) return;
 
     const existing = this.remotes.get(stream.id);
     if (existing) {

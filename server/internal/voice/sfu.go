@@ -2,6 +2,7 @@ package voice
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"sync"
@@ -151,14 +152,20 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 }
 
 func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
+	screen := remote.Kind() == webrtc.RTPCodecTypeVideo
+
+	trackID, streamID := remote.ID(), remote.StreamID()
+	if screen {
+		trackID = fmt.Sprintf("screen-%s-%d", p.userID, remote.SSRC())
+		streamID = trackID
+	}
+
 	local, err := webrtc.NewTrackLocalStaticRTP(
-		remote.Codec().RTPCodecCapability, remote.ID(), remote.StreamID())
+		remote.Codec().RTPCodecCapability, trackID, streamID)
 	if err != nil {
 		slog.Error("voice: create local track", "error", err)
 		return
 	}
-
-	screen := remote.Kind() == webrtc.RTPCodecTypeVideo
 
 	s.mu.Lock()
 	r.tracks[local.ID()] = local

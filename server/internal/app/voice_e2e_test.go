@@ -223,7 +223,7 @@ func (c *voiceClient) share() {
 	c.t.Helper()
 
 	track, err := webrtc.NewTrackLocalStaticSample(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "screen", "vocalis-screen")
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "-", "-")
 	if err != nil {
 		c.t.Fatalf("create screen track: %v", err)
 	}

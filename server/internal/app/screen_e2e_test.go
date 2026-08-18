@@ -57,6 +57,10 @@ func TestScreenVideoReachesAnotherMember(t *testing.T) {
 				t.Fatalf("the presenter's screen arrived on mid %q, which is the viewer's own "+
 					"upload slot; a viewer that sets a direction on that slot silences the share", mid)
 			}
+			if id := remote.StreamID(); id == "" || id == "-" {
+				t.Fatalf("the forwarded screen carried stream id %q, so a browser reports no "+
+					"stream on the track event and the viewer drops it before rendering", id)
+			}
 			return
 		case <-ctx.Done():
 			t.Fatal("the viewer never received the presenter's screen through the SFU")
