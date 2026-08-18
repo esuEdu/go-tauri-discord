@@ -3,6 +3,7 @@ package voice
 import (
 	"errors"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -14,9 +15,10 @@ import (
 var ErrNotConnected = errors.New("voice: peer is not connected")
 
 type Signaler interface {
-	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription)
+	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid *string)
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
 	VoiceClosed(userID uuid.UUID)
+	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
 }
 
 type SFU struct {
@@ -33,12 +35,15 @@ type room struct {
 	channelID uuid.UUID
 	peers     map[uuid.UUID]*peer
 	tracks    map[string]*webrtc.TrackLocalStaticRTP
+	screens   map[uuid.UUID]string
 }
 
 type peer struct {
 	userID uuid.UUID
 	pc     *webrtc.PeerConnection
 	owned  map[string]bool
+	screen *webrtc.RTPTransceiver
+	redo   bool
 
 	mu         sync.Mutex
 	pending    []webrtc.ICECandidateInit
@@ -81,7 +86,7 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 	}, nil
 }
 
-func (s *SFU) Join(channelID, userID uuid.UUID) error {
+func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	s.Leave(userID)
 
 	pc, err := s.api.NewPeerConnection(s.config)
@@ -96,6 +101,16 @@ func (s *SFU) Join(channelID, userID uuid.UUID) error {
 
 	p := &peer{userID: userID, pc: pc, owned: make(map[string]bool)}
 
+	if mayStream {
+		screen, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
+		if err != nil {
+			pc.Close()
+			return err
+		}
+		p.screen = screen
+	}
+
 	s.mu.Lock()
 	r, ok := s.rooms[channelID]
 	if !ok {
@@ -103,6 +118,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID) error {
 			channelID: channelID,
 			peers:     make(map[uuid.UUID]*peer),
 			tracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
+			screens:   make(map[uuid.UUID]string),
 		}
 		s.rooms[channelID] = r
 	}
@@ -142,18 +158,34 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 		return
 	}
 
+	screen := remote.Kind() == webrtc.RTPCodecTypeVideo
+
 	s.mu.Lock()
 	r.tracks[local.ID()] = local
 	p.owned[local.ID()] = true
+	if screen {
+		r.screens[p.userID] = local.StreamID()
+	}
 	s.signalLocked(r)
 	s.mu.Unlock()
+
+	if screen {
+		s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), true)
+	}
 
 	defer func() {
 		s.mu.Lock()
 		delete(r.tracks, local.ID())
 		delete(p.owned, local.ID())
+		if screen && r.screens[p.userID] == local.StreamID() {
+			delete(r.screens, p.userID)
+		}
 		s.signalLocked(r)
 		s.mu.Unlock()
+
+		if screen {
+			s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), false)
+		}
 	}()
 
 	buf := make([]byte, rtpBufferSize)
@@ -184,6 +216,7 @@ func (s *SFU) Leave(userID uuid.UUID) {
 	}
 	p := r.peers[userID]
 	delete(r.peers, userID)
+	delete(r.screens, userID)
 
 	if p != nil {
 		for id := range p.owned {
@@ -228,6 +261,41 @@ func (s *SFU) AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) 
 	}
 	p.mu.Unlock()
 	return p.pc.AddICECandidate(candidate)
+}
+
+func (s *SFU) Resync(userID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		return ErrNotConnected
+	}
+
+	p.redo = true
+	s.signalLocked(r)
+	return nil
+}
+
+func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := s.rooms[channelID]
+	if r == nil {
+		return nil
+	}
+	out := make(map[uuid.UUID]string, len(r.screens))
+	maps.Copy(out, r.screens)
+	return out
 }
 
 func (s *SFU) ChannelOf(userID uuid.UUID) (uuid.UUID, bool) {
@@ -351,7 +419,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			changed = true
 		}
 
-		if !changed && p.pc.LocalDescription() != nil {
+		if !changed && !p.redo && p.pc.LocalDescription() != nil {
 			continue
 		}
 		if p.pc.SignalingState() != webrtc.SignalingStateStable {
@@ -365,7 +433,19 @@ func (s *SFU) syncLocked(r *room) bool {
 		if err := p.pc.SetLocalDescription(offer); err != nil {
 			return false
 		}
-		s.signaler.SendOffer(p.userID, offer)
+		p.redo = false
+		s.signaler.SendOffer(p.userID, offer, p.screenMid())
 	}
 	return true
+}
+
+func (p *peer) screenMid() *string {
+	if p.screen == nil {
+		return nil
+	}
+	mid := p.screen.Mid()
+	if mid == "" {
+		return nil
+	}
+	return &mid
 }

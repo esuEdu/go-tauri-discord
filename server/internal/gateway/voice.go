@@ -14,12 +14,13 @@ import (
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-func (g *Gateway) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription) {
+func (g *Gateway) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid *string) {
 	g.sendToUser(userID, events.Frame{
 		Op: events.OpVoiceOffer,
 		D: mustJSON(events.SessionDescription{
-			Type: sdp.Type.String(),
-			SDP:  sdp.SDP,
+			Type:      sdp.Type.String(),
+			SDP:       sdp.SDP,
+			ScreenMid: screenMid,
 		}),
 	})
 }
@@ -86,7 +87,7 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 		g.announceVoice(ctx, sess.userID, previous, nil, payload.SelfMute, payload.SelfDeaf)
 	}
 
-	if err := g.voice.Join(*payload.ChannelID, sess.userID); err != nil {
+	if err := g.voice.Join(*payload.ChannelID, sess.userID, perms.Has(domain.PermStream)); err != nil {
 		slog.ErrorContext(ctx, "voice join", "user_id", sess.userID, "error", err)
 		return
 	}
@@ -113,6 +114,64 @@ func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uui
 			continue
 		}
 		sess.enqueue(raw)
+	}
+
+	for participant, streamID := range g.voice.Sharers(channelID) {
+		if participant == sess.userID {
+			continue
+		}
+		frame, err := events.NewDispatch(events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{
+			GuildID:   guildID,
+			ChannelID: channelID,
+			UserID:    participant,
+			StreamID:  streamID,
+			Active:    true,
+		})
+		if err != nil {
+			continue
+		}
+		raw, err := json.Marshal(frame)
+		if err != nil {
+			continue
+		}
+		sess.enqueue(raw)
+	}
+}
+
+func (g *Gateway) handleVoiceResync(sess *session) {
+	if g.voice == nil {
+		return
+	}
+	if err := g.voice.Resync(sess.userID); err != nil {
+		slog.Error("voice resync", "user_id", sess.userID, "error", err)
+	}
+}
+
+func (g *Gateway) ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	channel, err := g.guilds.Channel(ctx, channelID)
+	if err != nil {
+		return
+	}
+
+	frame, err := events.NewDispatch(events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{
+		GuildID:   channel.GuildID,
+		ChannelID: channelID,
+		UserID:    userID,
+		StreamID:  streamID,
+		Active:    active,
+	})
+	if err != nil {
+		return
+	}
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return
+	}
+	if err := g.broker.Publish(ctx, pubsub.TopicGuild(channel.GuildID), raw); err != nil {
+		slog.ErrorContext(ctx, "publish screen state", "error", err)
 	}
 }
 
