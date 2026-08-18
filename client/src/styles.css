@@ -382,3 +382,34 @@ input:focus {
 .voice-controls .leave {
   background: var(--danger);
 }
+
+.voice-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.screen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.screen-tile {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screen-tile video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.screen-tile figcaption {
+  font-size: 12px;
+}

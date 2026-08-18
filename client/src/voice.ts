@@ -1,14 +1,26 @@
 import { gateway } from "./gateway";
 import {
+  EventVoiceScreenUpdate,
   OpVoiceAnswer,
   OpVoiceCandidate,
   OpVoiceOffer,
+  OpVoiceResync,
   OpVoiceState,
   type ICECandidate,
   type SessionDescription,
+  type VoiceScreenUpdate,
 } from "./types/events.gen";
 
 export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
+
+export type RemoteScreen = { userID: string | null; stream: MediaStream };
+
+export type ScreenState = {
+  sharing: boolean;
+  canShare: boolean;
+  local: MediaStream | null;
+  remote: RemoteScreen[];
+};
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
@@ -22,6 +34,12 @@ class VoiceClient {
   private channelID: string | null = null;
   private statusListeners = new Set<(s: VoiceStatus, channelID: string | null) => void>();
 
+  private display: MediaStream | null = null;
+  private screenMid: string | null = null;
+  private videoStreams = new Map<string, MediaStream>();
+  private owners = new Map<string, string>();
+  private screenListeners = new Set<(s: ScreenState) => void>();
+
   onStatusChange(fn: (s: VoiceStatus, channelID: string | null) => void): () => void {
     this.statusListeners.add(fn);
     fn(this.status, this.channelID);
@@ -31,6 +49,30 @@ class VoiceClient {
   private setStatus(status: VoiceStatus) {
     this.status = status;
     for (const fn of this.statusListeners) fn(status, this.channelID);
+  }
+
+  onScreenChange(fn: (s: ScreenState) => void): () => void {
+    this.screenListeners.add(fn);
+    fn(this.screens());
+    return () => this.screenListeners.delete(fn);
+  }
+
+  private screens(): ScreenState {
+    const remote: RemoteScreen[] = [];
+    for (const [id, stream] of this.videoStreams) {
+      remote.push({ userID: this.owners.get(id) ?? null, stream });
+    }
+    return {
+      sharing: this.display !== null,
+      canShare: this.screenMid !== null,
+      local: this.display,
+      remote,
+    };
+  }
+
+  private emitScreens() {
+    const state = this.screens();
+    for (const fn of this.screenListeners) fn(state);
   }
 
   get muted(): boolean {
@@ -94,6 +136,10 @@ class VoiceClient {
         const offer = payload as SessionDescription;
         if (!this.pc) return;
         await this.pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
+        const known = this.screenMid;
+        this.screenMid = offer.screen_mid ?? null;
+        this.applyScreen();
+        if (known !== this.screenMid) this.emitScreens();
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
         gateway.sendRaw({
@@ -110,14 +156,86 @@ class VoiceClient {
           sdpMLineIndex: candidate.sdp_mline_index ?? undefined,
         });
       }),
+      gateway.on(EventVoiceScreenUpdate, (payload) => {
+        const update = payload as VoiceScreenUpdate;
+        if (update.channel_id !== this.channelID) return;
+        if (update.active) this.owners.set(update.stream_id, update.user_id);
+        else this.owners.delete(update.stream_id);
+        this.emitScreens();
+      }),
     );
 
     gateway.sendRaw({ op: OpVoiceState, d: { channel_id: channelID, self_mute: false, self_deaf: false } });
   }
 
+  async startScreenShare(): Promise<boolean> {
+    if (!this.pc || this.screenMid === null) return false;
+    if (this.display) return true;
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 60 },
+        audio: false,
+      });
+    } catch {
+      return false;
+    }
+
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
+
+    track.onended = () => void this.stopScreenShare();
+
+    this.display = stream;
+    this.applyScreen();
+    gateway.sendRaw({ op: OpVoiceResync });
+    this.emitScreens();
+    return true;
+  }
+
+  async stopScreenShare() {
+    if (!this.display) return;
+
+    this.display.getTracks().forEach((t) => t.stop());
+    this.display = null;
+    this.applyScreen();
+    gateway.sendRaw({ op: OpVoiceResync });
+    this.emitScreens();
+  }
+
+  private applyScreen() {
+    if (!this.pc || this.screenMid === null) return;
+
+    const transceiver = this.pc.getTransceivers().find((t) => t.mid === this.screenMid);
+    if (!transceiver) return;
+
+    const track = this.display?.getVideoTracks()[0] ?? null;
+    if (transceiver.sender.track !== track) {
+      void transceiver.sender.replaceTrack(track);
+    }
+    transceiver.direction = track ? "sendonly" : "inactive";
+  }
+
   private attachRemote(event: RTCTrackEvent) {
     const [stream] = event.streams;
     if (!stream) return;
+
+    if (event.track.kind === "video") {
+      this.videoStreams.set(stream.id, stream);
+      this.emitScreens();
+      const forget = () => {
+        this.videoStreams.delete(stream.id);
+        this.owners.delete(stream.id);
+        this.emitScreens();
+      };
+      event.track.onended = forget;
+      stream.onremovetrack = forget;
+      return;
+    }
 
     const existing = this.remotes.get(stream.id);
     if (existing) {
@@ -152,6 +270,12 @@ class VoiceClient {
     }
     this.remotes.clear();
 
+    this.display?.getTracks().forEach((t) => t.stop());
+    this.display = null;
+    this.screenMid = null;
+    this.videoStreams.clear();
+    this.owners.clear();
+
     this.microphone?.getTracks().forEach((t) => t.stop());
     this.microphone = null;
 
@@ -160,6 +284,7 @@ class VoiceClient {
 
     this.channelID = null;
     this.setStatus("idle");
+    this.emitScreens();
   }
 }
 
