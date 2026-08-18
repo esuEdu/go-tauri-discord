@@ -59,7 +59,7 @@
 - **Language:** Go (1.26+)
 - **Architecture:** Modular monolith — one binary, feature packages, interfaces only at the seams that will actually be cut later
 - **Text Networking:** One multiplexed WebSocket per client (`/gateway`), goroutine-based fanout routed per topic
-- **Voice/Video Routing:** Pion WebRTC / WebSocket signalling *(not yet implemented)*
+- **Voice/Video Routing:** Pion WebRTC SFU with WebSocket signalling
 - **Database:** PostgreSQL 17 with `pgx` + [`sqlc`](https://sqlc.dev) (compile-time checked SQL, no ORM)
 - **Migrations:** [`goose`](https://github.com/pressly/goose), pinned as a Go tool dependency
 
@@ -281,8 +281,33 @@ The server is always the offerer, which removes SDP glare entirely: clients
 only ever answer. Joining requires the `Connect` permission on the channel.
 `ICE_SERVERS` configures STUN, and `VOICE_DISABLED=true` turns voice off.
 
-Screen sharing is not implemented. It becomes a second track on the same peer
-connection once someone wants it.
+### Screen sharing
+
+A screen rides as a second track on the same peer connection, so sharing costs
+no extra ICE negotiation and stops when the call does.
+
+Because the server is the only offerer, a client cannot renegotiate on its own.
+Two things make that workable:
+
+- On join the SFU reserves a **recvonly video transceiver** for the member, and
+  puts its `mid` on every offer. The client binds its capture to that exact
+  transceiver rather than guessing at m-line order, which matters once other
+  people's screens are arriving on video sections of their own.
+- Starting or stopping a share sends `VOICE_RESYNC`, and the server answers
+  with a fresh offer that flips the reserved section between `inactive` and
+  `sendonly`.
+
+The transceiver is only reserved for members holding the `Stream` permission.
+Without it there is no video section in the offer at all, so the SDP itself
+refuses the share rather than a check that could be forgotten.
+
+`VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, because
+nothing in a forwarded track says whose it is — the viewer needs it to put a
+name on a tile. Joiners are told about shares already in progress.
+
+Capture uses `getDisplayMedia`, so the window and display picker is the
+browser's. Webviews that do not implement it cannot share; the browser build
+can.
 
 ### Sharing a running instance
 
@@ -408,7 +433,8 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Text messages with keyset-paginated history
 - [ ] Attachments and avatars on S3-compatible storage
 - [x] SFU WebRTC voice channels
-- [ ] High-FPS screen sharing with window selection
+- [x] High-FPS screen sharing with window selection (via `getDisplayMedia`)
+- [ ] Native screen capture for webviews without `getDisplayMedia`
 - [ ] Push-to-Talk with native global shortcuts
 - [ ] Noise suppression & acoustic echo cancellation
 - [ ] End-to-end encrypted direct messaging
