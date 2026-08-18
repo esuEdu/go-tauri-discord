@@ -16,6 +16,7 @@ export const OpVoiceState: Opcode = 7;
 export const OpVoiceOffer: Opcode = 8;
 export const OpVoiceAnswer: Opcode = 9;
 export const OpVoiceCandidate: Opcode = 10;
+export const OpVoiceResync: Opcode = 11;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -26,6 +27,7 @@ export const EventMessageDelete: EventType = "MESSAGE_DELETE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
+export const EventVoiceScreenUpdate: EventType = "VOICE_SCREEN_UPDATE";
 export interface Frame {
   op: Opcode;
   t?: EventType;
@@ -106,6 +108,7 @@ export interface VoiceStateRequest {
 export interface SessionDescription {
   type: string;
   sdp: string;
+  screen_mid?: string;
 }
 export interface ICECandidate {
   candidate: string;
@@ -119,4 +122,11 @@ export interface VoiceStateUpdate {
   user_id: string;
   self_mute: boolean;
   self_deaf: boolean;
+}
+export interface VoiceScreenUpdate {
+  guild_id: string;
+  channel_id: string;
+  user_id: string;
+  stream_id: string;
+  active: boolean;
 }
