@@ -27,9 +27,11 @@ type voiceClient struct {
 
 	keyframes chan struct{}
 
-	mu        sync.Mutex
-	screen    *webrtc.TrackLocalStaticSample
-	screenMid string
+	mu         sync.Mutex
+	screen     *webrtc.TrackLocalStaticSample
+	screenMid  string
+	screenStop chan struct{}
+	writing    bool
 }
 
 func (c *voiceClient) watchKeyframeRequests(sender *webrtc.RTPSender) {
@@ -270,6 +272,7 @@ func (c *voiceClient) attachScreen(mid *string) {
 				return
 			}
 			go c.watchKeyframeRequests(added)
+			c.startWriting(track)
 			return
 		}
 		if sender.Track() != track {
@@ -277,6 +280,7 @@ func (c *voiceClient) attachScreen(mid *string) {
 				c.t.Logf("replace screen track: %v", err)
 			}
 		}
+		c.startWriting(track)
 		return
 	}
 }
@@ -292,23 +296,78 @@ func (c *voiceClient) share() {
 
 	c.mu.Lock()
 	c.screen = track
+	c.screenStop = make(chan struct{})
+	c.writing = false
 	c.mu.Unlock()
 
-	c.sock.write(events.Frame{Op: events.OpVoiceResync})
+	c.announceScreen(true)
+}
 
-	go func() {
-		ticker := time.NewTicker(33 * time.Millisecond)
-		defer ticker.Stop()
-		frame := make([]byte, 128)
-		for {
-			select {
-			case <-c.done:
-				return
-			case <-ticker.C:
-				_ = track.WriteSample(media.Sample{Data: frame, Duration: 33 * time.Millisecond})
-			}
+func (c *voiceClient) startWriting(track *webrtc.TrackLocalStaticSample) {
+	c.mu.Lock()
+	if c.writing || c.screenStop == nil {
+		c.mu.Unlock()
+		return
+	}
+	c.writing = true
+	stop := c.screenStop
+	c.mu.Unlock()
+
+	go c.writeScreen(track, stop)
+}
+
+func (c *voiceClient) writeScreen(track *webrtc.TrackLocalStaticSample, stop chan struct{}) {
+	ticker := time.NewTicker(33 * time.Millisecond)
+	defer ticker.Stop()
+	frame := make([]byte, 128)
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-stop:
+			return
+		case <-ticker.C:
+			_ = track.WriteSample(media.Sample{Data: frame, Duration: 33 * time.Millisecond})
 		}
-	}()
+	}
+}
+
+func (c *voiceClient) announceScreen(active bool) {
+	c.sock.write(events.Frame{
+		Op: events.OpVoiceScreen,
+		D:  mustJSON(c.t, events.VoiceScreenRequest{Active: active}),
+	})
+}
+
+func (c *voiceClient) stopSharingQuietly() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	stop := c.screenStop
+	c.screenStop = nil
+	c.writing = false
+	c.mu.Unlock()
+
+	if stop != nil {
+		close(stop)
+	}
+	c.announceScreen(false)
+}
+
+func (c *voiceClient) resumeSharing() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	track := c.screen
+	c.screenStop = make(chan struct{})
+	c.writing = false
+	c.mu.Unlock()
+
+	if track == nil {
+		c.t.Fatal("resumed a share that was never started")
+	}
+	c.announceScreen(true)
+	c.startWriting(track)
 }
 
 func (c *voiceClient) stopSharing() {
@@ -316,9 +375,15 @@ func (c *voiceClient) stopSharing() {
 
 	c.mu.Lock()
 	mid := c.screenMid
+	stop := c.screenStop
 	c.screen = nil
+	c.screenStop = nil
+	c.writing = false
 	c.mu.Unlock()
 
+	if stop != nil {
+		close(stop)
+	}
 	for _, transceiver := range c.pc.GetTransceivers() {
 		if transceiver.Mid() != mid {
 			continue
@@ -329,7 +394,7 @@ func (c *voiceClient) stopSharing() {
 			}
 		}
 	}
-	c.sock.write(events.Frame{Op: events.OpVoiceResync})
+	c.announceScreen(false)
 }
 
 func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {

@@ -6,8 +6,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/webrtc/v4"
+
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
+
+func readScreen(t *testing.T, remote *webrtc.TrackRemote) {
+	t.Helper()
+
+	buf := make([]byte, 1500)
+	if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := remote.Read(buf); err != nil {
+		t.Fatalf("no RTP arrived on the forwarded screen track: %v", err)
+	}
+}
 
 func TestScreenVideoReachesAnotherMember(t *testing.T) {
 	owner := newHarness(t)
@@ -35,14 +49,8 @@ func TestScreenVideoReachesAnotherMember(t *testing.T) {
 	presenter.share()
 
 	remote := viewer.awaitScreen(30 * time.Second)
+	readScreen(t, remote)
 
-	buf := make([]byte, 1500)
-	if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := remote.Read(buf); err != nil {
-		t.Fatalf("no RTP arrived on the forwarded screen track: %v", err)
-	}
 	if mid := viewer.midOf(remote); mid == viewer.reservedMid() {
 		t.Fatalf("the presenter's screen arrived on mid %q, which is the viewer's own "+
 			"upload slot; a viewer that sets a direction on that slot silences the share", mid)
@@ -124,6 +132,81 @@ func TestScreenShareRetractionIsAnnounced(t *testing.T) {
 	if end.StreamID != begin.StreamID {
 		t.Errorf("retraction named stream %q, want %q", end.StreamID, begin.StreamID)
 	}
+}
+
+func TestScreenRetractionDoesNotNeedTheTrackToDie(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Quiet Stops")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	watcher := owner.dial()
+	watcher.identify(owner.token)
+
+	presenter := newVoiceClient(t, owner)
+	presenter.pump()
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+	presenter.share()
+
+	started := watcher.readEvent(events.EventVoiceScreenUpdate)
+	var begin events.VoiceScreenUpdate
+	decode(t, started.D, &begin)
+	if !begin.Active {
+		t.Fatal("the first screen update was not a start")
+	}
+
+	presenter.stopSharingQuietly()
+
+	retracted := !watcher.quietFor(10*time.Second, func(frame events.Frame) bool {
+		if frame.T != events.EventVoiceScreenUpdate {
+			return false
+		}
+		var end events.VoiceScreenUpdate
+		decode(t, frame.D, &end)
+		return !end.Active && end.StreamID == begin.StreamID
+	})
+	if !retracted {
+		t.Fatal("a share that went quiet without its track dying was never retracted; a browser " +
+			"stops sending on the same SSRC rather than ending the track, so its viewers would " +
+			"keep the last frame on screen for the rest of the call")
+	}
+}
+
+func TestResharingAfterAQuietStopReachesViewersAgain(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Reshares")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	viewer := newVoiceClient(t, friend)
+	presenter.pump()
+	viewer.pump()
+
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	presenter.share()
+	first := viewer.awaitScreen(30 * time.Second)
+	readScreen(t, first)
+
+	presenter.stopSharingQuietly()
+	time.Sleep(time.Second)
+	presenter.resumeSharing()
+
+	again := viewer.awaitScreen(30 * time.Second)
+	readScreen(t, again)
 }
 
 func TestScreenSubscriberTriggersAKeyframeRequest(t *testing.T) {
