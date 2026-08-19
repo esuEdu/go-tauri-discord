@@ -293,9 +293,21 @@ Two things make that workable:
   puts its `mid` on every offer. The client binds its capture to that exact
   transceiver rather than guessing at m-line order, which matters once other
   people's screens are arriving on video sections of their own.
-- Starting or stopping a share sends `VOICE_RESYNC`, and the server answers
-  with a fresh offer that flips the reserved section between `inactive` and
-  `sendonly`.
+- Starting or stopping a share sends `VOICE_SCREEN`, and the server answers
+  with a fresh offer that adds or withdraws the forwarded track.
+
+The sharer has to say it in words because the transport never does. A browser
+that stops sharing calls `replaceTrack(null)` and simply stops sending on the
+same SSRC: the track does not end, so the server's read blocks forever and
+would go on believing the share is live. Viewers would keep the last frame on
+screen for the rest of the call. Nothing in the media path distinguishes a
+stopped share from a screen that has not changed, which is why saying so is a
+message rather than an inference.
+
+Withdrawing does not throw the forwarded track away, because the browser
+resumes on the same SSRC when the member shares again — the SFU would never see
+a new track to forward. The track is taken out of the room and put back, and
+viewers see it appear and disappear.
 
 The transceiver is only reserved for members holding the `Stream` permission.
 Without it there is no video section in the offer at all, so the SDP itself
