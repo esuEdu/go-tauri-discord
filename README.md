@@ -309,6 +309,16 @@ Capture uses `getDisplayMedia`, so the window and display picker is the
 browser's. Webviews that do not implement it cannot share; the browser build
 can.
 
+Capture is budgeted for reading rather than for motion: 1080p at 15fps, a
+`detail` content hint, a 2.5 Mbps ceiling and `maintain-resolution`, so an
+encoder under pressure drops frames instead of sharpness. Text is what people
+share, and a sharp still beats a smooth blur.
+
+Keyframes are only sent when somebody needs one — when a viewer's answer is
+applied, and when a viewer's own decoder asks, which the SFU relays to the
+publisher no more than twice a second. A screen that nobody has just subscribed
+to costs nothing, which is where a static share's bitrate goes into detail.
+
 ### Sharing a running instance
 
 The Go server can serve the built UI, so the whole app lives on one port and
