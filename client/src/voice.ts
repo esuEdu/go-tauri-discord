@@ -4,10 +4,11 @@ import {
   OpVoiceAnswer,
   OpVoiceCandidate,
   OpVoiceOffer,
-  OpVoiceResync,
+  OpVoiceScreen,
   OpVoiceState,
   type ICECandidate,
   type SessionDescription,
+  type VoiceScreenRequest,
   type VoiceScreenUpdate,
 } from "./types/events.gen";
 
@@ -231,8 +232,12 @@ class VoiceClient {
       gateway.on(EventVoiceScreenUpdate, (payload) => {
         const update = payload as VoiceScreenUpdate;
         if (update.channel_id !== this.channelID) return;
-        if (update.active) this.owners.set(update.stream_id, update.user_id);
-        else this.owners.delete(update.stream_id);
+        if (update.active) {
+          this.owners.set(update.stream_id, update.user_id);
+        } else {
+          this.owners.delete(update.stream_id);
+          this.videoStreams.delete(update.stream_id);
+        }
         this.emitScreens();
       }),
     );
@@ -265,7 +270,7 @@ class VoiceClient {
 
     this.display = stream;
     this.applyScreen();
-    gateway.sendRaw({ op: OpVoiceResync });
+    this.announceScreen(true);
     this.emitScreens();
     return true;
   }
@@ -276,8 +281,12 @@ class VoiceClient {
     this.display.getTracks().forEach((t) => t.stop());
     this.display = null;
     this.applyScreen();
-    gateway.sendRaw({ op: OpVoiceResync });
+    this.announceScreen(false);
     this.emitScreens();
+  }
+
+  private announceScreen(active: boolean) {
+    gateway.sendRaw({ op: OpVoiceScreen, d: { active } satisfies VoiceScreenRequest });
   }
 
   private screenTransceiver(): RTCRtpTransceiver | null {
