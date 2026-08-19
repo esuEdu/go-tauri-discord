@@ -196,6 +196,33 @@ func (c *voiceClient) drainKeyframes() {
 	}
 }
 
+func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
+	c.t.Helper()
+
+	deadline := time.After(timeout)
+	for {
+		select {
+		case remote := <-c.remote:
+			if remote.Kind() == webrtc.RTPCodecTypeVideo {
+				return remote
+			}
+		case <-deadline:
+			c.t.Fatal("no screen track arrived through the SFU")
+			return nil
+		}
+	}
+}
+
+func (c *voiceClient) askKeyframe(remote *webrtc.TrackRemote) {
+	c.t.Helper()
+
+	if err := c.pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: uint32(remote.SSRC())},
+	}); err != nil {
+		c.t.Fatalf("send picture loss indication: %v", err)
+	}
+}
+
 func (c *voiceClient) rememberScreenMid(mid *string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

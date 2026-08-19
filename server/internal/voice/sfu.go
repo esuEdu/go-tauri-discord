@@ -57,8 +57,48 @@ const (
 	signalAttempts   = 25
 	signalBackoff    = 2 * time.Second
 	rtpBufferSize    = 1500
-	keyframeInterval = 3 * time.Second
+	keyframeCooldown = 500 * time.Millisecond
 )
+
+type keyframeRequester struct {
+	pc   *webrtc.PeerConnection
+	ssrc webrtc.SSRC
+
+	mu   sync.Mutex
+	last time.Time
+}
+
+func (k *keyframeRequester) ask() {
+	k.mu.Lock()
+	if !k.last.IsZero() && time.Since(k.last) < keyframeCooldown {
+		k.mu.Unlock()
+		return
+	}
+	k.last = time.Now()
+	k.mu.Unlock()
+
+	_ = k.pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: uint32(k.ssrc)},
+	})
+}
+
+func relayKeyframeRequests(sender *webrtc.RTPSender, ask func()) {
+	if sender == nil {
+		return
+	}
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		for _, packet := range packets {
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				ask()
+			}
+		}
+	}
+}
 
 func New(signaler Signaler, iceServers []string) (*SFU, error) {
 	mediaEngine := &webrtc.MediaEngine{}
@@ -171,39 +211,18 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 		return
 	}
 
-	askKeyframe := func() {
-		_ = p.pc.WriteRTCP([]rtcp.Packet{
-			&rtcp.PictureLossIndication{MediaSSRC: uint32(remote.SSRC())},
-		})
-	}
-
 	s.mu.Lock()
 	r.tracks[local.ID()] = local
 	p.owned[local.ID()] = true
 	if screen {
 		r.screens[p.userID] = local.StreamID()
-		r.keyframes[local.ID()] = askKeyframe
+		r.keyframes[local.ID()] = (&keyframeRequester{pc: p.pc, ssrc: remote.SSRC()}).ask
 	}
 	s.signalLocked(r)
 	s.mu.Unlock()
 
 	if screen {
 		s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), true)
-
-		stop := make(chan struct{})
-		defer close(stop)
-		go func() {
-			ticker := time.NewTicker(keyframeInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-stop:
-					return
-				case <-ticker.C:
-					askKeyframe()
-				}
-			}
-		}()
 	}
 
 	defer func() {
@@ -482,13 +501,14 @@ func (s *SFU) syncLocked(r *room) bool {
 			if sent[id] || p.owned[id] {
 				continue
 			}
-			if _, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
+			transceiver, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
 				Direction: webrtc.RTPTransceiverDirectionSendonly,
-			}); err != nil {
+			})
+			if err != nil {
 				return false
 			}
 			if ask := r.keyframes[id]; ask != nil {
-				go ask()
+				go relayKeyframeRequests(transceiver.Sender(), ask)
 			}
 			changed = true
 		}

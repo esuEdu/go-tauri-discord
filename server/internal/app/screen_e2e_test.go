@@ -3,11 +3,8 @@
 package app_test
 
 import (
-	"context"
 	"testing"
 	"time"
-
-	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
@@ -37,34 +34,22 @@ func TestScreenVideoReachesAnotherMember(t *testing.T) {
 
 	presenter.share()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	remote := viewer.awaitScreen(30 * time.Second)
 
-	for {
-		select {
-		case remote := <-viewer.remote:
-			if remote.Kind() != webrtc.RTPCodecTypeVideo {
-				continue
-			}
-			buf := make([]byte, 1500)
-			if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := remote.Read(buf); err != nil {
-				t.Fatalf("no RTP arrived on the forwarded screen track: %v", err)
-			}
-			if mid := viewer.midOf(remote); mid == viewer.reservedMid() {
-				t.Fatalf("the presenter's screen arrived on mid %q, which is the viewer's own "+
-					"upload slot; a viewer that sets a direction on that slot silences the share", mid)
-			}
-			if id := remote.StreamID(); id == "" || id == "-" {
-				t.Fatalf("the forwarded screen carried stream id %q, so a browser reports no "+
-					"stream on the track event and the viewer drops it before rendering", id)
-			}
-			return
-		case <-ctx.Done():
-			t.Fatal("the viewer never received the presenter's screen through the SFU")
-		}
+	buf := make([]byte, 1500)
+	if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := remote.Read(buf); err != nil {
+		t.Fatalf("no RTP arrived on the forwarded screen track: %v", err)
+	}
+	if mid := viewer.midOf(remote); mid == viewer.reservedMid() {
+		t.Fatalf("the presenter's screen arrived on mid %q, which is the viewer's own "+
+			"upload slot; a viewer that sets a direction on that slot silences the share", mid)
+	}
+	if id := remote.StreamID(); id == "" || id == "-" {
+		t.Fatalf("the forwarded screen carried stream id %q, so a browser reports no "+
+			"stream on the track event and the viewer drops it before rendering", id)
 	}
 }
 
@@ -166,16 +151,73 @@ func TestScreenSubscriberTriggersAKeyframeRequest(t *testing.T) {
 	viewer.join(voiceChannel)
 	viewer.streamSilence()
 
-	deadline := time.After(2 * time.Second)
-	seen := 0
-	for seen < 2 {
-		select {
-		case <-presenter.keyframes:
-			seen++
-		case <-deadline:
-			t.Fatalf("the presenter got %d keyframe requests in the two seconds after a viewer "+
-				"subscribed; the idle ticker alone can produce one, so the subscribe path is not "+
-				"asking and the viewer waits for a natural keyframe while showing black", seen)
-		}
+	select {
+	case <-presenter.keyframes:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the presenter was never asked for a keyframe after a viewer subscribed, so the " +
+			"viewer waits for a natural keyframe while showing black")
+	}
+}
+
+func TestIdleShareIsNotAskedForKeyframes(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Idle Keyframes")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	presenter := newVoiceClient(t, owner)
+	presenter.pump()
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+	presenter.share()
+
+	time.Sleep(2 * time.Second)
+	presenter.drainKeyframes()
+
+	select {
+	case <-presenter.keyframes:
+		t.Fatal("a share with nobody watching was asked for a keyframe anyway; blind keyframes " +
+			"spend the bitrate that would otherwise buy detail on a static screen")
+	case <-time.After(5 * time.Second):
+	}
+}
+
+func TestViewerKeyframeRequestReachesThePublisher(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Relayed Keyframes")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	viewer := newVoiceClient(t, friend)
+	presenter.pump()
+	viewer.pump()
+
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	presenter.share()
+	remote := viewer.awaitScreen(30 * time.Second)
+
+	time.Sleep(2 * time.Second)
+	presenter.drainKeyframes()
+
+	viewer.askKeyframe(remote)
+
+	select {
+	case <-presenter.keyframes:
+	case <-time.After(10 * time.Second):
+		t.Fatal("a viewer whose decoder asked for a keyframe was never relayed to the publisher, " +
+			"so a tile knocked out by packet loss stays black for the rest of the call")
 	}
 }
