@@ -388,6 +388,20 @@ input:focus {
   cursor: not-allowed;
 }
 
+.voice-controls .quality {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.voice-controls .quality:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .screen-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

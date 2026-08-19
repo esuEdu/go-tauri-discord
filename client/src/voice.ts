@@ -15,19 +15,83 @@ export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
 
 export type RemoteScreen = { userID: string | null; stream: MediaStream };
 
+export type ScreenQualityID = "light" | "smooth" | "sharp" | "high";
+
+export type ScreenQuality = {
+  id: ScreenQualityID;
+  label: string;
+  width: number;
+  height: number;
+  frameRate: number;
+  maxBitrate: number;
+  contentHint: "motion" | "detail";
+  degradation: RTCDegradationPreference;
+};
+
+export const SCREEN_QUALITIES: ScreenQuality[] = [
+  {
+    id: "light",
+    label: "Light — 720p 15fps",
+    width: 1280,
+    height: 720,
+    frameRate: 15,
+    maxBitrate: 800_000,
+    contentHint: "detail",
+    degradation: "maintain-resolution",
+  },
+  {
+    id: "smooth",
+    label: "Smooth — 720p 30fps",
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+    maxBitrate: 1_500_000,
+    contentHint: "motion",
+    degradation: "maintain-framerate",
+  },
+  {
+    id: "sharp",
+    label: "Sharp — 1080p 15fps",
+    width: 1920,
+    height: 1080,
+    frameRate: 15,
+    maxBitrate: 2_500_000,
+    contentHint: "detail",
+    degradation: "maintain-resolution",
+  },
+  {
+    id: "high",
+    label: "High — 1080p 30fps",
+    width: 1920,
+    height: 1080,
+    frameRate: 30,
+    maxBitrate: 4_000_000,
+    contentHint: "detail",
+    degradation: "maintain-resolution",
+  },
+];
+
 export type ScreenState = {
   sharing: boolean;
   canShare: boolean;
   local: MediaStream | null;
   remote: RemoteScreen[];
+  quality: ScreenQualityID;
 };
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
-const SCREEN_FRAMERATE = 15;
-const SCREEN_WIDTH = 1920;
-const SCREEN_HEIGHT = 1080;
-const SCREEN_MAX_BITRATE = 2_500_000;
+const QUALITY_KEY = "screen_quality";
+const DEFAULT_QUALITY: ScreenQualityID = "smooth";
+
+function storedQuality(): ScreenQuality {
+  const saved = localStorage.getItem(QUALITY_KEY);
+  return SCREEN_QUALITIES.find((q) => q.id === saved) ?? qualityOf(DEFAULT_QUALITY);
+}
+
+function qualityOf(id: ScreenQualityID): ScreenQuality {
+  return SCREEN_QUALITIES.find((q) => q.id === id) ?? SCREEN_QUALITIES[1];
+}
 
 class VoiceClient {
   private pc: RTCPeerConnection | null = null;
@@ -40,6 +104,7 @@ class VoiceClient {
   private statusListeners = new Set<(s: VoiceStatus, channelID: string | null) => void>();
 
   private display: MediaStream | null = null;
+  private quality: ScreenQuality = storedQuality();
   private screenMid: string | null = null;
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
@@ -72,6 +137,7 @@ class VoiceClient {
       canShare: this.screenMid !== null,
       local: this.display,
       remote,
+      quality: this.quality.id,
     };
   }
 
@@ -181,11 +247,7 @@ class VoiceClient {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: SCREEN_FRAMERATE, max: SCREEN_FRAMERATE },
-          width: { max: SCREEN_WIDTH },
-          height: { max: SCREEN_HEIGHT },
-        },
+        video: this.captureConstraints(),
         audio: false,
       });
     } catch {
@@ -198,7 +260,7 @@ class VoiceClient {
       return false;
     }
 
-    track.contentHint = "detail";
+    track.contentHint = this.quality.contentHint;
     track.onended = () => void this.stopScreenShare();
 
     this.display = stream;
@@ -239,6 +301,15 @@ class VoiceClient {
     }
   }
 
+  private captureConstraints(): MediaTrackConstraints {
+    const { width, height, frameRate } = this.quality;
+    return {
+      frameRate: { ideal: frameRate, max: frameRate },
+      width: { max: width },
+      height: { max: height },
+    };
+  }
+
   private tuneScreen() {
     const sender = this.screenTransceiver()?.sender;
     if (!sender?.track) return;
@@ -246,12 +317,25 @@ class VoiceClient {
     const parameters = sender.getParameters();
     if (!parameters.encodings?.length) return;
 
-    parameters.degradationPreference = "maintain-resolution";
+    parameters.degradationPreference = this.quality.degradation;
     for (const encoding of parameters.encodings) {
-      encoding.maxBitrate = SCREEN_MAX_BITRATE;
-      encoding.maxFramerate = SCREEN_FRAMERATE;
+      encoding.maxBitrate = this.quality.maxBitrate;
+      encoding.maxFramerate = this.quality.frameRate;
     }
     void sender.setParameters(parameters).catch(() => undefined);
+  }
+
+  setScreenQuality(id: ScreenQualityID) {
+    this.quality = qualityOf(id);
+    localStorage.setItem(QUALITY_KEY, this.quality.id);
+
+    const track = this.display?.getVideoTracks()[0];
+    if (track) {
+      track.contentHint = this.quality.contentHint;
+      void track.applyConstraints(this.captureConstraints()).catch(() => undefined);
+      this.tuneScreen();
+    }
+    this.emitScreens();
   }
 
   private attachRemote(event: RTCTrackEvent) {

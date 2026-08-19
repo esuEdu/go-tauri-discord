@@ -309,10 +309,24 @@ Capture uses `getDisplayMedia`, so the window and display picker is the
 browser's. Webviews that do not implement it cannot share; the browser build
 can.
 
-Capture is budgeted for reading rather than for motion: 1080p at 15fps, a
-`detail` content hint, a 2.5 Mbps ceiling and `maintain-resolution`, so an
-encoder under pressure drops frames instead of sharpness. Text is what people
-share, and a sharp still beats a smooth blur.
+Capture runs to a budget the sharer picks, because the right trade depends on
+what is on the screen and on the link carrying it. Each preset fixes a
+resolution, a framerate, a bitrate ceiling, a `contentHint` and a
+`degradationPreference` together, since setting any one of them without the
+others just moves where the encoder cheats:
+
+| Preset | Capture | Ceiling | Under pressure |
+| --- | --- | --- | --- |
+| Light | 720p 15fps | 0.8 Mbps | keeps resolution |
+| **Smooth** (default) | 720p 30fps | 1.5 Mbps | keeps framerate |
+| Sharp | 1080p 15fps | 2.5 Mbps | keeps resolution |
+| High | 1080p 30fps | 4 Mbps | keeps resolution |
+
+The default is smooth rather than sharp because a share that stutters reads as
+broken, while one that is slightly soft only reads as a screen share. Changing
+the preset mid-share needs no renegotiation: `applyConstraints` retunes the
+capture and `setParameters` the encoder, both on a track already flowing. The
+choice is remembered in `localStorage`.
 
 Keyframes are only sent when somebody needs one — when a viewer's answer is
 applied, and when a viewer's own decoder asks, which the SFU relays to the

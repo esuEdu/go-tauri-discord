@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { gateway } from "../gateway";
-import { voice, type ScreenState, type VoiceStatus } from "../voice";
+import {
+  voice,
+  SCREEN_QUALITIES,
+  type ScreenQualityID,
+  type ScreenState,
+  type VoiceStatus,
+} from "../voice";
 import type { Channel, VoiceStateUpdate } from "../types/events.gen";
 
-const emptyScreens: ScreenState = { sharing: false, canShare: false, local: null, remote: [] };
+const emptyScreens: ScreenState = {
+  sharing: false,
+  canShare: false,
+  local: null,
+  remote: [],
+  quality: "smooth",
+};
 
 function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -100,6 +112,20 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                 <button disabled={!screens.canShare} onClick={() => void share()}>
                   Share screen
                 </button>
+              )}
+              {screens.canShare && (
+                <select
+                  className="quality"
+                  aria-label="Screen share quality"
+                  value={screens.quality}
+                  onChange={(e) => voice.setScreenQuality(e.target.value as ScreenQualityID)}
+                >
+                  {SCREEN_QUALITIES.map((quality) => (
+                    <option key={quality.id} value={quality.id}>
+                      {quality.label}
+                    </option>
+                  ))}
+                </select>
               )}
               <button className="leave" onClick={() => void voice.leave()}>
                 Disconnect
