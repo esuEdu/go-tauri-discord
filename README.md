@@ -329,10 +329,10 @@ others just moves where the encoder cheats:
 
 | Preset | Capture | Ceiling | Under pressure |
 | --- | --- | --- | --- |
-| Light | 720p 15fps | 0.8 Mbps | keeps resolution |
-| **Smooth** (default) | 720p 30fps | 1.5 Mbps | keeps framerate |
-| Sharp | 1080p 15fps | 2.5 Mbps | keeps resolution |
-| High | 1080p 30fps | 4 Mbps | keeps resolution |
+| Light | 720p 30fps | 0.8 Mbps | keeps resolution |
+| **Smooth** (default) | 720p 60fps | 1.5 Mbps | keeps framerate |
+| Sharp | 1080p 30fps | 2.5 Mbps | keeps resolution |
+| High | 1080p 60fps | 4 Mbps | keeps resolution |
 
 The default is smooth rather than sharp because a share that stutters reads as
 broken, while one that is slightly soft only reads as a screen share. Changing
