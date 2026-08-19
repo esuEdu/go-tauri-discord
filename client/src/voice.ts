@@ -24,6 +24,11 @@ export type ScreenState = {
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+const SCREEN_FRAMERATE = 15;
+const SCREEN_WIDTH = 1920;
+const SCREEN_HEIGHT = 1080;
+const SCREEN_MAX_BITRATE = 2_500_000;
+
 class VoiceClient {
   private pc: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
@@ -142,6 +147,7 @@ class VoiceClient {
         if (known !== this.screenMid) this.emitScreens();
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
+        this.tuneScreen();
         gateway.sendRaw({
           op: OpVoiceAnswer,
           d: { type: "answer", sdp: answer.sdp ?? "" } satisfies SessionDescription,
@@ -175,7 +181,11 @@ class VoiceClient {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 60 },
+        video: {
+          frameRate: { ideal: SCREEN_FRAMERATE, max: SCREEN_FRAMERATE },
+          width: { max: SCREEN_WIDTH },
+          height: { max: SCREEN_HEIGHT },
+        },
         audio: false,
       });
     } catch {
@@ -188,6 +198,7 @@ class VoiceClient {
       return false;
     }
 
+    track.contentHint = "detail";
     track.onended = () => void this.stopScreenShare();
 
     this.display = stream;
@@ -207,10 +218,13 @@ class VoiceClient {
     this.emitScreens();
   }
 
-  private applyScreen() {
-    if (!this.pc || this.screenMid === null) return;
+  private screenTransceiver(): RTCRtpTransceiver | null {
+    if (!this.pc || this.screenMid === null) return null;
+    return this.pc.getTransceivers().find((t) => t.mid === this.screenMid) ?? null;
+  }
 
-    const transceiver = this.pc.getTransceivers().find((t) => t.mid === this.screenMid);
+  private applyScreen() {
+    const transceiver = this.screenTransceiver();
     if (!transceiver) return;
 
     const track = this.display?.getVideoTracks()[0] ?? null;
@@ -223,6 +237,21 @@ class VoiceClient {
     if (transceiver.direction !== "sendonly") {
       transceiver.direction = "sendonly";
     }
+  }
+
+  private tuneScreen() {
+    const sender = this.screenTransceiver()?.sender;
+    if (!sender?.track) return;
+
+    const parameters = sender.getParameters();
+    if (!parameters.encodings?.length) return;
+
+    parameters.degradationPreference = "maintain-resolution";
+    for (const encoding of parameters.encodings) {
+      encoding.maxBitrate = SCREEN_MAX_BITRATE;
+      encoding.maxFramerate = SCREEN_FRAMERATE;
+    }
+    void sender.setParameters(parameters).catch(() => undefined);
   }
 
   private attachRemote(event: RTCTrackEvent) {
