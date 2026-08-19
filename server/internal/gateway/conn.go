@@ -191,6 +191,8 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			g.handleVoiceCandidate(sess, frame.D)
 		case events.OpVoiceResync:
 			g.handleVoiceResync(sess)
+		case events.OpVoiceScreen:
+			g.handleVoiceScreen(sess, frame.D)
 		}
 	}
 }

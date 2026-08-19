@@ -42,11 +42,13 @@ type room struct {
 }
 
 type peer struct {
-	userID uuid.UUID
-	pc     *webrtc.PeerConnection
-	owned  map[string]bool
-	screen *webrtc.RTPTransceiver
-	redo   bool
+	userID      uuid.UUID
+	pc          *webrtc.PeerConnection
+	owned       map[string]bool
+	screen      *webrtc.RTPTransceiver
+	screenTrack *webrtc.TrackLocalStaticRTP
+	screenAsk   func()
+	redo        bool
 
 	mu         sync.Mutex
 	pending    []webrtc.ICECandidateInit
@@ -217,6 +219,8 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 	if screen {
 		r.screens[p.userID] = local.StreamID()
 		r.keyframes[local.ID()] = (&keyframeRequester{pc: p.pc, ssrc: remote.SSRC()}).ask
+		p.screenTrack = local
+		p.screenAsk = r.keyframes[local.ID()]
 	}
 	s.signalLocked(r)
 	s.mu.Unlock()
@@ -227,16 +231,23 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 
 	defer func() {
 		s.mu.Lock()
+		_, wasLive := r.tracks[local.ID()]
 		delete(r.tracks, local.ID())
 		delete(p.owned, local.ID())
 		delete(r.keyframes, local.ID())
-		if screen && r.screens[p.userID] == local.StreamID() {
-			delete(r.screens, p.userID)
+		if screen {
+			if r.screens[p.userID] == local.StreamID() {
+				delete(r.screens, p.userID)
+			}
+			if p.screenTrack == local {
+				p.screenTrack = nil
+				p.screenAsk = nil
+			}
 		}
 		s.signalLocked(r)
 		s.mu.Unlock()
 
-		if screen {
+		if screen && wasLive {
 			s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), false)
 		}
 	}()
@@ -373,6 +384,53 @@ func (s *SFU) Resync(userID uuid.UUID) error {
 	return nil
 }
 
+func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
+	s.mu.Lock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+
+	track := p.screenTrack
+	changed := false
+	if track != nil {
+		_, live := r.tracks[track.ID()]
+		switch {
+		case active && !live:
+			r.tracks[track.ID()] = track
+			r.keyframes[track.ID()] = p.screenAsk
+			r.screens[userID] = track.StreamID()
+			changed = true
+		case !active && live:
+			delete(r.tracks, track.ID())
+			delete(r.keyframes, track.ID())
+			delete(r.screens, userID)
+			changed = true
+		}
+	}
+
+	p.redo = true
+	s.signalLocked(r)
+	s.mu.Unlock()
+
+	if changed {
+		s.signaler.ScreenChanged(channelID, userID, track.StreamID(), active)
+	}
+	return nil
+}
+
 func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -481,6 +539,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			continue
 		}
 
+		changed := false
 		sent := map[string]bool{}
 		for _, sender := range p.pc.GetSenders() {
 			track := sender.Track()
@@ -491,12 +550,12 @@ func (s *SFU) syncLocked(r *room) bool {
 				if err := p.pc.RemoveTrack(sender); err != nil {
 					return false
 				}
+				changed = true
 				continue
 			}
 			sent[track.ID()] = true
 		}
 
-		changed := false
 		for id, track := range r.tracks {
 			if sent[id] || p.owned[id] {
 				continue

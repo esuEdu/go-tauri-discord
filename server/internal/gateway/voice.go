@@ -147,6 +147,19 @@ func (g *Gateway) handleVoiceResync(sess *session) {
 	}
 }
 
+func (g *Gateway) handleVoiceScreen(sess *session, raw json.RawMessage) {
+	if g.voice == nil {
+		return
+	}
+	var payload events.VoiceScreenRequest
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return
+	}
+	if err := g.voice.SetScreenActive(sess.userID, payload.Active); err != nil {
+		slog.Error("voice screen", "user_id", sess.userID, "error", err)
+	}
+}
+
 func (g *Gateway) ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

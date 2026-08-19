@@ -39,6 +39,7 @@ type VoiceEngine interface {
 	Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error
 	AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error
 	Resync(userID uuid.UUID) error
+	SetScreenActive(userID uuid.UUID, active bool) error
 	ChannelOf(userID uuid.UUID) (uuid.UUID, bool)
 	Participants(channelID uuid.UUID) []uuid.UUID
 	Sharers(channelID uuid.UUID) map[uuid.UUID]string
