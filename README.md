@@ -258,6 +258,15 @@ in `domain.ResolvePermissions` in this order: guild owner and Administrator
 short-circuit to everything; role permissions are unioned; role overwrites
 apply denies before allows; the member-specific overwrite wins last.
 
+Every send, edit, delete, typing indicator and history read is authorised
+first, so the resolution is **one query**: `ResolveChannelAccess` fetches the
+channel, the guild's owner, the membership and both the role and overwrite sets
+together, aggregating the two variable-length sets as JSON so they survive in a
+single row. Caching them instead would have been faster still and wrong more
+often — a revoked role has to be denied on the next request, not at the end of
+a TTL, and invalidating a cache across nodes is the harder half of a problem
+this design does not have.
+
 ### Desktop client
 
 ```bash

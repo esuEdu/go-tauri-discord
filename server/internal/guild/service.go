@@ -2,6 +2,7 @@ package guild
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"unicode/utf8"
 
@@ -24,8 +25,9 @@ type Repository interface {
 	GetGuildMember(ctx context.Context, arg dbgen.GetGuildMemberParams) (dbgen.GuildMember, error)
 	ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]dbgen.ListGuildMembersRow, error)
 	ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID, error)
-	ListEffectiveRoles(ctx context.Context, arg dbgen.ListEffectiveRolesParams) ([]dbgen.Role, error)
-	ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
+	ListGuildOverwrites(ctx context.Context, guildID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
+	ResolveChannelAccess(ctx context.Context, arg dbgen.ResolveChannelAccessParams) (dbgen.ResolveChannelAccessRow, error)
+	ResolveGuildAccess(ctx context.Context, arg dbgen.ResolveGuildAccessParams) (dbgen.ResolveGuildAccessRow, error)
 }
 
 type TxRunner interface {
@@ -114,30 +116,45 @@ func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Gu
 }
 
 func (s *Service) ListChannels(ctx context.Context, userID, guildID uuid.UUID) ([]dbgen.Channel, error) {
-	if _, err := s.requireMember(ctx, guildID, userID); err != nil {
+	access, err := s.repo.ResolveGuildAccess(ctx, dbgen.ResolveGuildAccessParams{
+		GuildID: guildID, UserID: userID,
+	})
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, domain.NotFound("guild")
+		}
+		return nil, domain.Internal(err)
+	}
+	if !access.IsMember {
+		return nil, domain.NotFound("guild")
+	}
+	roles, err := decodeRoles(access.Roles)
+	if err != nil {
 		return nil, err
 	}
+
 	channels, err := s.repo.ListChannels(ctx, guildID)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
-
-	guild, err := s.repo.GetGuild(ctx, guildID)
+	rows, err := s.repo.ListGuildOverwrites(ctx, guildID)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
-	roles, err := s.effectiveRoles(ctx, guildID, userID)
-	if err != nil {
-		return nil, err
+
+	byChannel := make(map[uuid.UUID][]domain.Overwrite, len(rows))
+	for _, o := range rows {
+		byChannel[o.ChannelID] = append(byChannel[o.ChannelID], domain.Overwrite{
+			TargetID:   o.TargetID,
+			TargetType: o.TargetType,
+			Allow:      domain.Permission(o.Allow),
+			Deny:       domain.Permission(o.Deny),
+		})
 	}
 
 	visible := make([]dbgen.Channel, 0, len(channels))
 	for _, ch := range channels {
-		overwrites, err := s.overwrites(ctx, ch.ID)
-		if err != nil {
-			return nil, err
-		}
-		if domain.ResolvePermissions(guild.OwnerID, userID, roles, overwrites).Has(domain.PermViewChannel) {
+		if domain.ResolvePermissions(access.OwnerID, userID, roles, byChannel[ch.ID]).Has(domain.PermViewChannel) {
 			visible = append(visible, ch)
 		}
 	}
@@ -205,50 +222,87 @@ func (s *Service) Members(ctx context.Context, userID, guildID uuid.UUID) ([]dbg
 }
 
 func (s *Service) PermissionsIn(ctx context.Context, userID, channelID uuid.UUID) (domain.Permission, dbgen.Channel, error) {
-	channel, err := s.repo.GetChannel(ctx, channelID)
+	access, err := s.repo.ResolveChannelAccess(ctx, dbgen.ResolveChannelAccessParams{
+		ChannelID: channelID, UserID: userID,
+	})
 	if err != nil {
 		if db.IsNoRows(err) {
 			return 0, dbgen.Channel{}, domain.NotFound("channel")
 		}
 		return 0, dbgen.Channel{}, domain.Internal(err)
 	}
-
-	guild, err := s.repo.GetGuild(ctx, channel.GuildID)
-	if err != nil {
-		return 0, dbgen.Channel{}, domain.Internal(err)
-	}
-	if _, err := s.requireMember(ctx, channel.GuildID, userID); err != nil {
-		return 0, dbgen.Channel{}, err
+	if !access.IsMember {
+		return 0, dbgen.Channel{}, domain.NotFound("guild")
 	}
 
-	roles, err := s.effectiveRoles(ctx, channel.GuildID, userID)
+	roles, err := decodeRoles(access.Roles)
 	if err != nil {
 		return 0, dbgen.Channel{}, err
 	}
-	overwrites, err := s.overwrites(ctx, channelID)
+	overwrites, err := decodeOverwrites(access.Overwrites)
 	if err != nil {
 		return 0, dbgen.Channel{}, err
 	}
 
-	return domain.ResolvePermissions(guild.OwnerID, userID, roles, overwrites), channel, nil
+	return domain.ResolvePermissions(access.OwnerID, userID, roles, overwrites), access.Channel, nil
 }
 
 func (s *Service) PermissionsInGuild(ctx context.Context, userID, guildID uuid.UUID) (domain.Permission, error) {
-	guild, err := s.repo.GetGuild(ctx, guildID)
+	access, err := s.repo.ResolveGuildAccess(ctx, dbgen.ResolveGuildAccessParams{
+		GuildID: guildID, UserID: userID,
+	})
 	if err != nil {
 		if db.IsNoRows(err) {
 			return 0, domain.NotFound("guild")
 		}
 		return 0, domain.Internal(err)
 	}
-	if _, err := s.requireMember(ctx, guildID, userID); err != nil {
-		return 0, err
+	if !access.IsMember {
+		return 0, domain.NotFound("guild")
 	}
-	roles, err := s.effectiveRoles(ctx, guildID, userID)
+
+	roles, err := decodeRoles(access.Roles)
 	if err != nil {
 		return 0, err
 	}
-	return domain.ResolvePermissions(guild.OwnerID, userID, roles, nil), nil
+	return domain.ResolvePermissions(access.OwnerID, userID, roles, nil), nil
+}
+
+func decodeRoles(raw string) ([]domain.RoleGrant, error) {
+	var rows []struct {
+		ID          uuid.UUID `json:"id"`
+		Permissions int64     `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil, domain.Internal(err)
+	}
+	grants := make([]domain.RoleGrant, len(rows))
+	for i, r := range rows {
+		grants[i] = domain.RoleGrant{ID: r.ID, Permissions: domain.Permission(r.Permissions)}
+	}
+	return grants, nil
+}
+
+func decodeOverwrites(raw string) ([]domain.Overwrite, error) {
+	var rows []struct {
+		TargetID   uuid.UUID `json:"target_id"`
+		TargetType string    `json:"target_type"`
+		Allow      int64     `json:"allow"`
+		Deny       int64     `json:"deny"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil, domain.Internal(err)
+	}
+	out := make([]domain.Overwrite, len(rows))
+	for i, o := range rows {
+		out[i] = domain.Overwrite{
+			TargetID:   o.TargetID,
+			TargetType: o.TargetType,
+			Allow:      domain.Permission(o.Allow),
+			Deny:       domain.Permission(o.Deny),
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) requireMember(ctx context.Context, guildID, userID uuid.UUID) (dbgen.GuildMember, error) {
@@ -262,37 +316,6 @@ func (s *Service) requireMember(ctx context.Context, guildID, userID uuid.UUID) 
 		return dbgen.GuildMember{}, domain.Internal(err)
 	}
 	return member, nil
-}
-
-func (s *Service) effectiveRoles(ctx context.Context, guildID, userID uuid.UUID) ([]domain.RoleGrant, error) {
-	rows, err := s.repo.ListEffectiveRoles(ctx, dbgen.ListEffectiveRolesParams{
-		GuildID: guildID, UserID: userID,
-	})
-	if err != nil {
-		return nil, domain.Internal(err)
-	}
-	grants := make([]domain.RoleGrant, len(rows))
-	for i, r := range rows {
-		grants[i] = domain.RoleGrant{ID: r.ID, Permissions: domain.Permission(r.Permissions)}
-	}
-	return grants, nil
-}
-
-func (s *Service) overwrites(ctx context.Context, channelID uuid.UUID) ([]domain.Overwrite, error) {
-	rows, err := s.repo.ListChannelOverwrites(ctx, channelID)
-	if err != nil {
-		return nil, domain.Internal(err)
-	}
-	out := make([]domain.Overwrite, len(rows))
-	for i, o := range rows {
-		out[i] = domain.Overwrite{
-			TargetID:   o.TargetID,
-			TargetType: o.TargetType,
-			Allow:      domain.Permission(o.Allow),
-			Deny:       domain.Permission(o.Deny),
-		}
-	}
-	return out, nil
 }
 
 func PublicGuild(g dbgen.Guild) events.Guild {
