@@ -65,8 +65,6 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	mux.HandleFunc("GET /gateway", gw.Handler())
 	mux.HandleFunc("GET /healthz", healthz(pool, gw))
 
-	// Serving the built UI from the same origin as the API means one tunnel or
-	// one deployment exposes the whole app, and no CORS is involved.
 	if cfg.UIDir != "" {
 		mux.HandleFunc("/", spaHandler(cfg.UIDir))
 	}

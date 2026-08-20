@@ -11,8 +11,6 @@ import (
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-// Sessions lets a deletion take effect on connections that are already open,
-// without auth having to know what a gateway is.
 type Sessions interface {
 	DisconnectUser(userID uuid.UUID)
 }
@@ -115,8 +113,6 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, PublicUser(user))
 }
 
-// DeleteMe asks for the password again because an access token is enough to
-// read an account but should not be enough to destroy one.
 func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFrom(r.Context())
 

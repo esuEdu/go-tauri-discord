@@ -15,10 +15,6 @@ ORDER BY created_at DESC;
 UPDATE invites SET revoked_at = now()
 WHERE code = @code AND revoked_at IS NULL;
 
--- Consuming a use and validating it are the same statement on purpose. The
--- UPDATE takes a row lock, and a concurrent consumer re-evaluates the WHERE
--- against the committed row, so a max_uses = 1 invite admits exactly one
--- redeemer no matter how many arrive at once.
 -- name: ConsumeInvite :one
 UPDATE invites
 SET uses = uses + 1

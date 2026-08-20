@@ -141,10 +141,6 @@ func (g *Gateway) unregister(s *session) {
 	}
 }
 
-// DisconnectUser drops every live session an account holds. A deleted account
-// still has an unexpired access token in its client's memory, and a gateway
-// connection authenticated once at identify and never again -- so without this
-// the account would keep receiving messages until its socket happened to close.
 func (g *Gateway) DisconnectUser(userID uuid.UUID) {
 	g.mu.RLock()
 	sessions := make([]*session, 0, len(g.byUser[userID]))

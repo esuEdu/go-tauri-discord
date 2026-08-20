@@ -15,8 +15,6 @@ func spaHandler(dir string) http.HandlerFunc {
 	index := filepath.Join(dir, "index.html")
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		// An unmatched API path must not fall through to the SPA, or a typo
-		// in a route returns index.html with a 200 instead of a 404.
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/gateway" {
 			httpx.Error(w, r, domain.NotFound("endpoint"))
 			return
@@ -26,7 +24,6 @@ func spaHandler(dir string) http.HandlerFunc {
 			files.ServeHTTP(w, r)
 			return
 		}
-		// Client-side routes have no file behind them, so they get the shell.
 		http.ServeFile(w, r, index)
 	}
 }
