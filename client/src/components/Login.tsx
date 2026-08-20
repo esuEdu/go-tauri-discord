@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { ServerPicker } from "./ServerPicker";
 import type { User } from "../types/events.gen";
 
 interface Props {
@@ -99,6 +100,8 @@ export function Login({ onAuthenticated, inviteCode }: Props) {
         >
           {mode === "login" ? "Need an account?" : "Already have one?"}
         </button>
+
+        <ServerPicker />
       </form>
     </div>
   );

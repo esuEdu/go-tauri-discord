@@ -1,4 +1,4 @@
-import { apiBase } from "./server";
+import { apiBase, serverURL } from "./server";
 import type { Channel, Guild, Message, User } from "./types/events.gen";
 
 export interface TokenPair {
@@ -71,11 +71,16 @@ export class Api {
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
 
-    const res = await fetch(apiBase() + path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(apiBase() + path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw new ApiError(0, `could not reach the server at ${serverURL()}`);
+    }
 
     if (res.status === 401 && retryOn401 && this.refreshToken) {
       if (await this.tryRefresh()) {
