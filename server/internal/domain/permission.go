@@ -38,6 +38,7 @@ func (p Permission) Has(want Permission) bool {
 type RoleGrant struct {
 	ID          uuid.UUID
 	Permissions Permission
+	Position    int32
 }
 
 type Overwrite struct {
