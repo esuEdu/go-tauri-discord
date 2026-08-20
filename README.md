@@ -304,22 +304,33 @@ Nothing is cached, so **HTTP is immediate**: the request after a revocation is
 already refused, which `TestRevokingViewChannelTakesEffectOnTheNextRequest`
 pins down.
 
-The gateway is a different story, and worse than "eventually":
+The gateway is immediate too, on the same connection, without a reconnect.
 
-- **`READY` is correct.** A session that identifies after losing `ViewChannel`
-  is not told the channel exists.
-- **Fanout is not.** Sessions subscribe to a topic *per guild*, and
-  `MESSAGE_CREATE`, `MESSAGE_UPDATE`, `MESSAGE_DELETE` and `TYPING_START` are
-  published there with no per-channel filter. So a member who cannot view a
-  channel still receives its messages on the socket — not until they reconnect,
-  but indefinitely, including on a connection opened long after the channel was
-  made private.
+Sessions still subscribe to a topic *per guild* — one subscription per member
+rather than one per member per channel — so fanout filters instead. Each
+session carries the set of channels it may **not** see, seeded at IDENTIFY from
+the same resolution that builds `READY`. `MESSAGE_CREATE`, `MESSAGE_UPDATE`,
+`MESSAGE_DELETE`, `TYPING_START`, `VOICE_STATE_UPDATE` and
+`VOICE_SCREEN_UPDATE` carry a channel id and are dropped per session; events
+that belong to the guild rather than a channel — `PRESENCE_UPDATE`,
+`GUILD_CREATE`, `CHANNEL_CREATE` — are never filtered.
 
-A `ViewChannel` deny is therefore an HTTP-level restriction, not
-confidentiality. `TestGatewayFanoutIgnoresChannelVisibility` asserts the leak
-so that closing it fails the suite instead of passing silently. Closing it
-means filtering fanout per session per channel, which needs a permission set
-the gateway does not currently keep.
+The set is *hidden* channels, not visible ones, because the default has to be
+open: a channel created a moment ago is in nobody's set and must still be
+delivered. A `VOICE_STATE_UPDATE` with a null channel means the member left
+voice and is delivered for the same reason — there is no channel to hide.
+
+Every endpoint that can change what a member sees — the seven role and
+overwrite mutations, plus channel creation — publishes on an internal
+`guildctl:` topic that only the gateway subscribes to. Sessions in that guild
+re-resolve their hidden set on the spot, deduplicated per user so one change
+costs one query per member rather than one per connection. A member who loses
+`ViewChannel` stops receiving that channel on their existing socket; a member
+who gains it starts.
+
+The remaining window is the microseconds between the database write and the
+refresh, which no cached design avoids. Anything already delivered stays
+delivered — this retracts nothing, it only stops the next event.
 
 Voice is fixed at join for a different reason: the SFU reserves a member's
 video transceiver when they connect, so revoking `Stream` mid-call does not
@@ -563,7 +574,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Auth: registration, login, JWT access + rotating refresh tokens
 - [x] Guilds, channels, members, roles, permission resolution
 - [x] Role and overwrite management, with a hierarchy that cannot be climbed
-- [ ] Gateway fanout filtered per channel, so a private channel really is
+- [x] Gateway fanout filtered per channel, so a private channel really is
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
 - [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
