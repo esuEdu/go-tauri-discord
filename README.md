@@ -184,6 +184,32 @@ token** is opaque random bytes stored only as a SHA-256 hash and rotated on
 every use; presenting a revoked token is treated as theft. The desktop client
 keeps the refresh token in the OS keychain, never in `localStorage`.
 
+### Account deletion
+
+`DELETE /api/v1/users/@me` asks for the password again. An access token is
+enough to read an account and should not be enough to destroy one, and the
+request is irreversible.
+
+**Messages survive; authorship does not.** They are reassigned to a reserved
+`Deleted User` row seeded by migration, which is why `messages.author_id` can
+keep its `ON DELETE RESTRICT`: nothing is deleted, so nothing has to be
+weakened. Erasing the content instead would take half of every conversation
+away from the people still in the channel, who did not ask to be forgotten.
+That row is real but unusable — its password hash is empty, so no password can
+ever match it, and it holds the name `Deleted User` against the unique index so
+nobody can register it and impersonate the absence.
+
+A guild owned by the account is handed to its highest-ranked remaining member,
+earliest joined breaking the tie. If nobody is left it is deleted rather than
+left ownerless and unreachable. Everything else that points at the account —
+refresh tokens, memberships, roles, read states, invites — is `ON DELETE
+CASCADE`, so the row disappearing is the erasure. All of it is one transaction:
+a half-deleted account is worse than either outcome.
+
+Live gateway sessions are dropped explicitly. A session authenticates once at
+identify and is never checked again, so without that the deleted account would
+keep receiving messages until its socket happened to close.
+
 ### The gateway
 
 One WebSocket per client at `GET /gateway`, multiplexing every event that
