@@ -28,6 +28,16 @@ type Repository interface {
 	ListGuildOverwrites(ctx context.Context, guildID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
 	ResolveChannelAccess(ctx context.Context, arg dbgen.ResolveChannelAccessParams) (dbgen.ResolveChannelAccessRow, error)
 	ResolveGuildAccess(ctx context.Context, arg dbgen.ResolveGuildAccessParams) (dbgen.ResolveGuildAccessRow, error)
+	CreateRole(ctx context.Context, arg dbgen.CreateRoleParams) (dbgen.Role, error)
+	ListRoles(ctx context.Context, guildID uuid.UUID) ([]dbgen.Role, error)
+	GetRole(ctx context.Context, id uuid.UUID) (dbgen.Role, error)
+	UpdateRole(ctx context.Context, arg dbgen.UpdateRoleParams) (dbgen.Role, error)
+	AssignRole(ctx context.Context, arg dbgen.AssignRoleParams) error
+	UnassignRole(ctx context.Context, arg dbgen.UnassignRoleParams) error
+	ListMemberRoles(ctx context.Context, arg dbgen.ListMemberRolesParams) ([]dbgen.Role, error)
+	UpsertChannelOverwrite(ctx context.Context, arg dbgen.UpsertChannelOverwriteParams) error
+	DeleteChannelOverwrite(ctx context.Context, arg dbgen.DeleteChannelOverwriteParams) error
+	ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
 }
 
 type TxRunner interface {
@@ -221,64 +231,85 @@ func (s *Service) Members(ctx context.Context, userID, guildID uuid.UUID) ([]dbg
 	return members, nil
 }
 
-func (s *Service) PermissionsIn(ctx context.Context, userID, channelID uuid.UUID) (domain.Permission, dbgen.Channel, error) {
+func (s *Service) actorInChannel(ctx context.Context, userID, channelID uuid.UUID) (domain.Actor, dbgen.Channel, error) {
 	access, err := s.repo.ResolveChannelAccess(ctx, dbgen.ResolveChannelAccessParams{
 		ChannelID: channelID, UserID: userID,
 	})
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, dbgen.Channel{}, domain.NotFound("channel")
+			return domain.Actor{}, dbgen.Channel{}, domain.NotFound("channel")
 		}
-		return 0, dbgen.Channel{}, domain.Internal(err)
+		return domain.Actor{}, dbgen.Channel{}, domain.Internal(err)
 	}
 	if !access.IsMember {
-		return 0, dbgen.Channel{}, domain.NotFound("guild")
+		return domain.Actor{}, dbgen.Channel{}, domain.NotFound("guild")
 	}
 
 	roles, err := decodeRoles(access.Roles)
 	if err != nil {
-		return 0, dbgen.Channel{}, err
+		return domain.Actor{}, dbgen.Channel{}, err
 	}
 	overwrites, err := decodeOverwrites(access.Overwrites)
 	if err != nil {
-		return 0, dbgen.Channel{}, err
+		return domain.Actor{}, dbgen.Channel{}, err
 	}
 
-	return domain.ResolvePermissions(access.OwnerID, userID, roles, overwrites), access.Channel, nil
+	return domain.NewActor(access.OwnerID, userID, roles, overwrites), access.Channel, nil
 }
 
-func (s *Service) PermissionsInGuild(ctx context.Context, userID, guildID uuid.UUID) (domain.Permission, error) {
+func (s *Service) actorInGuild(ctx context.Context, userID, guildID uuid.UUID) (domain.Actor, error) {
 	access, err := s.repo.ResolveGuildAccess(ctx, dbgen.ResolveGuildAccessParams{
 		GuildID: guildID, UserID: userID,
 	})
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, domain.NotFound("guild")
+			return domain.Actor{}, domain.NotFound("guild")
 		}
-		return 0, domain.Internal(err)
+		return domain.Actor{}, domain.Internal(err)
 	}
 	if !access.IsMember {
-		return 0, domain.NotFound("guild")
+		return domain.Actor{}, domain.NotFound("guild")
 	}
 
 	roles, err := decodeRoles(access.Roles)
 	if err != nil {
+		return domain.Actor{}, err
+	}
+	return domain.NewActor(access.OwnerID, userID, roles, nil), nil
+}
+
+func (s *Service) PermissionsIn(ctx context.Context, userID, channelID uuid.UUID) (domain.Permission, dbgen.Channel, error) {
+	actor, channel, err := s.actorInChannel(ctx, userID, channelID)
+	if err != nil {
+		return 0, dbgen.Channel{}, err
+	}
+	return actor.Permissions, channel, nil
+}
+
+func (s *Service) PermissionsInGuild(ctx context.Context, userID, guildID uuid.UUID) (domain.Permission, error) {
+	actor, err := s.actorInGuild(ctx, userID, guildID)
+	if err != nil {
 		return 0, err
 	}
-	return domain.ResolvePermissions(access.OwnerID, userID, roles, nil), nil
+	return actor.Permissions, nil
 }
 
 func decodeRoles(raw string) ([]domain.RoleGrant, error) {
 	var rows []struct {
 		ID          uuid.UUID `json:"id"`
 		Permissions int64     `json:"permissions"`
+		Position    int32     `json:"position"`
 	}
 	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
 		return nil, domain.Internal(err)
 	}
 	grants := make([]domain.RoleGrant, len(rows))
 	for i, r := range rows {
-		grants[i] = domain.RoleGrant{ID: r.ID, Permissions: domain.Permission(r.Permissions)}
+		grants[i] = domain.RoleGrant{
+			ID:          r.ID,
+			Permissions: domain.Permission(r.Permissions),
+			Position:    r.Position,
+		}
 	}
 	return grants, nil
 }
@@ -320,6 +351,20 @@ func (s *Service) requireMember(ctx context.Context, guildID, userID uuid.UUID) 
 
 func PublicGuild(g dbgen.Guild) events.Guild {
 	return events.Guild{ID: g.ID, Name: g.Name, OwnerID: g.OwnerID, IconKey: g.IconKey}
+}
+
+func PublicRole(r dbgen.Role) events.Role {
+	return events.Role{
+		ID: r.ID, GuildID: r.GuildID, Name: r.Name,
+		Permissions: r.Permissions, Position: r.Position, IsDefault: r.IsDefault,
+	}
+}
+
+func PublicOverwrite(o dbgen.ChannelOverwrite) events.Overwrite {
+	return events.Overwrite{
+		ChannelID: o.ChannelID, TargetID: o.TargetID,
+		TargetType: o.TargetType, Allow: o.Allow, Deny: o.Deny,
+	}
 }
 
 func PublicChannel(c dbgen.Channel) events.Channel {

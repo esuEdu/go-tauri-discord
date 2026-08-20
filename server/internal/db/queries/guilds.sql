@@ -59,18 +59,52 @@ RETURNING *;
 -- name: ListRoles :many
 SELECT * FROM roles WHERE guild_id = @guild_id ORDER BY position DESC, id;
 
+-- name: GetRole :one
+SELECT * FROM roles WHERE id = @id;
+
+-- name: UpdateRole :one
+UPDATE roles SET
+    name        = COALESCE(sqlc.narg('name'), name),
+    permissions = COALESCE(sqlc.narg('permissions'), permissions),
+    position    = COALESCE(sqlc.narg('position'), position)
+WHERE id = @id
+RETURNING *;
+
+-- name: DeleteRole :exec
+DELETE FROM roles WHERE id = @id;
+
 -- name: AssignRole :exec
 INSERT INTO member_roles (guild_id, user_id, role_id)
 VALUES (@guild_id, @user_id, @role_id)
 ON CONFLICT DO NOTHING;
 
+-- name: UnassignRole :exec
+DELETE FROM member_roles
+WHERE guild_id = @guild_id AND user_id = @user_id AND role_id = @role_id;
 
+-- name: ListMemberRoles :many
+SELECT r.* FROM roles r
+JOIN member_roles mr ON mr.role_id = r.id
+WHERE mr.guild_id = @guild_id AND mr.user_id = @user_id
+ORDER BY r.position DESC, r.id;
 
 -- name: UpsertChannelOverwrite :exec
 INSERT INTO channel_overwrites (channel_id, target_id, target_type, allow, deny)
 VALUES (@channel_id, @target_id, @target_type, @allow, @deny)
 ON CONFLICT (channel_id, target_id)
 DO UPDATE SET allow = EXCLUDED.allow, deny = EXCLUDED.deny;
+
+-- name: DeleteChannelOverwrite :exec
+DELETE FROM channel_overwrites
+WHERE channel_id = @channel_id AND target_id = @target_id;
+
+-- name: ListChannelOverwrites :many
+SELECT * FROM channel_overwrites WHERE channel_id = @channel_id ORDER BY target_id;
+
+-- name: DeleteOverwritesForTarget :exec
+DELETE FROM channel_overwrites o
+USING channels c
+WHERE c.id = o.channel_id AND c.guild_id = @guild_id AND o.target_id = @target_id;
 
 -- name: ListGuildsOwnedBy :many
 SELECT * FROM guilds WHERE owner_id = @owner_id;
@@ -94,7 +128,9 @@ SELECT
     g.owner_id,
     (m.user_id IS NOT NULL)::bool AS is_member,
     COALESCE((
-        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+        SELECT json_agg(json_build_object('id', r.id,
+                                          'permissions', r.permissions,
+                                          'position', r.position)
                         ORDER BY r.position DESC, r.id)
         FROM roles r
         WHERE r.guild_id = c.guild_id
@@ -124,7 +160,9 @@ SELECT
     g.owner_id,
     (m.user_id IS NOT NULL)::bool AS is_member,
     COALESCE((
-        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+        SELECT json_agg(json_build_object('id', r.id,
+                                          'permissions', r.permissions,
+                                          'position', r.position)
                         ORDER BY r.position DESC, r.id)
         FROM roles r
         WHERE r.guild_id = g.id
