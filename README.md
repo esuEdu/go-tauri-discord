@@ -21,7 +21,7 @@
 - 🎙️ **Voice Channels:** Crystal-clear multi-party audio powered by WebRTC and low-overhead audio encoding.
 - 🖥️ **Screen Sharing:** Ultra-low latency system and window capture via WebRTC media streams with customizable framerates and resolutions.
 - ⚡ **Minimal Memory Footprint:** Idles at ~30MB–50MB RAM compared to 300MB+ in typical web-wrapped desktop apps.
-- ⌨️ **Global Push-to-Talk:** Native system keybindings and global hotkeys accessible even while playing full-screen games.
+- ⌨️ **Global Push-to-Talk:** _Planned._ Native system keybindings and global hotkeys accessible even while playing full-screen games.
 - 🛡️ **Self-Hostable Architecture:** Run your own server node using a single lightweight Go executable.
 
 ---
@@ -497,12 +497,16 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Guilds, channels, members, roles, permission resolution
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
+- [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
 - [ ] Attachments and avatars on S3-compatible storage
 - [x] SFU WebRTC voice channels
-- [x] High-FPS screen sharing with window selection (via `getDisplayMedia`)
-- [ ] Native screen capture for webviews without `getDisplayMedia`
+- [x] Screen sharing with window selection and picked quality presets
+- [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
+- [ ] Screen capture proven on the Windows and Linux desktop builds
+- [ ] Per-viewer quality adaptation, so one weak link is only their problem
 - [ ] Push-to-Talk with native global shortcuts
-- [ ] Noise suppression & acoustic echo cancellation
+- [x] Echo cancellation and noise suppression as the browser provides them
+- [ ] Dedicated noise suppression that beats what the browser does
 - [ ] End-to-end encrypted direct messaging
 
 ---
