@@ -511,6 +511,34 @@ The suite is behind the `e2e` build tag, so `make test` stays fast and
 database-free. Usernames are randomised per run, so repeated runs against the
 same database do not collide.
 
+### Testing the desktop client
+
+CI builds the macOS app on every change (`make desktop-check`) and then starts
+it (`make desktop-smoke`). The second step is the one that matters, and the
+reason is specific.
+
+`enable_media_capture` in `client/src-tauri/src/lib.rs` turns on camera,
+microphone and screen capture by setting two **private** `WKPreferences` keys,
+`mediaDevicesEnabled` and `screenCaptureEnabled`. They are not API. They are
+looked up by name at runtime through `setValue:forKey:`, so if a future WebKit
+renames one, the Rust still compiles and the bundle still builds — a compile
+check sees nothing wrong at all.
+
+What actually happens is an `NSUnknownKeyException`, which crosses the FFI
+boundary as a non-unwinding panic and aborts the process. The app dies on
+launch. So the guard is to start the binary, wait, and fail if it is gone:
+
+```bash
+make desktop-check && make desktop-smoke
+```
+
+Both directions are verified: with the real keys the app stays up, and with a
+deliberately renamed key the build still passes and the smoke step is what
+fails. A build alone would have caught nothing.
+
+This covers macOS only, which is where the private keys are used —
+`enable_media_capture` is behind `#[cfg(target_os = "macos")]`.
+
 ### Rate limiting
 
 Token buckets, keyed by account for authenticated routes and by client IP for
@@ -582,6 +610,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] SFU WebRTC voice channels
 - [x] Screen sharing with window selection and picked quality presets
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
+- [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
 - [ ] Screen capture proven on the Windows and Linux desktop builds
 - [ ] Per-viewer quality adaptation, so one weak link is only their problem
 - [ ] Push-to-Talk with native global shortcuts

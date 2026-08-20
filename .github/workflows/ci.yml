@@ -75,3 +75,32 @@ jobs:
 
       - name: Typecheck and build
         run: make client-check
+
+  desktop:
+    name: desktop
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Compile and bundle the desktop app
+        run: make desktop-check
+
+      - name: Launch it, which is what catches a WebKit preference rename
+        run: make desktop-smoke
