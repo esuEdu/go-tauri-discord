@@ -68,9 +68,6 @@ func TestDeletingAnAccountEndsEveryWayBackIn(t *testing.T) {
 	gone.mustDo(http.MethodPost, "/api/v1/auth/login", http.StatusUnauthorized,
 		map[string]string{"email": h.email, "password": "supersecret1"}, nil)
 
-	// A read on a killed connection fails at once. A surviving session would
-	// also read nothing -- it simply has nothing to send -- so only the
-	// promptness tells the two apart.
 	started := time.Now()
 	frame := sock.readAny()
 	if frame != nil {
@@ -103,7 +100,6 @@ func TestDeletingAnOwnerHandsTheGuildOn(t *testing.T) {
 		t.Fatal("ownership went to the tombstone rather than to a member")
 	}
 
-	// The heir has to be able to act as owner, not merely be named one.
 	heir.mustDo(http.MethodPost, "/api/v1/channels/"+text.String()+"/messages",
 		http.StatusCreated, map[string]string{"content": "mine now"}, nil)
 	heir.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/invites",
@@ -134,7 +130,6 @@ func TestDeletingAnAccountNeedsThePassword(t *testing.T) {
 	h.deleteAccount("not-the-password", http.StatusUnauthorized)
 	h.deleteAccount("", http.StatusUnauthorized)
 
-	// Still usable: a refused deletion must not half-erase the account.
 	h.mustDo(http.MethodGet, "/api/v1/users/@me", http.StatusOK, nil, nil)
 }
 

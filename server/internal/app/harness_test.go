@@ -159,8 +159,6 @@ func (h *harness) mustDo(method, path string, wantStatus int, body, out any) {
 	}
 }
 
-// registerUser creates a fresh account. The name is randomised so repeated
-// runs against the same database do not collide on the unique indexes.
 func (h *harness) registerUser() (userID uuid.UUID, refreshToken string) {
 	h.t.Helper()
 
@@ -220,8 +218,6 @@ func (s *socket) read() events.Frame {
 	return frame
 }
 
-// readUntil skips frames that do not match, so an unrelated dispatch such as
-// PRESENCE_UPDATE cannot desynchronise an assertion.
 func (s *socket) readAny() *events.Frame {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

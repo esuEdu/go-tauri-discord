@@ -45,10 +45,6 @@ func NewService(repo Repository, tx TxRunner, tokens *TokenIssuer, refreshTTL ti
 	return &Service{repo: repo, tx: tx, tokens: tokens, refreshTTL: refreshTTL, logins: logins}
 }
 
-// DeletedUserID owns the messages of everyone who has deleted their account.
-// It is a real row so that messages.author_id can keep its foreign key and its
-// ON DELETE RESTRICT: reassigning authorship is what makes the delete possible,
-// rather than weakening the constraint that protects everyone else's history.
 var DeletedUserID = uuid.UUID{}
 
 type TokenPair struct {
@@ -207,8 +203,6 @@ func (s *Service) DeleteAccount(ctx context.Context, userID uuid.UUID, password 
 				if !db.IsNoRows(err) {
 					return err
 				}
-				// Nobody is left to inherit it, so the guild goes with the
-				// account rather than becoming unreachable and ownerless.
 				if err := q.DeleteGuild(ctx, g.ID); err != nil {
 					return err
 				}
@@ -227,9 +221,6 @@ func (s *Service) DeleteAccount(ctx context.Context, userID uuid.UUID, password 
 			return err
 		}
 
-		// Everything else that points at the account -- refresh tokens,
-		// memberships and their roles, read states, invites they created --
-		// is ON DELETE CASCADE, so the row going is the erasure.
 		return q.DeleteUser(ctx, userID)
 	})
 	if err != nil {

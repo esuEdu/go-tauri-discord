@@ -22,10 +22,6 @@ WHERE code = $1
 RETURNING code, guild_id, channel_id, inviter_id, max_uses, uses, expires_at, revoked_at, created_at
 `
 
-// Consuming a use and validating it are the same statement on purpose. The
-// UPDATE takes a row lock, and a concurrent consumer re-evaluates the WHERE
-// against the committed row, so a max_uses = 1 invite admits exactly one
-// redeemer no matter how many arrive at once.
 func (q *Queries) ConsumeInvite(ctx context.Context, code string) (Invite, error) {
 	row := q.db.QueryRow(ctx, consumeInvite, code)
 	var i Invite
