@@ -143,6 +143,7 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		User:      auth.PublicUser(sess.user),
 		Guilds:    make([]events.Guild, 0, len(guilds)),
 		Channels:  make([]events.Channel, 0),
+		Members:   make([]events.Member, 0),
 	}
 	for _, gl := range guilds {
 		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
@@ -154,7 +155,25 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 			ready.Channels = append(ready.Channels, guild.PublicChannel(ch))
 		}
 		sess.hideInGuild(gl.ID, hidden)
+
+		members, err := g.guilds.Members(ctx, sess.userID, gl.ID)
+		if err != nil {
+			return err
+		}
+		for _, m := range members {
+			ready.Members = append(ready.Members, events.Member{
+				GuildID: gl.ID,
+				User: events.User{
+					ID: m.UserID, Username: m.Username, AvatarKey: m.AvatarKey,
+				},
+			})
+		}
 	}
+
+	if err := g.attachReadState(ctx, sess, &ready); err != nil {
+		return err
+	}
+	ready.Online = g.onlineAmong(sess.userID, ready.Members)
 
 	frame, err := events.NewDispatch(events.EventReady, ready)
 	if err != nil {
@@ -166,6 +185,50 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 	}
 	sess.enqueue(raw)
 	return nil
+}
+
+func (g *Gateway) attachReadState(ctx context.Context, sess *session, ready *events.Ready) error {
+	ready.ReadStates = make([]events.ReadState, 0)
+	if g.reads == nil {
+		return nil
+	}
+
+	states, err := g.reads.ReadStates(ctx, sess.userID)
+	if err != nil {
+		return err
+	}
+	ready.ReadStates = states
+
+	channelIDs := make([]uuid.UUID, 0, len(ready.Channels))
+	for _, ch := range ready.Channels {
+		channelIDs = append(channelIDs, ch.ID)
+	}
+	latest, err := g.reads.LatestMessages(ctx, channelIDs)
+	if err != nil {
+		return err
+	}
+	for i, ch := range ready.Channels {
+		if id, ok := latest[ch.ID]; ok {
+			ready.Channels[i].LastMessageID = &id
+		}
+	}
+	return nil
+}
+
+func (g *Gateway) onlineAmong(self uuid.UUID, members []events.Member) []uuid.UUID {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	online := []uuid.UUID{self}
+	seen := map[uuid.UUID]bool{self: true}
+	for _, m := range members {
+		if seen[m.User.ID] || len(g.byUser[m.User.ID]) == 0 {
+			continue
+		}
+		seen[m.User.ID] = true
+		online = append(online, m.User.ID)
+	}
+	return online
 }
 
 func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *session) {

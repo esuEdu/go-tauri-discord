@@ -9,6 +9,7 @@ import {
   type VoiceStatus,
   type Volumes,
 } from "../voice";
+import { emptySession, session, type SessionState } from "../session";
 import type { Channel, VoiceStateUpdate } from "../types/events.gen";
 
 const emptyScreens: ScreenState = {
@@ -63,7 +64,10 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const [muted, setMuted] = useState(false);
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
   const [volumes, setVolumes] = useState<Volumes>({});
+  const [people, setPeople] = useState<SessionState>(emptySession);
   const [pickerRefused, setPickerRefused] = useState(false);
+
+  useEffect(() => session.onChange(setPeople), []);
 
   useEffect(() => voice.onStatusChange((s, id) => {
     setStatus(s);
@@ -107,7 +111,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             {screens.remote.map((screen) => (
               <ScreenTile
                 key={screen.stream.id}
-                label={screen.userID ? `${screen.userID.slice(0, 8)}'s screen` : "A shared screen"}
+                label={screen.userID ? `${session.nameOf(screen.userID)}'s screen` : "A shared screen"}
                 stream={screen.stream}
               />
             ))}
@@ -118,8 +122,10 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
           {members.length === 0 && <div className="muted">Nobody is here yet.</div>}
           {members.map((id) => (
             <div key={id} className="voice-member">
-              <span className="dot ready" />
-              <span className="voice-name">{id === selfID ? "You" : id.slice(0, 8)}</span>
+              <span className={people.online[id] ? "dot ready" : "dot closed"} />
+              <span className="voice-name">
+                {id === selfID ? "You" : people.names[id] ?? id.slice(0, 8)}
+              </span>
               {here && id !== selfID && (
                 <VolumeSlider userID={id} level={volumes[id] ?? 1} />
               )}

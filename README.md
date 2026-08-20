@@ -244,6 +244,35 @@ sessions listen. A client that falls more than 256 frames behind is
 disconnected on purpose — it reconnects and resumes, which is far cheaper
 than letting one slow client stall delivery for everyone else.
 
+#### What READY carries
+
+Enough to paint a sidebar without a request per channel: the account, its
+guilds, the channels it can see, the members of those guilds, the member's own
+read states, and the set of members currently online.
+
+Two of those are less obvious than they look:
+
+- Each channel carries a **`last_message_id`**. Without it unread is not merely
+  expensive to compute, it is impossible — nothing else exposes the newest
+  message in a channel. A channel is unread when that id differs from the
+  member's `last_read_message_id`, which is a plain comparison because message
+  ids are UUIDv7 and therefore sort by time. One `DISTINCT ON` query covers
+  every channel in the payload and rides the index that history paging already
+  needs.
+- Presence is an **`online` list rather than a status per member**, because
+  connected or not is the only thing the server knows. It becomes a list of
+  statuses on the day there is a third one.
+
+The snapshot follows the same presence rule as `PRESENCE_UPDATE`, including the
+part that reads oddly: a member stays online while their session is still
+resumable. Counting live sockets instead would contradict the events for the
+whole 90-second window and flicker every member through offline on each
+reconnect.
+
+Members are sent because presence against a user id nobody can name is not
+something a UI can draw. What is *not* sent is message history — that stays a
+paged fetch, since it is the one part that grows without bound.
+
 ### Scaling past one node
 
 `internal/platform/pubsub.Broker` is the seam. Today it is an in-process
@@ -632,6 +661,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Gateway fanout filtered per channel, so a private channel really is
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
+- [x] READY carries read states, members and presence, so a client paints once
 - [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
 - [ ] Attachments and avatars on S3-compatible storage
 - [x] SFU WebRTC voice channels

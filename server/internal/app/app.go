@@ -39,7 +39,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	guildSvc := guild.NewService(pool, pool, pool, publisher)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
-	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)
+	gw := gateway.New(authSvc, guildSvc, messageSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)
 
 	application := &App{Gateway: gw, limits: lim}
 

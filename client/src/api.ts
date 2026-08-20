@@ -201,6 +201,12 @@ export class Api {
   deleteMessage(messageID: string): Promise<void> {
     return this.request<void>("DELETE", `/api/v1/messages/${messageID}`);
   }
+
+  markRead(channelID: string, messageID: string): Promise<void> {
+    return this.request<void>("PUT", `/api/v1/channels/${channelID}/read`, {
+      message_id: messageID,
+    });
+  }
 }
 
 export const api = new Api();

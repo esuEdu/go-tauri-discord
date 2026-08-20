@@ -25,12 +25,18 @@ type Gateway struct {
 	origins     []string
 	maxSessions int
 	voice       VoiceEngine
+	reads       ReadStates
 
 	mu       sync.RWMutex
 	sessions map[string]*session
 	byUser   map[uuid.UUID]map[*session]struct{}
 	topics   map[string]*topicRoute
 	closed   bool
+}
+
+type ReadStates interface {
+	ReadStates(ctx context.Context, userID uuid.UUID) ([]events.ReadState, error)
+	LatestMessages(ctx context.Context, channelIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 }
 
 type VoiceEngine interface {
@@ -50,13 +56,14 @@ type topicRoute struct {
 	members map[*session]struct{}
 }
 
-func New(authSvc *auth.Service, guilds *guild.Service, broker pubsub.Broker, heartbeat time.Duration, origins []string, maxSessions int) *Gateway {
+func New(authSvc *auth.Service, guilds *guild.Service, reads ReadStates, broker pubsub.Broker, heartbeat time.Duration, origins []string, maxSessions int) *Gateway {
 	if maxSessions < 1 {
 		maxSessions = 1
 	}
 	return &Gateway{
 		auth:        authSvc,
 		guilds:      guilds,
+		reads:       reads,
 		broker:      broker,
 		heartbeat:   heartbeat,
 		origins:     origins,

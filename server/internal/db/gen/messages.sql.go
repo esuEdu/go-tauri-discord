@@ -133,6 +133,39 @@ func (q *Queries) ListAttachmentsForMessages(ctx context.Context, messageIds []u
 	return items, nil
 }
 
+const listLatestMessageIDs = `-- name: ListLatestMessageIDs :many
+SELECT DISTINCT ON (channel_id) channel_id, id
+FROM messages
+WHERE channel_id = ANY ($1::uuid[])
+  AND deleted_at IS NULL
+ORDER BY channel_id, id DESC
+`
+
+type ListLatestMessageIDsRow struct {
+	ChannelID uuid.UUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) ListLatestMessageIDs(ctx context.Context, channelIds []uuid.UUID) ([]ListLatestMessageIDsRow, error) {
+	rows, err := q.db.Query(ctx, listLatestMessageIDs, channelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLatestMessageIDsRow{}
+	for rows.Next() {
+		var i ListLatestMessageIDsRow
+		if err := rows.Scan(&i.ChannelID, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMessages = `-- name: ListMessages :many
 SELECT
     m.id, m.channel_id, m.author_id, m.content, m.created_at, m.edited_at, m.deleted_at,

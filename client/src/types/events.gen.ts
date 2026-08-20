@@ -65,6 +65,15 @@ export interface Channel {
   name: string;
   topic?: string;
   position: number /* int32 */;
+  last_message_id?: string;
+}
+export interface Member {
+  guild_id: string;
+  user: User;
+}
+export interface ReadState {
+  channel_id: string;
+  last_read_message_id?: string;
 }
 export interface Role {
   id: string;
@@ -102,6 +111,9 @@ export interface Ready {
   user: User;
   guilds: Guild[];
   channels: Channel[];
+  members: Member[];
+  read_states: ReadState[];
+  online: string[];
 }
 export interface MessageDelete {
   id: string;
