@@ -10,6 +10,18 @@ function override(): string | null {
   return localStorage.getItem(OVERRIDE_KEY);
 }
 
+export function serverIsPinned(): boolean {
+  return override() !== null;
+}
+
+export function serverIsEditable(): boolean {
+  return !import.meta.env.VITE_API_URL;
+}
+
+export function defaultServerURL(): string {
+  return servedOverHTTP() ? location.origin : DESKTOP_FALLBACK;
+}
+
 export function apiBase(): string {
   const configured = override();
   if (configured) return configured.replace(/\/+$/, "");

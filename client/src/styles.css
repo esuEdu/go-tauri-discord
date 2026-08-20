@@ -181,6 +181,47 @@ button.link.danger {
   margin: 0 0 6px;
 }
 
+.server-line {
+  margin: 4px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.server-line code {
+  font-size: 11px;
+}
+
+.server-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.server-edit label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.server-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.server-actions button:last-child {
+  margin-left: auto;
+}
+
+.server-badge {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app {
   display: grid;
   grid-template-columns: 68px 220px 1fr;

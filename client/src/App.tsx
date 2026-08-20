@@ -6,6 +6,7 @@ import { DeleteAccount } from "./components/DeleteAccount";
 import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
 import { Voice } from "./components/Voice";
+import { serverIsPinned, serverURL } from "./server";
 import type { Channel, Guild, User } from "./types/events.gen";
 
 function pendingInviteCode(): string | null {
@@ -176,6 +177,11 @@ export default function App() {
               ? "reconnecting…"
               : connection}
         </span>
+        {serverIsPinned() && (
+          <span className="muted server-badge" title="This app is pointed at a non-default server">
+            {serverURL()}
+          </span>
+        )}
         <span className="spacer" />
         <span className="muted">{user.username}</span>
         <button className="link" onClick={() => void logout()}>
