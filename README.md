@@ -329,10 +329,14 @@ others just moves where the encoder cheats:
 
 | Preset | Capture | Ceiling | Under pressure |
 | --- | --- | --- | --- |
-| Light | 720p 30fps | 0.8 Mbps | keeps resolution |
-| **Smooth** (default) | 720p 60fps | 1.5 Mbps | keeps framerate |
-| Sharp | 1080p 30fps | 2.5 Mbps | keeps resolution |
-| High | 1080p 60fps | 4 Mbps | keeps resolution |
+| Light | 720p 30fps | 1.2 Mbps | keeps resolution |
+| **Smooth** (default) | 720p 60fps | 3 Mbps | keeps framerate |
+| Sharp | 1080p 30fps | 4 Mbps | keeps resolution |
+| High | 1080p 60fps | 8 Mbps | keeps resolution |
+
+A ceiling is not a floor. WebRTC's own bandwidth estimate decides what actually
+goes out, so raising these lets a good link spend more without obliging a bad
+one to try; Light stays low on purpose, for the link that cannot.
 
 The default is smooth rather than sharp because a share that stutters reads as
 broken, while one that is slightly soft only reads as a screen share. Changing
