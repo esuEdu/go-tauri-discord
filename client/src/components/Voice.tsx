@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { gateway } from "../gateway";
 import {
   voice,
+  MAX_VOLUME,
   SCREEN_QUALITIES,
   type ScreenQualityID,
   type ScreenState,
   type VoiceStatus,
+  type Volumes,
 } from "../voice";
 import type { Channel, VoiceStateUpdate } from "../types/events.gen";
 
@@ -35,12 +37,32 @@ function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
   );
 }
 
+function VolumeSlider({ userID, level }: { userID: string; level: number }) {
+  const percent = Math.round(level * 100);
+
+  return (
+    <label className="volume">
+      <input
+        type="range"
+        min={0}
+        max={MAX_VOLUME * 100}
+        step={5}
+        value={percent}
+        aria-label={`Volume for ${userID.slice(0, 8)}`}
+        onChange={(e) => voice.setVolume(userID, Number(e.target.value) / 100)}
+      />
+      <span className="muted">{percent}%</span>
+    </label>
+  );
+}
+
 export function Voice({ channel, selfID }: { channel: Channel; selfID: string }) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [activeChannel, setActiveChannel] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
+  const [volumes, setVolumes] = useState<Volumes>({});
   const [pickerRefused, setPickerRefused] = useState(false);
 
   useEffect(() => voice.onStatusChange((s, id) => {
@@ -49,6 +71,8 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   }), []);
 
   useEffect(() => voice.onScreenChange(setScreens), []);
+
+  useEffect(() => voice.onVolumeChange(setVolumes), []);
 
   useEffect(() => {
     setMembers([]);
@@ -95,7 +119,10 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
           {members.map((id) => (
             <div key={id} className="voice-member">
               <span className="dot ready" />
-              {id === selfID ? "You" : id.slice(0, 8)}
+              <span className="voice-name">{id === selfID ? "You" : id.slice(0, 8)}</span>
+              {here && id !== selfID && (
+                <VolumeSlider userID={id} level={volumes[id] ?? 1} />
+              )}
             </div>
           ))}
         </div>

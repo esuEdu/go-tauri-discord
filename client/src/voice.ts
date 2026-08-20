@@ -16,6 +16,29 @@ export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
 
 export type RemoteScreen = { userID: string | null; stream: MediaStream };
 
+export type TrackSource = "mic" | "screen";
+
+export type TrackOwner = { source: TrackSource; userID: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function parseTrackName(name: string): TrackOwner | null {
+  const first = name.indexOf("-");
+  const last = name.lastIndexOf("-");
+  if (first < 0 || last <= first) return null;
+
+  const source = name.slice(0, first);
+  const userID = name.slice(first + 1, last);
+  if (source !== "mic" && source !== "screen") return null;
+  if (!UUID.test(userID)) return null;
+
+  return { source, userID };
+}
+
+export const MAX_VOLUME = 2;
+
+export type Volumes = Record<string, number>;
+
 export type ScreenQualityID = "light" | "smooth" | "sharp" | "high";
 
 export type ScreenQuality = {
@@ -84,6 +107,7 @@ const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 const QUALITY_KEY = "screen_quality";
 const DEFAULT_QUALITY: ScreenQualityID = "smooth";
+const VOLUME_KEY = "voice_volumes";
 
 function storedQuality(): ScreenQuality {
   const saved = localStorage.getItem(QUALITY_KEY);
@@ -94,10 +118,32 @@ function qualityOf(id: ScreenQualityID): ScreenQuality {
   return SCREEN_QUALITIES.find((q) => q.id === id) ?? SCREEN_QUALITIES[1];
 }
 
+function storedVolumes(): Map<string, number> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? "{}") as Volumes;
+    const usable = Object.entries(saved).filter(
+      ([, level]) => typeof level === "number" && level >= 0 && level <= MAX_VOLUME,
+    );
+    return new Map(usable);
+  } catch {
+    return new Map();
+  }
+}
+
+type Output = {
+  audio: HTMLAudioElement;
+  node: MediaStreamAudioSourceNode | null;
+  gain: GainNode | null;
+  userID: string | null;
+};
+
 class VoiceClient {
   private pc: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
-  private remotes = new Map<string, HTMLAudioElement>();
+  private mixer: AudioContext | null = null;
+  private outputs = new Map<string, Output>();
+  private volumes = storedVolumes();
+  private volumeListeners = new Set<(v: Volumes) => void>();
   private unsubscribe: Array<() => void> = [];
 
   private status: VoiceStatus = "idle";
@@ -131,7 +177,7 @@ class VoiceClient {
   private screens(): ScreenState {
     const remote: RemoteScreen[] = [];
     for (const [id, stream] of this.videoStreams) {
-      remote.push({ userID: this.owners.get(id) ?? null, stream });
+      remote.push({ userID: this.owners.get(id) ?? parseTrackName(id)?.userID ?? null, stream });
     }
     return {
       sharing: this.display !== null,
@@ -145,6 +191,47 @@ class VoiceClient {
   private emitScreens() {
     const state = this.screens();
     for (const fn of this.screenListeners) fn(state);
+  }
+
+  onVolumeChange(fn: (v: Volumes) => void): () => void {
+    this.volumeListeners.add(fn);
+    fn(Object.fromEntries(this.volumes));
+    return () => this.volumeListeners.delete(fn);
+  }
+
+  volumeOf(userID: string): number {
+    return this.volumes.get(userID) ?? 1;
+  }
+
+  setVolume(userID: string, level: number) {
+    this.volumes.set(userID, Math.min(MAX_VOLUME, Math.max(0, level)));
+    localStorage.setItem(VOLUME_KEY, JSON.stringify(Object.fromEntries(this.volumes)));
+
+    for (const output of this.outputs.values()) {
+      if (output.userID === userID) this.applyVolume(output);
+    }
+    for (const fn of this.volumeListeners) fn(Object.fromEntries(this.volumes));
+  }
+
+  private applyVolume(output: Output) {
+    const level = output.userID ? this.volumeOf(output.userID) : 1;
+    if (output.gain) {
+      output.gain.gain.value = level;
+      return;
+    }
+    output.audio.volume = Math.min(1, level);
+  }
+
+  private context(): AudioContext | null {
+    if (!this.mixer) {
+      try {
+        this.mixer = new AudioContext();
+      } catch {
+        return null;
+      }
+    }
+    void this.mixer.resume().catch(() => undefined);
+    return this.mixer;
   }
 
   get muted(): boolean {
@@ -366,24 +453,52 @@ class VoiceClient {
     const [stream] = event.streams;
     if (!stream) return;
 
-    const existing = this.remotes.get(stream.id);
+    const existing = this.outputs.get(stream.id);
     if (existing) {
-      existing.srcObject = stream;
+      existing.audio.srcObject = stream;
       return;
     }
 
     const audio = new Audio();
     audio.srcObject = stream;
     audio.autoplay = true;
-    void audio.play().catch(() => undefined);
-    this.remotes.set(stream.id, audio);
 
-    stream.onremovetrack = () => {
-      const element = this.remotes.get(stream.id);
-      if (!element) return;
-      element.srcObject = null;
-      this.remotes.delete(stream.id);
+    const output: Output = {
+      audio,
+      node: null,
+      gain: null,
+      userID: parseTrackName(stream.id)?.userID ?? null,
     };
+
+    const context = this.context();
+    if (context) {
+      try {
+        const node = context.createMediaStreamSource(stream);
+        const gain = context.createGain();
+        node.connect(gain).connect(context.destination);
+        output.node = node;
+        output.gain = gain;
+        audio.muted = true;
+      } catch {
+        output.node = null;
+      }
+    }
+
+    this.applyVolume(output);
+    void audio.play().catch(() => undefined);
+    this.outputs.set(stream.id, output);
+
+    stream.onremovetrack = () => this.dropOutput(stream.id);
+  }
+
+  private dropOutput(id: string) {
+    const output = this.outputs.get(id);
+    if (!output) return;
+
+    output.node?.disconnect();
+    output.gain?.disconnect();
+    output.audio.srcObject = null;
+    this.outputs.delete(id);
   }
 
   async leave() {
@@ -394,10 +509,9 @@ class VoiceClient {
     for (const off of this.unsubscribe) off();
     this.unsubscribe = [];
 
-    for (const audio of this.remotes.values()) {
-      audio.srcObject = null;
-    }
-    this.remotes.clear();
+    for (const id of [...this.outputs.keys()]) this.dropOutput(id);
+    void this.mixer?.close().catch(() => undefined);
+    this.mixer = null;
 
     this.display?.getTracks().forEach((t) => t.stop());
     this.display = null;
