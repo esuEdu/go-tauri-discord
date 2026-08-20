@@ -155,8 +155,6 @@ button.link.danger {
   text-align: center;
 }
 
-/* ---- login ---- */
-
 .login {
   display: grid;
   place-items: center;
@@ -182,8 +180,6 @@ button.link.danger {
 .login-card p {
   margin: 0 0 6px;
 }
-
-/* ---- layout ---- */
 
 .app {
   display: grid;
@@ -273,8 +269,6 @@ button.link.danger {
   display: flex;
 }
 
-/* ---- chat ---- */
-
 .chat {
   display: flex;
   flex-direction: column;
@@ -347,8 +341,6 @@ button.link.danger {
   border-top: 1px solid var(--border);
   flex: 0 0 auto;
 }
-
-/* ---- join / status ---- */
 
 .inline-form {
   display: flex;

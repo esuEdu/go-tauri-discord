@@ -77,8 +77,6 @@ export class Api {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
 
-    // Access tokens are short lived, so one transparent refresh-and-retry
-    // keeps the UI from bouncing the user to the login screen every 15 minutes.
     if (res.status === 401 && retryOn401 && this.refreshToken) {
       if (await this.tryRefresh()) {
         return this.request<T>(method, path, body, false);
@@ -90,9 +88,7 @@ export class Api {
       try {
         const parsed = await res.json();
         if (parsed?.error) message = parsed.error;
-      } catch {
-        // Body was not JSON; the status text is the best we have.
-      }
+      } catch {}
       throw new ApiError(res.status, message);
     }
 
@@ -150,8 +146,6 @@ export class Api {
     return this.request<User>("GET", "/api/v1/users/@me");
   }
 
-  // The password is asked for again by the server; a stored access token is
-  // not enough to destroy the account it opens.
   async deleteAccount(password: string): Promise<void> {
     await this.request<void>("DELETE", "/api/v1/users/@me", { password });
     this.clear();
@@ -184,7 +178,6 @@ export class Api {
     return this.request<Channel[]>("GET", `/api/v1/guilds/${guildID}/channels`);
   }
 
-  // Returns newest first. Pass the oldest id you hold as `before` to page back.
   messages(channelID: string, before?: string, limit = 50): Promise<Message[]> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (before) params.set("before", before);

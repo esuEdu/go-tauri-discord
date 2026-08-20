@@ -13,22 +13,10 @@ import {
 } from "./types/events.gen";
 import { gatewayURL } from "./server";
 
-// Same origin as the page unless explicitly overridden, so a tunnelled or
-// deployed host needs no rebuild and no configuration.
-
-
 export type ConnectionState = "connecting" | "ready" | "reconnecting" | "closed";
 
 type Listener = (payload: unknown) => void;
 
-/**
- * Gateway holds the single websocket and hides reconnection from the UI.
- *
- * The protocol requires the client to track its sequence number: on RESUME the
- * server replays from its buffer, and a frame published between the drain and
- * the replay can legitimately arrive twice. Anything not newer than `seq` is
- * therefore discarded rather than dispatched.
- */
 export class Gateway {
   private socket: WebSocket | null = null;
   private token: string | null = null;
@@ -118,16 +106,11 @@ export class Gateway {
       case OpHello: {
         const hello = frame.d as Hello;
         this.startHeartbeat(hello.heartbeat_interval_ms);
-        // A live session id means this is a reconnect, so ask for the frames
-        // missed while we were away instead of refetching everything.
         if (this.sessionID) {
           this.send({
             op: OpResume,
             d: { token: this.token, session_id: this.sessionID, seq: this.seq },
           });
-          // A successful RESUME produces no acknowledgement — the server just
-          // replays — so treat the connection as live here. An INVALID_SESSION
-          // is the only signal that it failed, and that path corrects the state.
           this.attempt = 0;
           this.setState("ready");
         } else {
@@ -140,8 +123,6 @@ export class Gateway {
         return;
 
       case OpInvalidSession:
-        // The session aged out of the server's replay window, so the optimistic
-        // "ready" set when RESUME was sent was wrong. Start over.
         this.sessionID = null;
         this.seq = 0;
         this.setState("connecting");
@@ -158,7 +139,7 @@ export class Gateway {
 
       case OpDispatch: {
         if (typeof frame.s === "number") {
-          if (frame.s <= this.seq) return; // Duplicate from a resume replay.
+          if (frame.s <= this.seq) return;
           this.seq = frame.s;
         }
         if (frame.t === "READY") {
@@ -188,8 +169,6 @@ export class Gateway {
 
   private scheduleReconnect() {
     this.setState("reconnecting");
-    // Exponential backoff with jitter, capped at 30s, so a server restart does
-    // not turn every client into a retry storm at the same instant.
     const base = Math.min(1000 * 2 ** this.attempt, 30_000);
     const delay = base * (0.5 + Math.random() / 2);
     this.attempt += 1;

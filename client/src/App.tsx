@@ -24,8 +24,6 @@ export default function App() {
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
-  // A stored token may have expired while the app was closed, so the session
-  // is only real once /users/@me confirms it.
   useEffect(() => {
     if (!api.authenticated) {
       setBooting(false);
@@ -89,7 +87,6 @@ export default function App() {
     void loadGuilds();
   }, [user, loadGuilds]);
 
-  // A guild created on another device shows up without a manual refresh.
   useEffect(() => {
     if (!user) return;
     return gateway.on("GUILD_CREATE", () => void loadGuilds());
