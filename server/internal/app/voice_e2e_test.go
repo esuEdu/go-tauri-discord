@@ -14,6 +14,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
+	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
@@ -399,7 +400,7 @@ func (c *voiceClient) stopSharing() {
 
 func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {
 	owner := newHarness(t)
-	owner.registerUser()
+	aliceID, _ := owner.registerUser()
 	guild := owner.createGuild("Voice")
 	_, voiceChannel := owner.textAndVoice(guild.ID)
 
@@ -426,6 +427,11 @@ func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {
 	case remote := <-bob.remote:
 		if remote.Kind() != webrtc.RTPCodecTypeAudio {
 			t.Fatalf("bob received a %s track, want audio", remote.Kind())
+		}
+		source, owner, ok := voice.ParseTrackName(remote.StreamID())
+		if !ok || source != voice.SourceMicrophone || owner != aliceID {
+			t.Fatalf("forwarded stream %q does not name alice (%s) as the speaker",
+				remote.StreamID(), aliceID)
 		}
 		buf := make([]byte, 1500)
 		if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
