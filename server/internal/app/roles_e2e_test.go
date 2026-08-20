@@ -379,38 +379,172 @@ func TestReadyHidesAChannelTheMemberCannotView(t *testing.T) {
 	}
 }
 
-func TestGatewayFanoutIgnoresChannelVisibility(t *testing.T) {
-	owner := newHarness(t)
-	owner.registerUser()
-	guild := owner.createGuild("Fanout Leak")
-	member := owner.inviteMember(guild.ID)
-	text, _ := owner.textAndVoice(guild.ID)
-	everyone := owner.everyone(guild.ID)
+func (h *harness) post(channelID uuid.UUID, content string) {
+	h.t.Helper()
+	h.mustDo(http.MethodPost, "/api/v1/channels/"+channelID.String()+"/messages",
+		http.StatusCreated, map[string]string{"content": content}, nil)
+}
 
-	owner.mustDo(http.MethodPut,
-		"/api/v1/channels/"+text.String()+"/overwrites/"+everyone.ID.String(),
+func (h *harness) newTextChannel(guildID uuid.UUID, name string) uuid.UUID {
+	h.t.Helper()
+	var ch events.Channel
+	h.mustDo(http.MethodPost, "/api/v1/guilds/"+guildID.String()+"/channels",
+		http.StatusCreated, map[string]any{"name": name, "kind": "text"}, &ch)
+	return ch.ID
+}
+
+func (h *harness) denyView(channelID, targetID uuid.UUID, targetType string) {
+	h.t.Helper()
+	h.mustDo(http.MethodPut,
+		"/api/v1/channels/"+channelID.String()+"/overwrites/"+targetID.String(),
 		http.StatusNoContent, map[string]any{
-			"target_type": "role",
+			"target_type": targetType,
 			"deny":        perm(domain.PermViewChannel),
 		}, nil)
+}
+
+func (s *socket) nextMessage() events.Message {
+	s.t.Helper()
+	frame := s.readEvent(events.EventMessageCreate)
+	var msg events.Message
+	decode(s.t, frame.D, &msg)
+	return msg
+}
+
+func TestGatewayWithholdsAHiddenChannelsMessages(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Withheld")
+	secret, _ := owner.textAndVoice(guild.ID)
+	open := owner.newTextChannel(guild.ID, "open")
+	member := owner.inviteMember(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	owner.denyView(secret, everyone.ID, "role")
 
 	sock := member.dial()
 	sock.identify(member.token)
 
-	member.mustDo(http.MethodGet, "/api/v1/channels/"+text.String()+"/messages",
-		http.StatusForbidden, nil, nil)
+	owner.post(secret, "must never reach them")
+	owner.post(open, "this one may")
 
-	secret := "the HTTP layer refuses to show this"
-	owner.mustDo(http.MethodPost, "/api/v1/channels/"+text.String()+"/messages",
-		http.StatusCreated, map[string]string{"content": secret}, nil)
-
-	delivered := !sock.quietFor(3*time.Second, func(f events.Frame) bool {
-		return f.T == events.EventMessageCreate
-	})
-	if !delivered {
-		t.Fatal("the gateway now filters by ViewChannel; delete this test and update the README")
+	if got := sock.nextMessage(); got.Content != "this one may" {
+		t.Fatalf("first message = %q, want the one from the visible channel", got.Content)
 	}
-	t.Log("known hole: fanout is per guild, so a hidden channel's messages still reach every member")
+}
+
+func TestRevokingViewChannelSilencesALiveSession(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Live Revoke")
+	secret, _ := owner.textAndVoice(guild.ID)
+	open := owner.newTextChannel(guild.ID, "open")
+	member := owner.inviteMember(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	sock := member.dial()
+	sock.identify(member.token)
+
+	owner.post(secret, "while still allowed")
+	if got := sock.nextMessage(); got.Content != "while still allowed" {
+		t.Fatalf("first message = %q, want the one sent before the denial", got.Content)
+	}
+
+	owner.denyView(secret, everyone.ID, "role")
+
+	owner.post(secret, "must never reach them")
+	owner.post(open, "this one may")
+
+	if got := sock.nextMessage(); got.Content != "this one may" {
+		t.Fatalf("message after the denial = %q; the same connection was not resilenced", got.Content)
+	}
+}
+
+func TestGrantingViewChannelReachesALiveSession(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Live Grant")
+	member := owner.inviteMember(guild.ID)
+	secret, _ := owner.textAndVoice(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	owner.denyView(secret, everyone.ID, "role")
+
+	sock := member.dial()
+	sock.identify(member.token)
+
+	owner.post(secret, "must never reach them")
+
+	owner.mustDo(http.MethodDelete,
+		"/api/v1/channels/"+secret.String()+"/overwrites/"+everyone.ID.String(),
+		http.StatusNoContent, nil, nil)
+
+	owner.post(secret, "allowed again")
+
+	if got := sock.nextMessage(); got.Content != "allowed again" {
+		t.Fatalf("first message = %q, want only the one sent after the grant", got.Content)
+	}
+}
+
+func TestGuildWideEventsAndNewChannelsSurviveTheFilter(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Still Delivered")
+	member := owner.inviteMember(guild.ID)
+
+	sock := member.dial()
+	sock.identify(member.token)
+
+	fresh := owner.newTextChannel(guild.ID, "brand-new")
+
+	created := sock.readEvent(events.EventChannelCreate)
+	var ch events.Channel
+	decode(t, created.D, &ch)
+	if ch.ID != fresh {
+		t.Fatalf("CHANNEL_CREATE carried %s, want %s", ch.ID, fresh)
+	}
+
+	owner.post(fresh, "a channel nobody has restricted")
+	if got := sock.nextMessage(); got.Content != "a channel nobody has restricted" {
+		t.Fatalf("message in a new channel = %q; a channel is hidden unless denied", got.Content)
+	}
+}
+
+func TestVoiceEventsRespectChannelVisibility(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Voice Visibility")
+	watcher := owner.inviteMember(guild.ID)
+	blocked := owner.inviteMember(guild.ID)
+	blockedID, _ := memberIdentity(t, blocked)
+	_, voice := owner.textAndVoice(guild.ID)
+
+	owner.denyView(voice, blockedID, "member")
+
+	watching := watcher.dial()
+	watching.identify(watcher.token)
+	deaf := blocked.dial()
+	deaf.identify(blocked.token)
+
+	ownerSock := owner.dial()
+	ownerSock.identify(owner.token)
+	ownerSock.write(events.Frame{
+		Op: events.OpVoiceState,
+		D:  mustJSON(t, events.VoiceStateRequest{ChannelID: &voice}),
+	})
+
+	state := watching.readEvent(events.EventVoiceStateUpdate)
+	var update events.VoiceStateUpdate
+	decode(t, state.D, &update)
+	if update.ChannelID == nil || *update.ChannelID != voice {
+		t.Fatalf("watcher saw channel %v, want %s", update.ChannelID, voice)
+	}
+
+	if !deaf.quietFor(2*time.Second, func(f events.Frame) bool {
+		return f.T == events.EventVoiceStateUpdate
+	}) {
+		t.Error("a member denied ViewChannel still learns who is in the voice channel")
+	}
 }
 
 func seesChannel(channels []events.Channel, id uuid.UUID) bool {
