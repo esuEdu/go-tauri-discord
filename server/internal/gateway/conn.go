@@ -146,13 +146,14 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 	}
 	for _, gl := range guilds {
 		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
-		channels, err := g.guilds.ListChannels(ctx, sess.userID, gl.ID)
+		channels, hidden, err := g.guilds.PartitionChannels(ctx, sess.userID, gl.ID)
 		if err != nil {
 			return err
 		}
 		for _, ch := range channels {
 			ready.Channels = append(ready.Channels, guild.PublicChannel(ch))
 		}
+		sess.hideInGuild(gl.ID, hidden)
 	}
 
 	frame, err := events.NewDispatch(events.EventReady, ready)

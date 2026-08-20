@@ -36,7 +36,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 		loginThrottle = lim.loginAccount
 	}
 	authSvc := auth.NewService(pool, pool, tokens, cfg.RefreshTokenTTL, loginThrottle)
-	guildSvc := guild.NewService(pool, pool, pool)
+	guildSvc := guild.NewService(pool, pool, pool, publisher)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
 	gw := gateway.New(authSvc, guildSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)

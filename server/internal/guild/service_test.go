@@ -66,7 +66,7 @@ func viewerRepo(channels int) *countingRepo {
 
 func TestPermissionsInAsksTheDatabaseOnce(t *testing.T) {
 	repo := viewerRepo(0)
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil, nil, nil)
 
 	if _, _, err := svc.PermissionsIn(context.Background(), uuid.New(), uuid.New()); err != nil {
 		t.Fatalf("permissions in: %v", err)
@@ -79,7 +79,7 @@ func TestPermissionsInAsksTheDatabaseOnce(t *testing.T) {
 
 func TestPermissionsInGuildAsksTheDatabaseOnce(t *testing.T) {
 	repo := viewerRepo(0)
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil, nil, nil)
 
 	if _, err := svc.PermissionsInGuild(context.Background(), uuid.New(), uuid.New()); err != nil {
 		t.Fatalf("permissions in guild: %v", err)
@@ -94,7 +94,7 @@ func TestListChannelsDoesNotGrowWithTheGuild(t *testing.T) {
 	large := viewerRepo(40)
 
 	for _, repo := range []*countingRepo{small, large} {
-		svc := NewService(repo, nil, nil)
+		svc := NewService(repo, nil, nil, nil)
 		visible, err := svc.ListChannels(context.Background(), uuid.New(), uuid.New())
 		if err != nil {
 			t.Fatalf("list channels: %v", err)
@@ -117,7 +117,7 @@ func TestPermissionsSurviveTheTripThroughJSON(t *testing.T) {
 		member: true,
 		roles:  fmt.Sprintf(`[{"id":%q,"permissions":%d}]`, roleID, domain.PermViewChannel|domain.PermSendMessages),
 	}
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil, nil, nil)
 
 	perms, _, err := svc.PermissionsIn(context.Background(), memberID, uuid.New())
 	if err != nil {
@@ -135,7 +135,7 @@ func TestPermissionsSurviveTheTripThroughJSON(t *testing.T) {
 func TestANonMemberIsNotToldTheChannelExists(t *testing.T) {
 	repo := viewerRepo(0)
 	repo.member = false
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil, nil, nil)
 
 	_, _, err := svc.PermissionsIn(context.Background(), uuid.New(), uuid.New())
 	var domainErr *domain.Error

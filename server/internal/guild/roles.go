@@ -81,6 +81,7 @@ func (s *Service) CreateRole(ctx context.Context, userID, guildID uuid.UUID, nam
 	if err != nil {
 		return dbgen.Role{}, domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, guildID)
 	return role, nil
 }
 
@@ -132,6 +133,7 @@ func (s *Service) UpdateRole(ctx context.Context, userID, roleID uuid.UUID, name
 	if err != nil {
 		return dbgen.Role{}, domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, role.GuildID)
 	return updated, nil
 }
 
@@ -155,6 +157,7 @@ func (s *Service) DeleteRole(ctx context.Context, userID, roleID uuid.UUID) erro
 	if err != nil {
 		return domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, role.GuildID)
 	return nil
 }
 
@@ -168,6 +171,7 @@ func (s *Service) AssignRole(ctx context.Context, userID, guildID, memberID, rol
 	}); err != nil {
 		return domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, guildID)
 	return nil
 }
 
@@ -181,6 +185,7 @@ func (s *Service) UnassignRole(ctx context.Context, userID, guildID, memberID, r
 	}); err != nil {
 		return domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, guildID)
 	return nil
 }
 
@@ -244,6 +249,7 @@ func (s *Service) SetChannelOverwrite(ctx context.Context, userID, channelID, ta
 	}); err != nil {
 		return domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, channel.GuildID)
 	return nil
 }
 
@@ -269,6 +275,7 @@ func (s *Service) ClearChannelOverwrite(ctx context.Context, userID, channelID, 
 	}); err != nil {
 		return domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, channel.GuildID)
 	return nil
 }
 
