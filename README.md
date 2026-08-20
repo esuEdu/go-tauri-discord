@@ -267,6 +267,64 @@ often — a revoked role has to be denied on the next request, not at the end of
 a TTL, and invalidating a cache across nodes is the harder half of a problem
 this design does not have.
 
+#### Writing them
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `GET` | `/api/v1/guilds/{guild}/roles` | membership |
+| `POST` | `/api/v1/guilds/{guild}/roles` | `ManageRoles` |
+| `PATCH` `DELETE` | `/api/v1/roles/{role}` | `ManageRoles` |
+| `GET` | `/api/v1/guilds/{guild}/members/{user}/roles` | membership |
+| `PUT` `DELETE` | `/api/v1/guilds/{guild}/members/{user}/roles/{role}` | `ManageRoles` |
+| `GET` | `/api/v1/channels/{channel}/overwrites` | membership |
+| `PUT` `DELETE` | `/api/v1/channels/{channel}/overwrites/{target}` | `ManageRoles` |
+
+Two rules hold every one of these together, and `ManageRoles` is worthless
+without both:
+
+**Position.** You may only touch a role *strictly below* your own highest one.
+Equal is not below, so a moderator cannot edit, move, delete or hand out the
+role that makes them a moderator. `@everyone` sits at position 0 and every
+other role starts at 1.
+
+**Subset.** You may only grant, revoke or overwrite a permission you hold
+yourself. Without this the position rule alone would be theatre: create a role
+at position 1, give it Administrator, assign it to yourself, and the hierarchy
+you were just under no longer exists. Editing a role compares the bits that
+*changed*, so someone may reword a role they could not have created.
+
+The guild owner is exempt from both. `@everyone` cannot be renamed, moved,
+deleted or assigned — only its permissions can change, which is how the guild's
+baseline is set. Channel overwrites additionally refuse to carry Administrator,
+refuse to allow and deny the same bit, and refuse bits that do not exist.
+
+#### When a change takes effect
+
+Nothing is cached, so **HTTP is immediate**: the request after a revocation is
+already refused, which `TestRevokingViewChannelTakesEffectOnTheNextRequest`
+pins down.
+
+The gateway is a different story, and worse than "eventually":
+
+- **`READY` is correct.** A session that identifies after losing `ViewChannel`
+  is not told the channel exists.
+- **Fanout is not.** Sessions subscribe to a topic *per guild*, and
+  `MESSAGE_CREATE`, `MESSAGE_UPDATE`, `MESSAGE_DELETE` and `TYPING_START` are
+  published there with no per-channel filter. So a member who cannot view a
+  channel still receives its messages on the socket — not until they reconnect,
+  but indefinitely, including on a connection opened long after the channel was
+  made private.
+
+A `ViewChannel` deny is therefore an HTTP-level restriction, not
+confidentiality. `TestGatewayFanoutIgnoresChannelVisibility` asserts the leak
+so that closing it fails the suite instead of passing silently. Closing it
+means filtering fanout per session per channel, which needs a permission set
+the gateway does not currently keep.
+
+Voice is fixed at join for a different reason: the SFU reserves a member's
+video transceiver when they connect, so revoking `Stream` mid-call does not
+retract the one they already have. It applies on rejoin.
+
 ### Desktop client
 
 ```bash
@@ -504,6 +562,8 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Postgres schema, migrations, and type-safe query layer
 - [x] Auth: registration, login, JWT access + rotating refresh tokens
 - [x] Guilds, channels, members, roles, permission resolution
+- [x] Role and overwrite management, with a hierarchy that cannot be climbed
+- [ ] Gateway fanout filtered per channel, so a private channel really is
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
 - [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
