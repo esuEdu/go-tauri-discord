@@ -86,6 +86,15 @@ func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) error {
 	return err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
 const getActiveRefreshToken = `-- name: GetActiveRefreshToken :one
 SELECT id, user_id, token_hash, expires_at, revoked_at, created_at FROM refresh_tokens
 WHERE token_hash = $1
@@ -175,6 +184,20 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const reassignMessagesToUser = `-- name: ReassignMessagesToUser :exec
+UPDATE messages SET author_id = $1 WHERE author_id = $2
+`
+
+type ReassignMessagesToUserParams struct {
+	NewAuthorID uuid.UUID
+	AuthorID    uuid.UUID
+}
+
+func (q *Queries) ReassignMessagesToUser(ctx context.Context, arg ReassignMessagesToUserParams) error {
+	_, err := q.db.Exec(ctx, reassignMessagesToUser, arg.NewAuthorID, arg.AuthorID)
+	return err
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec

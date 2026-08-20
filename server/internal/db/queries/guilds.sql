@@ -84,3 +84,19 @@ INSERT INTO channel_overwrites (channel_id, target_id, target_type, allow, deny)
 VALUES (@channel_id, @target_id, @target_type, @allow, @deny)
 ON CONFLICT (channel_id, target_id)
 DO UPDATE SET allow = EXCLUDED.allow, deny = EXCLUDED.deny;
+
+-- name: ListGuildsOwnedBy :many
+SELECT * FROM guilds WHERE owner_id = @owner_id;
+
+-- name: NextGuildOwner :one
+SELECT m.user_id
+FROM guild_members m
+LEFT JOIN member_roles mr ON mr.guild_id = m.guild_id AND mr.user_id = m.user_id
+LEFT JOIN roles r ON r.id = mr.role_id
+WHERE m.guild_id = @guild_id AND m.user_id <> @leaving_id
+GROUP BY m.user_id, m.joined_at
+ORDER BY COALESCE(MAX(r.position), -1) DESC, m.joined_at, m.user_id
+LIMIT 1;
+
+-- name: TransferGuildOwnership :exec
+UPDATE guilds SET owner_id = @owner_id WHERE id = @id;

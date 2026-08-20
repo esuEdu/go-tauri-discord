@@ -35,7 +35,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	if !cfg.RateLimitDisabled {
 		loginThrottle = lim.loginAccount
 	}
-	authSvc := auth.NewService(pool, tokens, cfg.RefreshTokenTTL, loginThrottle)
+	authSvc := auth.NewService(pool, pool, tokens, cfg.RefreshTokenTTL, loginThrottle)
 	guildSvc := guild.NewService(pool, pool, pool)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 
@@ -53,9 +53,10 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	}
 	protected := httpx.Guarded{Mux: mux, MW: guard}
 
-	authHandler := auth.NewHandler(authSvc)
+	authHandler := auth.NewHandler(authSvc, gw)
 	authHandler.Routes(mux)
 	protected.HandleFunc("GET /api/v1/users/@me", authHandler.Me)
+	protected.HandleFunc("DELETE /api/v1/users/@me", authHandler.DeleteMe)
 	guildHandler := guild.NewHandler(guildSvc, publisher)
 	guildHandler.Routes(protected)
 	guildHandler.PublicRoutes(mux)

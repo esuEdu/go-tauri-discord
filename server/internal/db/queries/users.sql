@@ -33,3 +33,9 @@ WHERE user_id = @user_id AND revoked_at IS NULL;
 
 -- name: DeleteExpiredRefreshTokens :exec
 DELETE FROM refresh_tokens WHERE expires_at < now() - INTERVAL '30 days';
+
+-- name: ReassignMessagesToUser :exec
+UPDATE messages SET author_id = @new_author_id WHERE author_id = @author_id;
+
+-- name: DeleteUser :exec
+DELETE FROM users WHERE id = @id;

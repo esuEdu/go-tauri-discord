@@ -3,17 +3,28 @@ package auth
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-type Handler struct {
-	svc *Service
+// Sessions lets a deletion take effect on connections that are already open,
+// without auth having to know what a gateway is.
+type Sessions interface {
+	DisconnectUser(userID uuid.UUID)
 }
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+type Handler struct {
+	svc      *Service
+	sessions Sessions
+}
+
+func NewHandler(svc *Service, sessions Sessions) *Handler {
+	return &Handler{svc: svc, sessions: sessions}
+}
 
 func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
@@ -102,6 +113,28 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFrom(r.Context())
 	httpx.JSON(w, http.StatusOK, PublicUser(user))
+}
+
+// DeleteMe asks for the password again because an access token is enough to
+// read an account but should not be enough to destroy one.
+func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFrom(r.Context())
+
+	var in struct {
+		Password string `json:"password"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteAccount(r.Context(), user.ID, in.Password); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.sessions != nil {
+		h.sessions.DisconnectUser(user.ID)
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
 }
 
 func PublicUser(u dbgen.User) events.User {
