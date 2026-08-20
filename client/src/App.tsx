@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { Chat } from "./components/Chat";
+import { DeleteAccount } from "./components/DeleteAccount";
 import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
 import { Voice } from "./components/Voice";
@@ -122,14 +123,18 @@ export default function App() {
     });
   }, [activeGuild]);
 
-  async function logout() {
-    await api.logout();
+  function endSession() {
     gateway.close();
     setUser(null);
     setGuilds([]);
     setChannels([]);
     setActiveGuild(null);
     setActiveChannel(null);
+  }
+
+  async function logout() {
+    await api.logout();
+    endSession();
   }
 
   if (booting) return <div className="boot">Loading…</div>;
@@ -179,6 +184,7 @@ export default function App() {
         <button className="link" onClick={() => void logout()}>
           Log out
         </button>
+        <DeleteAccount onDeleted={endSession} />
       </footer>
     </div>
   );

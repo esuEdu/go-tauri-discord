@@ -150,6 +150,13 @@ export class Api {
     return this.request<User>("GET", "/api/v1/users/@me");
   }
 
+  // The password is asked for again by the server; a stored access token is
+  // not enough to destroy the account it opens.
+  async deleteAccount(password: string): Promise<void> {
+    await this.request<void>("DELETE", "/api/v1/users/@me", { password });
+    this.clear();
+  }
+
   guilds(): Promise<Guild[]> {
     return this.request<Guild[]>("GET", "/api/v1/guilds");
   }
