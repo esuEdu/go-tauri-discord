@@ -8,6 +8,7 @@ import (
 
 	"github.com/pion/webrtc/v4"
 
+	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
@@ -58,6 +59,43 @@ func TestScreenVideoReachesAnotherMember(t *testing.T) {
 	if id := remote.StreamID(); id == "" || id == "-" {
 		t.Fatalf("the forwarded screen carried stream id %q, so a browser reports no "+
 			"stream on the track event and the viewer drops it before rendering", id)
+	}
+}
+
+func TestScreenSoundReachesAnotherMember(t *testing.T) {
+	owner := newHarness(t)
+	presenterID, _ := owner.registerUser()
+	guild := owner.createGuild("Screen Sound")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	viewer := newVoiceClient(t, friend)
+	presenter.pump()
+	viewer.pump()
+
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	presenter.shareWithSound()
+
+	remote := viewer.awaitTrack(voice.SourceScreenAudio, presenterID, 30*time.Second)
+	readScreen(t, remote)
+
+	if remote.Kind() != webrtc.RTPCodecTypeAudio {
+		t.Fatalf("the presenter's screen sound arrived as %s", remote.Kind())
+	}
+	if mid := viewer.midOf(remote); mid == viewer.reservedSoundMid() {
+		t.Fatalf("the sound of the presenter's screen arrived on mid %q, which is the viewer's "+
+			"own upload slot for screen sound", mid)
 	}
 }
 
