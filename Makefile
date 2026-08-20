@@ -142,6 +142,22 @@ client-check: ## Typecheck and build the client
 client-build: require-rust ## Bundle the desktop app (needs Rust)
 	cd $(CLIENT_DIR) && npm run tauri build
 
+.PHONY: desktop-check
+desktop-check: require-rust ## Compile and bundle the desktop app unoptimised (for CI)
+	cd $(CLIENT_DIR) && npm run tauri -- build --debug --bundles app
+
+.PHONY: desktop-smoke
+desktop-smoke: ## Launch the built desktop app and fail if it dies (catches WebKit key renames)
+	@cd $(CLIENT_DIR) && { ./src-tauri/target/debug/vocalis & pid=$$!; \
+	sleep 12; \
+	if kill -0 $$pid 2>/dev/null; then \
+		kill $$pid 2>/dev/null; wait $$pid 2>/dev/null; \
+		echo "desktop app survived launch"; \
+	else \
+		echo "desktop app died on launch; check the WebKit preference keys in $(CLIENT_DIR)/src-tauri/src/lib.rs"; \
+		exit 1; \
+	fi; }
+
 .PHONY: require-rust
 require-rust:
 	@command -v cargo >/dev/null || { \
