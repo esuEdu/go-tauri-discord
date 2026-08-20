@@ -25,6 +25,13 @@ func (p *Publisher) ToUser(ctx context.Context, userID uuid.UUID, t events.Event
 	p.publish(ctx, pubsub.TopicUser(userID), t, d)
 }
 
+func (p *Publisher) PermissionsChanged(ctx context.Context, guildID uuid.UUID) {
+	topic := pubsub.TopicGuildControl(guildID)
+	if err := p.broker.Publish(ctx, topic, []byte(guildID.String())); err != nil {
+		slog.ErrorContext(ctx, "publish permission change", "guild_id", guildID, "error", err)
+	}
+}
+
 func (p *Publisher) publish(ctx context.Context, topic string, t events.EventType, d any) {
 	frame, err := events.NewDispatch(t, d)
 	if err != nil {
