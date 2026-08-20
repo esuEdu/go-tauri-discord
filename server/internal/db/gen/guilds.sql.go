@@ -231,36 +231,6 @@ func (q *Queries) GetGuildMember(ctx context.Context, arg GetGuildMemberParams) 
 	return i, err
 }
 
-const listChannelOverwrites = `-- name: ListChannelOverwrites :many
-SELECT channel_id, target_id, target_type, allow, deny FROM channel_overwrites WHERE channel_id = $1
-`
-
-func (q *Queries) ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]ChannelOverwrite, error) {
-	rows, err := q.db.Query(ctx, listChannelOverwrites, channelID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ChannelOverwrite{}
-	for rows.Next() {
-		var i ChannelOverwrite
-		if err := rows.Scan(
-			&i.ChannelID,
-			&i.TargetID,
-			&i.TargetType,
-			&i.Allow,
-			&i.Deny,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listChannels = `-- name: ListChannels :many
 SELECT id, guild_id, parent_id, kind, name, topic, position, created_at FROM channels WHERE guild_id = $1 ORDER BY position, id
 `
@@ -283,51 +253,6 @@ func (q *Queries) ListChannels(ctx context.Context, guildID uuid.UUID) ([]Channe
 			&i.Topic,
 			&i.Position,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listEffectiveRoles = `-- name: ListEffectiveRoles :many
-SELECT r.id, r.guild_id, r.name, r.permissions, r.position, r.is_default FROM roles r
-WHERE r.guild_id = $1
-  AND (
-    r.is_default
-    OR EXISTS (
-      SELECT 1 FROM member_roles mr
-      WHERE mr.role_id = r.id AND mr.user_id = $2
-    )
-  )
-ORDER BY r.position DESC, r.id
-`
-
-type ListEffectiveRolesParams struct {
-	GuildID uuid.UUID
-	UserID  uuid.UUID
-}
-
-func (q *Queries) ListEffectiveRoles(ctx context.Context, arg ListEffectiveRolesParams) ([]Role, error) {
-	rows, err := q.db.Query(ctx, listEffectiveRoles, arg.GuildID, arg.UserID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Role{}
-	for rows.Next() {
-		var i Role
-		if err := rows.Scan(
-			&i.ID,
-			&i.GuildID,
-			&i.Name,
-			&i.Permissions,
-			&i.Position,
-			&i.IsDefault,
 		); err != nil {
 			return nil, err
 		}
@@ -396,6 +321,38 @@ func (q *Queries) ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]Li
 			&i.JoinedAt,
 			&i.Username,
 			&i.AvatarKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGuildOverwrites = `-- name: ListGuildOverwrites :many
+SELECT o.channel_id, o.target_id, o.target_type, o.allow, o.deny FROM channel_overwrites o
+JOIN channels c ON c.id = o.channel_id
+WHERE c.guild_id = $1
+`
+
+func (q *Queries) ListGuildOverwrites(ctx context.Context, guildID uuid.UUID) ([]ChannelOverwrite, error) {
+	rows, err := q.db.Query(ctx, listGuildOverwrites, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChannelOverwrite{}
+	for rows.Next() {
+		var i ChannelOverwrite
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.TargetID,
+			&i.TargetType,
+			&i.Allow,
+			&i.Deny,
 		); err != nil {
 			return nil, err
 		}
@@ -536,6 +493,111 @@ type RemoveGuildMemberParams struct {
 func (q *Queries) RemoveGuildMember(ctx context.Context, arg RemoveGuildMemberParams) error {
 	_, err := q.db.Exec(ctx, removeGuildMember, arg.GuildID, arg.UserID)
 	return err
+}
+
+const resolveChannelAccess = `-- name: ResolveChannelAccess :one
+SELECT
+    c.id, c.guild_id, c.parent_id, c.kind, c.name, c.topic, c.position, c.created_at,
+    g.owner_id,
+    (m.user_id IS NOT NULL)::bool AS is_member,
+    COALESCE((
+        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+                        ORDER BY r.position DESC, r.id)
+        FROM roles r
+        WHERE r.guild_id = c.guild_id
+          AND (
+            r.is_default
+            OR EXISTS (
+              SELECT 1 FROM member_roles mr
+              WHERE mr.role_id = r.id AND mr.user_id = $1
+            )
+          )
+    ), '[]'::json)::text AS roles,
+    COALESCE((
+        SELECT json_agg(json_build_object('target_id', o.target_id,
+                                          'target_type', o.target_type,
+                                          'allow', o.allow,
+                                          'deny', o.deny))
+        FROM channel_overwrites o
+        WHERE o.channel_id = c.id
+    ), '[]'::json)::text AS overwrites
+FROM channels c
+JOIN guilds g ON g.id = c.guild_id
+LEFT JOIN guild_members m ON m.guild_id = c.guild_id AND m.user_id = $1
+WHERE c.id = $2
+`
+
+type ResolveChannelAccessParams struct {
+	UserID    uuid.UUID
+	ChannelID uuid.UUID
+}
+
+type ResolveChannelAccessRow struct {
+	Channel    Channel
+	OwnerID    uuid.UUID
+	IsMember   bool
+	Roles      string
+	Overwrites string
+}
+
+func (q *Queries) ResolveChannelAccess(ctx context.Context, arg ResolveChannelAccessParams) (ResolveChannelAccessRow, error) {
+	row := q.db.QueryRow(ctx, resolveChannelAccess, arg.UserID, arg.ChannelID)
+	var i ResolveChannelAccessRow
+	err := row.Scan(
+		&i.Channel.ID,
+		&i.Channel.GuildID,
+		&i.Channel.ParentID,
+		&i.Channel.Kind,
+		&i.Channel.Name,
+		&i.Channel.Topic,
+		&i.Channel.Position,
+		&i.Channel.CreatedAt,
+		&i.OwnerID,
+		&i.IsMember,
+		&i.Roles,
+		&i.Overwrites,
+	)
+	return i, err
+}
+
+const resolveGuildAccess = `-- name: ResolveGuildAccess :one
+SELECT
+    g.owner_id,
+    (m.user_id IS NOT NULL)::bool AS is_member,
+    COALESCE((
+        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+                        ORDER BY r.position DESC, r.id)
+        FROM roles r
+        WHERE r.guild_id = g.id
+          AND (
+            r.is_default
+            OR EXISTS (
+              SELECT 1 FROM member_roles mr
+              WHERE mr.role_id = r.id AND mr.user_id = $1
+            )
+          )
+    ), '[]'::json)::text AS roles
+FROM guilds g
+LEFT JOIN guild_members m ON m.guild_id = g.id AND m.user_id = $1
+WHERE g.id = $2
+`
+
+type ResolveGuildAccessParams struct {
+	UserID  uuid.UUID
+	GuildID uuid.UUID
+}
+
+type ResolveGuildAccessRow struct {
+	OwnerID  uuid.UUID
+	IsMember bool
+	Roles    string
+}
+
+func (q *Queries) ResolveGuildAccess(ctx context.Context, arg ResolveGuildAccessParams) (ResolveGuildAccessRow, error) {
+	row := q.db.QueryRow(ctx, resolveGuildAccess, arg.UserID, arg.GuildID)
+	var i ResolveGuildAccessRow
+	err := row.Scan(&i.OwnerID, &i.IsMember, &i.Roles)
+	return i, err
 }
 
 const transferGuildOwnership = `-- name: TransferGuildOwnership :exec

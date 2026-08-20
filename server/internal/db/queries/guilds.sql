@@ -64,20 +64,7 @@ INSERT INTO member_roles (guild_id, user_id, role_id)
 VALUES (@guild_id, @user_id, @role_id)
 ON CONFLICT DO NOTHING;
 
--- name: ListEffectiveRoles :many
-SELECT r.* FROM roles r
-WHERE r.guild_id = @guild_id
-  AND (
-    r.is_default
-    OR EXISTS (
-      SELECT 1 FROM member_roles mr
-      WHERE mr.role_id = r.id AND mr.user_id = @user_id
-    )
-  )
-ORDER BY r.position DESC, r.id;
 
--- name: ListChannelOverwrites :many
-SELECT * FROM channel_overwrites WHERE channel_id = @channel_id;
 
 -- name: UpsertChannelOverwrite :exec
 INSERT INTO channel_overwrites (channel_id, target_id, target_type, allow, deny)
@@ -100,3 +87,60 @@ LIMIT 1;
 
 -- name: TransferGuildOwnership :exec
 UPDATE guilds SET owner_id = @owner_id WHERE id = @id;
+
+-- name: ResolveChannelAccess :one
+SELECT
+    sqlc.embed(c),
+    g.owner_id,
+    (m.user_id IS NOT NULL)::bool AS is_member,
+    COALESCE((
+        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+                        ORDER BY r.position DESC, r.id)
+        FROM roles r
+        WHERE r.guild_id = c.guild_id
+          AND (
+            r.is_default
+            OR EXISTS (
+              SELECT 1 FROM member_roles mr
+              WHERE mr.role_id = r.id AND mr.user_id = @user_id
+            )
+          )
+    ), '[]'::json)::text AS roles,
+    COALESCE((
+        SELECT json_agg(json_build_object('target_id', o.target_id,
+                                          'target_type', o.target_type,
+                                          'allow', o.allow,
+                                          'deny', o.deny))
+        FROM channel_overwrites o
+        WHERE o.channel_id = c.id
+    ), '[]'::json)::text AS overwrites
+FROM channels c
+JOIN guilds g ON g.id = c.guild_id
+LEFT JOIN guild_members m ON m.guild_id = c.guild_id AND m.user_id = @user_id
+WHERE c.id = @channel_id;
+
+-- name: ResolveGuildAccess :one
+SELECT
+    g.owner_id,
+    (m.user_id IS NOT NULL)::bool AS is_member,
+    COALESCE((
+        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+                        ORDER BY r.position DESC, r.id)
+        FROM roles r
+        WHERE r.guild_id = g.id
+          AND (
+            r.is_default
+            OR EXISTS (
+              SELECT 1 FROM member_roles mr
+              WHERE mr.role_id = r.id AND mr.user_id = @user_id
+            )
+          )
+    ), '[]'::json)::text AS roles
+FROM guilds g
+LEFT JOIN guild_members m ON m.guild_id = g.id AND m.user_id = @user_id
+WHERE g.id = @guild_id;
+
+-- name: ListGuildOverwrites :many
+SELECT o.* FROM channel_overwrites o
+JOIN channels c ON c.id = o.channel_id
+WHERE c.guild_id = @guild_id;
