@@ -29,16 +29,27 @@ type Throttle interface {
 	Allow(key string) (bool, time.Duration)
 }
 
+type TxRunner interface {
+	InTx(ctx context.Context, fn func(q *dbgen.Queries) error) error
+}
+
 type Service struct {
 	repo       Repository
+	tx         TxRunner
 	tokens     *TokenIssuer
 	refreshTTL time.Duration
 	logins     Throttle
 }
 
-func NewService(repo Repository, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle) *Service {
-	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL, logins: logins}
+func NewService(repo Repository, tx TxRunner, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle) *Service {
+	return &Service{repo: repo, tx: tx, tokens: tokens, refreshTTL: refreshTTL, logins: logins}
 }
+
+// DeletedUserID owns the messages of everyone who has deleted their account.
+// It is a real row so that messages.author_id can keep its foreign key and its
+// ON DELETE RESTRICT: reassigning authorship is what makes the delete possible,
+// rather than weakening the constraint that protects everyone else's history.
+var DeletedUserID = uuid.UUID{}
 
 type TokenPair struct {
 	AccessToken  string    `json:"access_token"`
@@ -165,6 +176,66 @@ func (s *Service) Authenticate(ctx context.Context, accessToken string) (dbgen.U
 		return dbgen.User{}, domain.Internal(err)
 	}
 	return user, nil
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, userID uuid.UUID, password string) error {
+	if userID == DeletedUserID {
+		return domain.Forbidden("the deleted-user placeholder cannot be deleted")
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return domain.Unauthorized("account no longer exists")
+		}
+		return domain.Internal(err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return domain.Unauthorized("invalid credentials")
+	}
+
+	err = s.tx.InTx(ctx, func(q *dbgen.Queries) error {
+		owned, err := q.ListGuildsOwnedBy(ctx, userID)
+		if err != nil {
+			return err
+		}
+		for _, g := range owned {
+			heir, err := q.NextGuildOwner(ctx, dbgen.NextGuildOwnerParams{
+				GuildID: g.ID, LeavingID: userID,
+			})
+			if err != nil {
+				if !db.IsNoRows(err) {
+					return err
+				}
+				// Nobody is left to inherit it, so the guild goes with the
+				// account rather than becoming unreachable and ownerless.
+				if err := q.DeleteGuild(ctx, g.ID); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := q.TransferGuildOwnership(ctx, dbgen.TransferGuildOwnershipParams{
+				ID: g.ID, OwnerID: heir,
+			}); err != nil {
+				return err
+			}
+		}
+
+		if err := q.ReassignMessagesToUser(ctx, dbgen.ReassignMessagesToUserParams{
+			AuthorID: userID, NewAuthorID: DeletedUserID,
+		}); err != nil {
+			return err
+		}
+
+		// Everything else that points at the account -- refresh tokens,
+		// memberships and their roles, read states, invites they created --
+		// is ON DELETE CASCADE, so the row going is the erasure.
+		return q.DeleteUser(ctx, userID)
+	})
+	if err != nil {
+		return domain.Internal(err)
+	}
+	return nil
 }
 
 func (s *Service) issuePair(ctx context.Context, userID uuid.UUID) (TokenPair, error) {

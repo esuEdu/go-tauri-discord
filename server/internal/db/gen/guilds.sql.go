@@ -440,6 +440,36 @@ func (q *Queries) ListGuildsForUser(ctx context.Context, userID uuid.UUID) ([]Gu
 	return items, nil
 }
 
+const listGuildsOwnedBy = `-- name: ListGuildsOwnedBy :many
+SELECT id, name, owner_id, icon_key, created_at FROM guilds WHERE owner_id = $1
+`
+
+func (q *Queries) ListGuildsOwnedBy(ctx context.Context, ownerID uuid.UUID) ([]Guild, error) {
+	rows, err := q.db.Query(ctx, listGuildsOwnedBy, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Guild{}
+	for rows.Next() {
+		var i Guild
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OwnerID,
+			&i.IconKey,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoles = `-- name: ListRoles :many
 SELECT id, guild_id, name, permissions, position, is_default FROM roles WHERE guild_id = $1 ORDER BY position DESC, id
 `
@@ -471,6 +501,29 @@ func (q *Queries) ListRoles(ctx context.Context, guildID uuid.UUID) ([]Role, err
 	return items, nil
 }
 
+const nextGuildOwner = `-- name: NextGuildOwner :one
+SELECT m.user_id
+FROM guild_members m
+LEFT JOIN member_roles mr ON mr.guild_id = m.guild_id AND mr.user_id = m.user_id
+LEFT JOIN roles r ON r.id = mr.role_id
+WHERE m.guild_id = $1 AND m.user_id <> $2
+GROUP BY m.user_id, m.joined_at
+ORDER BY COALESCE(MAX(r.position), -1) DESC, m.joined_at, m.user_id
+LIMIT 1
+`
+
+type NextGuildOwnerParams struct {
+	GuildID   uuid.UUID
+	LeavingID uuid.UUID
+}
+
+func (q *Queries) NextGuildOwner(ctx context.Context, arg NextGuildOwnerParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, nextGuildOwner, arg.GuildID, arg.LeavingID)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const removeGuildMember = `-- name: RemoveGuildMember :exec
 DELETE FROM guild_members WHERE guild_id = $1 AND user_id = $2
 `
@@ -482,6 +535,20 @@ type RemoveGuildMemberParams struct {
 
 func (q *Queries) RemoveGuildMember(ctx context.Context, arg RemoveGuildMemberParams) error {
 	_, err := q.db.Exec(ctx, removeGuildMember, arg.GuildID, arg.UserID)
+	return err
+}
+
+const transferGuildOwnership = `-- name: TransferGuildOwnership :exec
+UPDATE guilds SET owner_id = $1 WHERE id = $2
+`
+
+type TransferGuildOwnershipParams struct {
+	OwnerID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) TransferGuildOwnership(ctx context.Context, arg TransferGuildOwnershipParams) error {
+	_, err := q.db.Exec(ctx, transferGuildOwnership, arg.OwnerID, arg.ID)
 	return err
 }
 
