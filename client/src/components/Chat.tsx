@@ -6,7 +6,6 @@ import type { Channel, Message } from "../types/events.gen";
 const PAGE_SIZE = 50;
 
 export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) {
-  // Stored oldest-first, which is the order they render.
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -38,7 +37,6 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     };
   }, [channel.id]);
 
-  // Live events. Guild-wide, so filter to the channel on screen.
   useEffect(() => {
     const offCreate = gateway.on("MESSAGE_CREATE", (payload) => {
       const msg = payload as Message;
@@ -67,8 +65,6 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     };
   }, [channel.id]);
 
-  // Only autoscroll when already at the bottom, so reading history is not
-  // yanked away by someone else's message arriving.
   useEffect(() => {
     if (pinnedToBottom.current) {
       scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -86,7 +82,6 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     setMessages((prev) => [...page.slice().reverse(), ...prev]);
     setHasMore(page.length === PAGE_SIZE);
 
-    // Keep the viewport on the message the reader was looking at.
     requestAnimationFrame(() => {
       if (el) el.scrollTop = el.scrollHeight - before;
     });
@@ -107,7 +102,6 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     setDraft("");
     pinnedToBottom.current = true;
     try {
-      // The gateway echoes this back; MESSAGE_CREATE dedupes on id.
       const sent = await api.sendMessage(channel.id, content);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id) ? prev : [...prev, sent],
