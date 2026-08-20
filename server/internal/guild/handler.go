@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
+	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
@@ -29,6 +32,16 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members", h.members)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/channels", h.listChannels)
 	mux.HandleFunc("POST /api/v1/guilds/{guildID}/channels", h.createChannel)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/roles", h.listRoles)
+	mux.HandleFunc("POST /api/v1/guilds/{guildID}/roles", h.createRole)
+	mux.HandleFunc("PATCH /api/v1/roles/{roleID}", h.updateRole)
+	mux.HandleFunc("DELETE /api/v1/roles/{roleID}", h.deleteRole)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
+	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
+	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
+	mux.HandleFunc("GET /api/v1/channels/{channelID}/overwrites", h.listOverwrites)
+	mux.HandleFunc("PUT /api/v1/channels/{channelID}/overwrites/{targetID}", h.setOverwrite)
+	mux.HandleFunc("DELETE /api/v1/channels/{channelID}/overwrites/{targetID}", h.clearOverwrite)
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +204,209 @@ func (h *Handler) createChannel(w http.ResponseWriter, r *http.Request) {
 
 	h.pub.ToGuild(r.Context(), guildID, events.EventChannelCreate, PublicChannel(ch))
 	httpx.JSON(w, http.StatusCreated, PublicChannel(ch))
+}
+
+func (h *Handler) listRoles(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	roles, err := h.svc.ListRoles(r.Context(), auth.MustUserID(r.Context()), guildID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mapSlice(roles, PublicRole))
+}
+
+func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Name        string `json:"name"`
+		Permissions int64  `json:"permissions"`
+		Position    *int32 `json:"position"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	role, err := h.svc.CreateRole(r.Context(), auth.MustUserID(r.Context()), guildID,
+		in.Name, domain.Permission(in.Permissions), in.Position)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, PublicRole(role))
+}
+
+func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
+	roleID, err := httpx.PathUUID(r, "roleID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Name        *string `json:"name"`
+		Permissions *int64  `json:"permissions"`
+		Position    *int32  `json:"position"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var perms *domain.Permission
+	if in.Permissions != nil {
+		p := domain.Permission(*in.Permissions)
+		perms = &p
+	}
+
+	role, err := h.svc.UpdateRole(r.Context(), auth.MustUserID(r.Context()), roleID, in.Name, perms, in.Position)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, PublicRole(role))
+}
+
+func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
+	roleID, err := httpx.PathUUID(r, "roleID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteRole(r.Context(), auth.MustUserID(r.Context()), roleID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) memberRoles(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	roles, err := h.svc.MemberRoles(r.Context(), auth.MustUserID(r.Context()), guildID, memberID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mapSlice(roles, PublicRole))
+}
+
+func (h *Handler) assignRole(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, roleID, err := guildMemberAndRole(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.AssignRole(r.Context(), auth.MustUserID(r.Context()), guildID, memberID, roleID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) unassignRole(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, roleID, err := guildMemberAndRole(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.UnassignRole(r.Context(), auth.MustUserID(r.Context()), guildID, memberID, roleID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) listOverwrites(w http.ResponseWriter, r *http.Request) {
+	channelID, err := httpx.PathUUID(r, "channelID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	rows, err := h.svc.ChannelOverwrites(r.Context(), auth.MustUserID(r.Context()), channelID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mapSlice(rows, PublicOverwrite))
+}
+
+func (h *Handler) setOverwrite(w http.ResponseWriter, r *http.Request) {
+	channelID, targetID, err := channelAndTarget(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		TargetType string `json:"target_type"`
+		Allow      int64  `json:"allow"`
+		Deny       int64  `json:"deny"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	if err := h.svc.SetChannelOverwrite(r.Context(), auth.MustUserID(r.Context()), channelID, targetID,
+		in.TargetType, domain.Permission(in.Allow), domain.Permission(in.Deny)); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) clearOverwrite(w http.ResponseWriter, r *http.Request) {
+	channelID, targetID, err := channelAndTarget(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.ClearChannelOverwrite(r.Context(), auth.MustUserID(r.Context()), channelID, targetID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func guildAndMember(r *http.Request) (guildID, memberID uuid.UUID, err error) {
+	if guildID, err = httpx.PathUUID(r, "guildID"); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if memberID, err = httpx.PathUUID(r, "userID"); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return guildID, memberID, nil
+}
+
+func guildMemberAndRole(r *http.Request) (guildID, memberID, roleID uuid.UUID, err error) {
+	if guildID, memberID, err = guildAndMember(r); err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, err
+	}
+	if roleID, err = httpx.PathUUID(r, "roleID"); err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, err
+	}
+	return guildID, memberID, roleID, nil
+}
+
+func channelAndTarget(r *http.Request) (channelID, targetID uuid.UUID, err error) {
+	if channelID, err = httpx.PathUUID(r, "channelID"); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if targetID, err = httpx.PathUUID(r, "targetID"); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return channelID, targetID, nil
 }
 
 func mapSlice[T any, R any](in []T, fn func(T) R) []R {

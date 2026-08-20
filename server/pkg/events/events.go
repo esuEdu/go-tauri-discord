@@ -84,6 +84,23 @@ type Channel struct {
 	Position int32      `json:"position"`
 }
 
+type Role struct {
+	ID          uuid.UUID `json:"id"`
+	GuildID     uuid.UUID `json:"guild_id"`
+	Name        string    `json:"name"`
+	Permissions int64     `json:"permissions"`
+	Position    int32     `json:"position"`
+	IsDefault   bool      `json:"is_default"`
+}
+
+type Overwrite struct {
+	ChannelID  uuid.UUID `json:"channel_id"`
+	TargetID   uuid.UUID `json:"target_id"`
+	TargetType string    `json:"target_type"`
+	Allow      int64     `json:"allow"`
+	Deny       int64     `json:"deny"`
+}
+
 type Attachment struct {
 	ID          uuid.UUID `json:"id"`
 	Filename    string    `json:"filename"`

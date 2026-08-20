@@ -66,6 +66,21 @@ export interface Channel {
   topic?: string;
   position: number /* int32 */;
 }
+export interface Role {
+  id: string;
+  guild_id: string;
+  name: string;
+  permissions: number /* int64 */;
+  position: number /* int32 */;
+  is_default: boolean;
+}
+export interface Overwrite {
+  channel_id: string;
+  target_id: string;
+  target_type: string;
+  allow: number /* int64 */;
+  deny: number /* int64 */;
+}
 export interface Attachment {
   id: string;
   filename: string;
