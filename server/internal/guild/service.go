@@ -11,6 +11,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
@@ -48,10 +49,17 @@ type Service struct {
 	repo    Repository
 	invites InviteRepository
 	tx      TxRunner
+	pub     *bus.Publisher
 }
 
-func NewService(repo Repository, invites InviteRepository, tx TxRunner) *Service {
-	return &Service{repo: repo, invites: invites, tx: tx}
+func NewService(repo Repository, invites InviteRepository, tx TxRunner, pub *bus.Publisher) *Service {
+	return &Service{repo: repo, invites: invites, tx: tx, pub: pub}
+}
+
+func (s *Service) permissionsChanged(ctx context.Context, guildID uuid.UUID) {
+	if s.pub != nil {
+		s.pub.PermissionsChanged(ctx, guildID)
+	}
 }
 
 const maxGuildNameLen = 100
@@ -126,30 +134,35 @@ func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Gu
 }
 
 func (s *Service) ListChannels(ctx context.Context, userID, guildID uuid.UUID) ([]dbgen.Channel, error) {
+	visible, _, err := s.PartitionChannels(ctx, userID, guildID)
+	return visible, err
+}
+
+func (s *Service) PartitionChannels(ctx context.Context, userID, guildID uuid.UUID) (visible []dbgen.Channel, hidden []uuid.UUID, err error) {
 	access, err := s.repo.ResolveGuildAccess(ctx, dbgen.ResolveGuildAccessParams{
 		GuildID: guildID, UserID: userID,
 	})
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, domain.NotFound("guild")
+			return nil, nil, domain.NotFound("guild")
 		}
-		return nil, domain.Internal(err)
+		return nil, nil, domain.Internal(err)
 	}
 	if !access.IsMember {
-		return nil, domain.NotFound("guild")
+		return nil, nil, domain.NotFound("guild")
 	}
 	roles, err := decodeRoles(access.Roles)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	channels, err := s.repo.ListChannels(ctx, guildID)
 	if err != nil {
-		return nil, domain.Internal(err)
+		return nil, nil, domain.Internal(err)
 	}
 	rows, err := s.repo.ListGuildOverwrites(ctx, guildID)
 	if err != nil {
-		return nil, domain.Internal(err)
+		return nil, nil, domain.Internal(err)
 	}
 
 	byChannel := make(map[uuid.UUID][]domain.Overwrite, len(rows))
@@ -162,13 +175,16 @@ func (s *Service) ListChannels(ctx context.Context, userID, guildID uuid.UUID) (
 		})
 	}
 
-	visible := make([]dbgen.Channel, 0, len(channels))
+	visible = make([]dbgen.Channel, 0, len(channels))
+	hidden = make([]uuid.UUID, 0)
 	for _, ch := range channels {
 		if domain.ResolvePermissions(access.OwnerID, userID, roles, byChannel[ch.ID]).Has(domain.PermViewChannel) {
 			visible = append(visible, ch)
+		} else {
+			hidden = append(hidden, ch.ID)
 		}
 	}
-	return visible, nil
+	return visible, hidden, nil
 }
 
 func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, name, kind string, position int32) (dbgen.Channel, error) {
@@ -198,6 +214,7 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 	if err != nil {
 		return dbgen.Channel{}, domain.Internal(err)
 	}
+	s.permissionsChanged(ctx, guildID)
 	return ch, nil
 }
 
