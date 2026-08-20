@@ -78,10 +78,10 @@ func (g *Gateway) sessionsFor(userID uuid.UUID) int {
 }
 
 func (g *Gateway) register(s *session, guildIDs []uuid.UUID) {
-	topics := make([]string, 0, len(guildIDs)+1)
+	topics := make([]string, 0, 2*len(guildIDs)+1)
 	topics = append(topics, pubsub.TopicUser(s.userID))
 	for _, id := range guildIDs {
-		topics = append(topics, pubsub.TopicGuild(id))
+		topics = append(topics, pubsub.TopicGuild(id), pubsub.TopicGuildControl(id))
 	}
 
 	g.mu.Lock()
@@ -187,14 +187,78 @@ func (g *Gateway) unsubscribeLocked(topic string, s *session) {
 }
 
 func (g *Gateway) fanout(topic string, ch <-chan []byte) {
+	guildID, isControl := pubsub.ControlGuild(topic)
+
 	for raw := range ch {
+		if isControl {
+			g.refreshVisibility(topic, guildID)
+			continue
+		}
+
+		channelID, scoped := scopedChannel(raw)
+
 		g.mu.RLock()
 		if route, ok := g.topics[topic]; ok {
 			for s := range route.members {
+				if scoped && !s.canSee(channelID) {
+					continue
+				}
 				s.enqueue(raw)
 			}
 		}
 		g.mu.RUnlock()
+	}
+}
+
+func scopedChannel(raw []byte) (uuid.UUID, bool) {
+	var frame struct {
+		T events.EventType `json:"t"`
+		D struct {
+			ChannelID *uuid.UUID `json:"channel_id"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(raw, &frame); err != nil {
+		return uuid.Nil, false
+	}
+	switch frame.T {
+	case events.EventMessageCreate, events.EventMessageUpdate, events.EventMessageDelete,
+		events.EventTypingStart, events.EventVoiceStateUpdate, events.EventVoiceScreenUpdate:
+		if frame.D.ChannelID == nil {
+			return uuid.Nil, false
+		}
+		return *frame.D.ChannelID, true
+	default:
+		return uuid.Nil, false
+	}
+}
+
+func (g *Gateway) refreshVisibility(topic string, guildID uuid.UUID) {
+	g.mu.RLock()
+	sessions := make([]*session, 0)
+	if route, ok := g.topics[topic]; ok {
+		for s := range route.members {
+			sessions = append(sessions, s)
+		}
+	}
+	g.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hiddenFor := make(map[uuid.UUID][]uuid.UUID, len(sessions))
+	for _, s := range sessions {
+		hidden, cached := hiddenFor[s.userID]
+		if !cached {
+			_, resolved, err := g.guilds.PartitionChannels(ctx, s.userID, guildID)
+			if err != nil {
+				slog.ErrorContext(ctx, "refresh channel visibility",
+					"user_id", s.userID, "guild_id", guildID, "error", err)
+				continue
+			}
+			hidden = resolved
+			hiddenFor[s.userID] = hidden
+		}
+		s.hideInGuild(guildID, hidden)
 	}
 }
 

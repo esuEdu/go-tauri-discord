@@ -33,8 +33,33 @@ type session struct {
 	seq       int64
 	replay    []replayEntry
 	topics    map[string]struct{}
+	hidden    map[uuid.UUID]uuid.UUID
 	connected bool
 	expiry    *time.Timer
+}
+
+func (s *session) hideInGuild(guildID uuid.UUID, channelIDs []uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.hidden == nil {
+		s.hidden = make(map[uuid.UUID]uuid.UUID, len(channelIDs))
+	}
+	for channelID, owner := range s.hidden {
+		if owner == guildID {
+			delete(s.hidden, channelID)
+		}
+	}
+	for _, channelID := range channelIDs {
+		s.hidden[channelID] = guildID
+	}
+}
+
+func (s *session) canSee(channelID uuid.UUID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, hidden := s.hidden[channelID]
+	return !hidden
 }
 
 func newSession(user dbgen.User) *session {
