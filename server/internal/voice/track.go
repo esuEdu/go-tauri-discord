@@ -10,8 +10,9 @@ import (
 type Source string
 
 const (
-	SourceMicrophone Source = "mic"
-	SourceScreen     Source = "screen"
+	SourceMicrophone  Source = "mic"
+	SourceScreen      Source = "screen"
+	SourceScreenAudio Source = "screenaudio"
 )
 
 func TrackName(source Source, userID uuid.UUID, ssrc uint32) string {

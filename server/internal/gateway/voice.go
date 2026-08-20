@@ -14,13 +14,14 @@ import (
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-func (g *Gateway) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid *string) {
+func (g *Gateway) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid, screenAudioMid *string) {
 	g.sendToUser(userID, events.Frame{
 		Op: events.OpVoiceOffer,
 		D: mustJSON(events.SessionDescription{
-			Type:      sdp.Type.String(),
-			SDP:       sdp.SDP,
-			ScreenMid: screenMid,
+			Type:           sdp.Type.String(),
+			SDP:            sdp.SDP,
+			ScreenMid:      screenMid,
+			ScreenAudioMid: screenAudioMid,
 		}),
 	})
 }

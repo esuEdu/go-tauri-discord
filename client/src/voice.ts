@@ -16,9 +16,11 @@ export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
 
 export type RemoteScreen = { userID: string | null; stream: MediaStream };
 
-export type TrackSource = "mic" | "screen";
+export type TrackSource = "mic" | "screen" | "screenaudio";
 
 export type TrackOwner = { source: TrackSource; userID: string };
+
+const SOURCES: TrackSource[] = ["mic", "screen", "screenaudio"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,10 +29,9 @@ export function parseTrackName(name: string): TrackOwner | null {
   const last = name.lastIndexOf("-");
   if (first < 0 || last <= first) return null;
 
-  const source = name.slice(0, first);
+  const source = SOURCES.find((s) => s === name.slice(0, first));
   const userID = name.slice(first + 1, last);
-  if (source !== "mic" && source !== "screen") return null;
-  if (!UUID.test(userID)) return null;
+  if (!source || !UUID.test(userID)) return null;
 
   return { source, userID };
 }
@@ -153,6 +154,7 @@ class VoiceClient {
   private display: MediaStream | null = null;
   private quality: ScreenQuality = storedQuality();
   private screenMid: string | null = null;
+  private screenAudioMid: string | null = null;
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private screenListeners = new Set<(s: ScreenState) => void>();
@@ -297,6 +299,7 @@ class VoiceClient {
         await this.pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
         const known = this.screenMid;
         this.screenMid = offer.screen_mid ?? null;
+        this.screenAudioMid = offer.screen_audio_mid ?? null;
         this.applyScreen();
         if (known !== this.screenMid) this.emitScreens();
         const answer = await this.pc.createAnswer();
@@ -336,14 +339,19 @@ class VoiceClient {
     if (!this.pc || this.screenMid === null) return false;
     if (this.display) return true;
 
+    const capture = (audio: boolean) =>
+      navigator.mediaDevices.getDisplayMedia({ video: this.captureConstraints(), audio });
+
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: this.captureConstraints(),
-        audio: false,
-      });
-    } catch {
-      return false;
+      stream = await capture(true);
+    } catch (error) {
+      if ((error as DOMException | undefined)?.name === "NotAllowedError") return false;
+      try {
+        stream = await capture(false);
+      } catch {
+        return false;
+      }
     }
 
     const track = stream.getVideoTracks()[0];
@@ -376,16 +384,24 @@ class VoiceClient {
     gateway.sendRaw({ op: OpVoiceScreen, d: { active } satisfies VoiceScreenRequest });
   }
 
+  private transceiverAt(mid: string | null): RTCRtpTransceiver | null {
+    if (!this.pc || mid === null) return null;
+    return this.pc.getTransceivers().find((t) => t.mid === mid) ?? null;
+  }
+
   private screenTransceiver(): RTCRtpTransceiver | null {
-    if (!this.pc || this.screenMid === null) return null;
-    return this.pc.getTransceivers().find((t) => t.mid === this.screenMid) ?? null;
+    return this.transceiverAt(this.screenMid);
   }
 
   private applyScreen() {
-    const transceiver = this.screenTransceiver();
+    this.publish(this.screenMid, this.display?.getVideoTracks()[0] ?? null);
+    this.publish(this.screenAudioMid, this.display?.getAudioTracks()[0] ?? null);
+  }
+
+  private publish(mid: string | null, track: MediaStreamTrack | null) {
+    const transceiver = this.transceiverAt(mid);
     if (!transceiver) return;
 
-    const track = this.display?.getVideoTracks()[0] ?? null;
     if (transceiver.sender.track !== track) {
       void transceiver.sender.replaceTrack(track);
     }
@@ -516,6 +532,7 @@ class VoiceClient {
     this.display?.getTracks().forEach((t) => t.stop());
     this.display = null;
     this.screenMid = null;
+    this.screenAudioMid = null;
     this.videoStreams.clear();
     this.owners.clear();
 

@@ -333,8 +333,8 @@ refresh, which no cached design avoids. Anything already delivered stays
 delivered — this retracts nothing, it only stops the next event.
 
 Voice is fixed at join for a different reason: the SFU reserves a member's
-video transceiver when they connect, so revoking `Stream` mid-call does not
-retract the one they already have. It applies on rejoin.
+screen transceivers when they connect, so revoking `Stream` mid-call does not
+retract the ones they already have. It applies on rejoin.
 
 ### Desktop client
 
@@ -385,6 +385,23 @@ The server is always the offerer, which removes SDP glare entirely: clients
 only ever answer. Joining requires the `Connect` permission on the channel.
 `ICE_SERVERS` configures STUN, and `VOICE_DISABLED=true` turns voice off.
 
+Every forwarded track is renamed by the SFU as `source-owner-ssrc` before it
+leaves — `mic-<user>-<ssrc>`, `screen-<user>-<ssrc>`, `screenaudio-<user>-<ssrc>`.
+What a publisher calls its own tracks is whatever its browser invented, which
+tells a listener nothing; the alternative is a gateway message per track saying
+who it belongs to. The name travels inside the SDP that has to be sent anyway,
+so a listener knows the owner of a stream the moment it arrives rather than one
+round trip later.
+
+That is what makes **per-person volume** possible. Each remote stream runs
+through its own Web Audio gain node, so a listener can push a quiet friend above
+100% as readily as turn a loud one down. The setting is the listener's alone —
+kept in `localStorage`, keyed by user rather than by stream so it survives the
+other person reconnecting, and sent nowhere. The stream is also held by a muted
+audio element, because Chrome will not pump a remote stream into Web Audio
+unless a media element holds it too; that element is the fallback path when a
+browser refuses to build the graph at all, and there volume stops at 100%.
+
 ### Screen sharing
 
 A screen rides as a second track on the same peer connection, so sharing costs
@@ -417,13 +434,23 @@ The transceiver is only reserved for members holding the `Stream` permission.
 Without it there is no video section in the offer at all, so the SDP itself
 refuses the share rather than a check that could be forgotten.
 
-`VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, because
-nothing in a forwarded track says whose it is — the viewer needs it to put a
-name on a tile. Joiners are told about shares already in progress.
+Sound from the shared screen rides a **second recvonly audio transceiver**,
+reserved by the same permission and announced by its own `mid`. It has to be a
+slot of its own, because the SFU decides what an arriving track is by the
+transceiver it came in on rather than by its codec: display audio and a
+microphone are both Opus, and nothing in the media tells them apart. Sound
+joins and leaves the room with the picture, so a withdrawn share goes quiet as
+well as dark.
+
+`VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, so a viewer
+can name a tile before any media arrives and can drop the tile when the share
+stops. Joiners are told about shares already in progress.
 
 Capture uses `getDisplayMedia`, so the window and display picker is the
 browser's. Webviews that do not implement it cannot share; the browser build
-can.
+can. Audio is asked for and retried without on refusal, since Chrome offers the
+sound of a tab or a window and WebKit offers none — a silent share is normal
+rather than a failure.
 
 Capture runs to a budget the sharer picks, because the right trade depends on
 what is on the screen and on the link carrying it. Each preset fixes a
@@ -609,6 +636,8 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [ ] Attachments and avatars on S3-compatible storage
 - [x] SFU WebRTC voice channels
 - [x] Screen sharing with window selection and picked quality presets
+- [x] Screen share carries its own sound, on a transceiver of its own
+- [x] A volume slider per person, kept by the listener and able to exceed 100%
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
 - [ ] Screen capture proven on the Windows and Linux desktop builds

@@ -28,11 +28,14 @@ type voiceClient struct {
 
 	keyframes chan struct{}
 
-	mu         sync.Mutex
-	screen     *webrtc.TrackLocalStaticSample
-	screenMid  string
-	screenStop chan struct{}
-	writing    bool
+	mu             sync.Mutex
+	screen         *webrtc.TrackLocalStaticSample
+	screenSound    *webrtc.TrackLocalStaticSample
+	screenMid      string
+	screenSoundMid string
+	screenStop     chan struct{}
+	writing        bool
+	writingSound   bool
 }
 
 func (c *voiceClient) watchKeyframeRequests(sender *webrtc.RTPSender) {
@@ -136,8 +139,9 @@ func (c *voiceClient) pump() {
 				}); err != nil {
 					continue
 				}
-				c.rememberScreenMid(sdp.ScreenMid)
+				c.rememberScreenMids(sdp.ScreenMid, sdp.ScreenAudioMid)
 				c.attachScreen(sdp.ScreenMid)
+				c.attachScreenSound(sdp.ScreenAudioMid)
 				answer, err := c.pc.CreateAnswer(nil)
 				if err != nil {
 					continue
@@ -216,6 +220,24 @@ func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
 	}
 }
 
+func (c *voiceClient) awaitTrack(source voice.Source, owner uuid.UUID, timeout time.Duration) *webrtc.TrackRemote {
+	c.t.Helper()
+
+	deadline := time.After(timeout)
+	for {
+		select {
+		case remote := <-c.remote:
+			got, from, ok := voice.ParseTrackName(remote.StreamID())
+			if ok && got == source && from == owner {
+				return remote
+			}
+		case <-deadline:
+			c.t.Fatalf("no %s track owned by %s arrived through the SFU", source, owner)
+			return nil
+		}
+	}
+}
+
 func (c *voiceClient) askKeyframe(remote *webrtc.TrackRemote) {
 	c.t.Helper()
 
@@ -226,11 +248,14 @@ func (c *voiceClient) askKeyframe(remote *webrtc.TrackRemote) {
 	}
 }
 
-func (c *voiceClient) rememberScreenMid(mid *string) {
+func (c *voiceClient) rememberScreenMids(video, sound *string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if mid != nil {
-		c.screenMid = *mid
+	if video != nil {
+		c.screenMid = *video
+	}
+	if sound != nil {
+		c.screenSoundMid = *sound
 	}
 }
 
@@ -238,6 +263,12 @@ func (c *voiceClient) reservedMid() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.screenMid
+}
+
+func (c *voiceClient) reservedSoundMid() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.screenSoundMid
 }
 
 func (c *voiceClient) midOf(track *webrtc.TrackRemote) string {
@@ -253,6 +284,30 @@ func (c *voiceClient) midOf(track *webrtc.TrackRemote) string {
 	return ""
 }
 
+func (c *voiceClient) attachAt(mid string, track *webrtc.TrackLocalStaticSample) (*webrtc.RTPSender, bool) {
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if transceiver.Mid() != mid {
+			continue
+		}
+		sender := transceiver.Sender()
+		if sender == nil {
+			added, err := c.pc.AddTrack(track)
+			if err != nil {
+				c.t.Logf("attach track on mid %s: %v", mid, err)
+				return nil, false
+			}
+			return added, true
+		}
+		if sender.Track() != track {
+			if err := sender.ReplaceTrack(track); err != nil {
+				c.t.Logf("replace track on mid %s: %v", mid, err)
+			}
+		}
+		return sender, false
+	}
+	return nil, false
+}
+
 func (c *voiceClient) attachScreen(mid *string) {
 	c.mu.Lock()
 	track := c.screen
@@ -261,32 +316,41 @@ func (c *voiceClient) attachScreen(mid *string) {
 	if track == nil || mid == nil {
 		return
 	}
-	for _, transceiver := range c.pc.GetTransceivers() {
-		if transceiver.Mid() != *mid {
-			continue
-		}
-		sender := transceiver.Sender()
-		if sender == nil {
-			added, err := c.pc.AddTrack(track)
-			if err != nil {
-				c.t.Logf("attach screen track: %v", err)
-				return
-			}
-			go c.watchKeyframeRequests(added)
-			c.startWriting(track)
-			return
-		}
-		if sender.Track() != track {
-			if err := sender.ReplaceTrack(track); err != nil {
-				c.t.Logf("replace screen track: %v", err)
-			}
-		}
-		c.startWriting(track)
+	sender, fresh := c.attachAt(*mid, track)
+	if sender == nil {
 		return
 	}
+	if fresh {
+		go c.watchKeyframeRequests(sender)
+	}
+	c.startWriting(track)
+}
+
+func (c *voiceClient) attachScreenSound(mid *string) {
+	c.mu.Lock()
+	track := c.screenSound
+	c.mu.Unlock()
+
+	if track == nil || mid == nil {
+		return
+	}
+	if sender, _ := c.attachAt(*mid, track); sender == nil {
+		return
+	}
+	c.startWritingSound(track)
 }
 
 func (c *voiceClient) share() {
+	c.t.Helper()
+	c.startSharing(false)
+}
+
+func (c *voiceClient) shareWithSound() {
+	c.t.Helper()
+	c.startSharing(true)
+}
+
+func (c *voiceClient) startSharing(withSound bool) {
 	c.t.Helper()
 
 	track, err := webrtc.NewTrackLocalStaticSample(
@@ -295,10 +359,21 @@ func (c *voiceClient) share() {
 		c.t.Fatalf("create screen track: %v", err)
 	}
 
+	var sound *webrtc.TrackLocalStaticSample
+	if withSound {
+		sound, err = webrtc.NewTrackLocalStaticSample(
+			webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "sound", "-")
+		if err != nil {
+			c.t.Fatalf("create screen sound track: %v", err)
+		}
+	}
+
 	c.mu.Lock()
 	c.screen = track
+	c.screenSound = sound
 	c.screenStop = make(chan struct{})
 	c.writing = false
+	c.writingSound = false
 	c.mu.Unlock()
 
 	c.announceScreen(true)
@@ -315,6 +390,35 @@ func (c *voiceClient) startWriting(track *webrtc.TrackLocalStaticSample) {
 	c.mu.Unlock()
 
 	go c.writeScreen(track, stop)
+}
+
+func (c *voiceClient) startWritingSound(track *webrtc.TrackLocalStaticSample) {
+	c.mu.Lock()
+	if c.writingSound || c.screenStop == nil {
+		c.mu.Unlock()
+		return
+	}
+	c.writingSound = true
+	stop := c.screenStop
+	c.mu.Unlock()
+
+	go c.writeScreenSound(track, stop)
+}
+
+func (c *voiceClient) writeScreenSound(track *webrtc.TrackLocalStaticSample, stop chan struct{}) {
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	sound := make([]byte, 80)
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-stop:
+			return
+		case <-ticker.C:
+			_ = track.WriteSample(media.Sample{Data: sound, Duration: 20 * time.Millisecond})
+		}
+	}
 }
 
 func (c *voiceClient) writeScreen(track *webrtc.TrackLocalStaticSample, stop chan struct{}) {
@@ -347,6 +451,7 @@ func (c *voiceClient) stopSharingQuietly() {
 	stop := c.screenStop
 	c.screenStop = nil
 	c.writing = false
+	c.writingSound = false
 	c.mu.Unlock()
 
 	if stop != nil {
@@ -360,8 +465,10 @@ func (c *voiceClient) resumeSharing() {
 
 	c.mu.Lock()
 	track := c.screen
+	sound := c.screenSound
 	c.screenStop = make(chan struct{})
 	c.writing = false
+	c.writingSound = false
 	c.mu.Unlock()
 
 	if track == nil {
@@ -369,24 +476,30 @@ func (c *voiceClient) resumeSharing() {
 	}
 	c.announceScreen(true)
 	c.startWriting(track)
+	if sound != nil {
+		c.startWritingSound(sound)
+	}
 }
 
 func (c *voiceClient) stopSharing() {
 	c.t.Helper()
 
 	c.mu.Lock()
-	mid := c.screenMid
+	mids := map[string]bool{c.screenMid: true, c.screenSoundMid: true}
+	delete(mids, "")
 	stop := c.screenStop
 	c.screen = nil
+	c.screenSound = nil
 	c.screenStop = nil
 	c.writing = false
+	c.writingSound = false
 	c.mu.Unlock()
 
 	if stop != nil {
 		close(stop)
 	}
 	for _, transceiver := range c.pc.GetTransceivers() {
-		if transceiver.Mid() != mid {
+		if !mids[transceiver.Mid()] {
 			continue
 		}
 		if sender := transceiver.Sender(); sender != nil {

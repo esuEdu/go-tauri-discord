@@ -149,9 +149,10 @@ type VoiceStateRequest struct {
 }
 
 type SessionDescription struct {
-	Type      string  `json:"type"`
-	SDP       string  `json:"sdp"`
-	ScreenMid *string `json:"screen_mid"`
+	Type           string  `json:"type"`
+	SDP            string  `json:"sdp"`
+	ScreenMid      *string `json:"screen_mid"`
+	ScreenAudioMid *string `json:"screen_audio_mid"`
 }
 
 type ICECandidate struct {
