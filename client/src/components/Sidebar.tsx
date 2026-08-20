@@ -10,6 +10,7 @@ interface Props {
   onSelectGuild: (g: Guild) => void;
   onSelectChannel: (c: Channel) => void;
   onGuildsChanged: () => void;
+  unread: Record<string, boolean>;
 }
 
 export function Sidebar({
@@ -20,6 +21,7 @@ export function Sidebar({
   onSelectGuild,
   onSelectChannel,
   onGuildsChanged,
+  unread,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -115,7 +117,12 @@ export function Sidebar({
               className={c.id === activeChannel?.id ? "channel active" : "channel"}
               onClick={() => onSelectChannel(c)}
             >
-              {c.kind === "voice" ? "🔊" : "#"} {c.name}
+              <span className="channel-name">
+                {c.kind === "voice" ? "🔊" : "#"} {c.name}
+              </span>
+              {unread[c.id] && c.id !== activeChannel?.id && (
+                <span className="unread" aria-label="unread messages" />
+              )}
             </button>
           ))}
 

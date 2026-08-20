@@ -6,6 +6,7 @@ import { DeleteAccount } from "./components/DeleteAccount";
 import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
 import { Voice } from "./components/Voice";
+import { emptySession, session, type SessionState } from "./session";
 import { serverIsPinned, serverURL } from "./server";
 import type { Channel, Guild, User } from "./types/events.gen";
 
@@ -24,6 +25,13 @@ export default function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [state, setState] = useState<SessionState>(emptySession);
+
+  useEffect(() => session.onChange(setState), []);
+
+  useEffect(() => {
+    session.reading(activeChannel?.kind === "text" ? activeChannel.id : null);
+  }, [activeChannel]);
 
   useEffect(() => {
     if (!api.authenticated) {
@@ -123,6 +131,7 @@ export default function App() {
 
   function endSession() {
     gateway.close();
+    session.forget();
     setUser(null);
     setGuilds([]);
     setChannels([]);
@@ -148,6 +157,7 @@ export default function App() {
         onSelectGuild={setActiveGuild}
         onSelectChannel={setActiveChannel}
         onGuildsChanged={() => void loadGuilds()}
+        unread={state.unread}
       />
 
       <main className="main">
