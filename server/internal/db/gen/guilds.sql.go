@@ -164,12 +164,52 @@ func (q *Queries) DeleteChannel(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteChannelOverwrite = `-- name: DeleteChannelOverwrite :exec
+DELETE FROM channel_overwrites
+WHERE channel_id = $1 AND target_id = $2
+`
+
+type DeleteChannelOverwriteParams struct {
+	ChannelID uuid.UUID
+	TargetID  uuid.UUID
+}
+
+func (q *Queries) DeleteChannelOverwrite(ctx context.Context, arg DeleteChannelOverwriteParams) error {
+	_, err := q.db.Exec(ctx, deleteChannelOverwrite, arg.ChannelID, arg.TargetID)
+	return err
+}
+
 const deleteGuild = `-- name: DeleteGuild :exec
 DELETE FROM guilds WHERE id = $1
 `
 
 func (q *Queries) DeleteGuild(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteGuild, id)
+	return err
+}
+
+const deleteOverwritesForTarget = `-- name: DeleteOverwritesForTarget :exec
+DELETE FROM channel_overwrites o
+USING channels c
+WHERE c.id = o.channel_id AND c.guild_id = $1 AND o.target_id = $2
+`
+
+type DeleteOverwritesForTargetParams struct {
+	GuildID  uuid.UUID
+	TargetID uuid.UUID
+}
+
+func (q *Queries) DeleteOverwritesForTarget(ctx context.Context, arg DeleteOverwritesForTargetParams) error {
+	_, err := q.db.Exec(ctx, deleteOverwritesForTarget, arg.GuildID, arg.TargetID)
+	return err
+}
+
+const deleteRole = `-- name: DeleteRole :exec
+DELETE FROM roles WHERE id = $1
+`
+
+func (q *Queries) DeleteRole(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteRole, id)
 	return err
 }
 
@@ -229,6 +269,54 @@ func (q *Queries) GetGuildMember(ctx context.Context, arg GetGuildMemberParams) 
 		&i.JoinedAt,
 	)
 	return i, err
+}
+
+const getRole = `-- name: GetRole :one
+SELECT id, guild_id, name, permissions, position, is_default FROM roles WHERE id = $1
+`
+
+func (q *Queries) GetRole(ctx context.Context, id uuid.UUID) (Role, error) {
+	row := q.db.QueryRow(ctx, getRole, id)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Permissions,
+		&i.Position,
+		&i.IsDefault,
+	)
+	return i, err
+}
+
+const listChannelOverwrites = `-- name: ListChannelOverwrites :many
+SELECT channel_id, target_id, target_type, allow, deny FROM channel_overwrites WHERE channel_id = $1 ORDER BY target_id
+`
+
+func (q *Queries) ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]ChannelOverwrite, error) {
+	rows, err := q.db.Query(ctx, listChannelOverwrites, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChannelOverwrite{}
+	for rows.Next() {
+		var i ChannelOverwrite
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.TargetID,
+			&i.TargetType,
+			&i.Allow,
+			&i.Deny,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listChannels = `-- name: ListChannels :many
@@ -427,6 +515,45 @@ func (q *Queries) ListGuildsOwnedBy(ctx context.Context, ownerID uuid.UUID) ([]G
 	return items, nil
 }
 
+const listMemberRoles = `-- name: ListMemberRoles :many
+SELECT r.id, r.guild_id, r.name, r.permissions, r.position, r.is_default FROM roles r
+JOIN member_roles mr ON mr.role_id = r.id
+WHERE mr.guild_id = $1 AND mr.user_id = $2
+ORDER BY r.position DESC, r.id
+`
+
+type ListMemberRolesParams struct {
+	GuildID uuid.UUID
+	UserID  uuid.UUID
+}
+
+func (q *Queries) ListMemberRoles(ctx context.Context, arg ListMemberRolesParams) ([]Role, error) {
+	rows, err := q.db.Query(ctx, listMemberRoles, arg.GuildID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Role{}
+	for rows.Next() {
+		var i Role
+		if err := rows.Scan(
+			&i.ID,
+			&i.GuildID,
+			&i.Name,
+			&i.Permissions,
+			&i.Position,
+			&i.IsDefault,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoles = `-- name: ListRoles :many
 SELECT id, guild_id, name, permissions, position, is_default FROM roles WHERE guild_id = $1 ORDER BY position DESC, id
 `
@@ -501,7 +628,9 @@ SELECT
     g.owner_id,
     (m.user_id IS NOT NULL)::bool AS is_member,
     COALESCE((
-        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+        SELECT json_agg(json_build_object('id', r.id,
+                                          'permissions', r.permissions,
+                                          'position', r.position)
                         ORDER BY r.position DESC, r.id)
         FROM roles r
         WHERE r.guild_id = c.guild_id
@@ -565,7 +694,9 @@ SELECT
     g.owner_id,
     (m.user_id IS NOT NULL)::bool AS is_member,
     COALESCE((
-        SELECT json_agg(json_build_object('id', r.id, 'permissions', r.permissions)
+        SELECT json_agg(json_build_object('id', r.id,
+                                          'permissions', r.permissions,
+                                          'position', r.position)
                         ORDER BY r.position DESC, r.id)
         FROM roles r
         WHERE r.guild_id = g.id
@@ -612,6 +743,57 @@ type TransferGuildOwnershipParams struct {
 func (q *Queries) TransferGuildOwnership(ctx context.Context, arg TransferGuildOwnershipParams) error {
 	_, err := q.db.Exec(ctx, transferGuildOwnership, arg.OwnerID, arg.ID)
 	return err
+}
+
+const unassignRole = `-- name: UnassignRole :exec
+DELETE FROM member_roles
+WHERE guild_id = $1 AND user_id = $2 AND role_id = $3
+`
+
+type UnassignRoleParams struct {
+	GuildID uuid.UUID
+	UserID  uuid.UUID
+	RoleID  uuid.UUID
+}
+
+func (q *Queries) UnassignRole(ctx context.Context, arg UnassignRoleParams) error {
+	_, err := q.db.Exec(ctx, unassignRole, arg.GuildID, arg.UserID, arg.RoleID)
+	return err
+}
+
+const updateRole = `-- name: UpdateRole :one
+UPDATE roles SET
+    name        = COALESCE($1, name),
+    permissions = COALESCE($2, permissions),
+    position    = COALESCE($3, position)
+WHERE id = $4
+RETURNING id, guild_id, name, permissions, position, is_default
+`
+
+type UpdateRoleParams struct {
+	Name        *string
+	Permissions *int64
+	Position    *int32
+	ID          uuid.UUID
+}
+
+func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (Role, error) {
+	row := q.db.QueryRow(ctx, updateRole,
+		arg.Name,
+		arg.Permissions,
+		arg.Position,
+		arg.ID,
+	)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Permissions,
+		&i.Position,
+		&i.IsDefault,
+	)
+	return i, err
 }
 
 const upsertChannelOverwrite = `-- name: UpsertChannelOverwrite :exec
