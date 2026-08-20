@@ -75,13 +75,24 @@ type Guild struct {
 }
 
 type Channel struct {
-	ID       uuid.UUID  `json:"id"`
-	GuildID  uuid.UUID  `json:"guild_id"`
-	ParentID *uuid.UUID `json:"parent_id"`
-	Kind     string     `json:"kind"`
-	Name     string     `json:"name"`
-	Topic    *string    `json:"topic"`
-	Position int32      `json:"position"`
+	ID            uuid.UUID  `json:"id"`
+	GuildID       uuid.UUID  `json:"guild_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+	Kind          string     `json:"kind"`
+	Name          string     `json:"name"`
+	Topic         *string    `json:"topic"`
+	Position      int32      `json:"position"`
+	LastMessageID *uuid.UUID `json:"last_message_id"`
+}
+
+type Member struct {
+	GuildID uuid.UUID `json:"guild_id"`
+	User    User      `json:"user"`
+}
+
+type ReadState struct {
+	ChannelID         uuid.UUID  `json:"channel_id"`
+	LastReadMessageID *uuid.UUID `json:"last_read_message_id"`
 }
 
 type Role struct {
@@ -120,10 +131,13 @@ type Message struct {
 }
 
 type Ready struct {
-	SessionID string    `json:"session_id"`
-	User      User      `json:"user"`
-	Guilds    []Guild   `json:"guilds"`
-	Channels  []Channel `json:"channels"`
+	SessionID  string      `json:"session_id"`
+	User       User        `json:"user"`
+	Guilds     []Guild     `json:"guilds"`
+	Channels   []Channel   `json:"channels"`
+	Members    []Member    `json:"members"`
+	ReadStates []ReadState `json:"read_states"`
+	Online     []uuid.UUID `json:"online"`
 }
 
 type MessageDelete struct {

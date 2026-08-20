@@ -23,6 +23,8 @@ type Repository interface {
 	SoftDeleteMessage(ctx context.Context, id uuid.UUID) error
 	ListAttachmentsForMessages(ctx context.Context, messageIDs []uuid.UUID) ([]dbgen.Attachment, error)
 	UpsertReadState(ctx context.Context, arg dbgen.UpsertReadStateParams) error
+	ListReadStates(ctx context.Context, userID uuid.UUID) ([]dbgen.ReadState, error)
+	ListLatestMessageIDs(ctx context.Context, channelIDs []uuid.UUID) ([]dbgen.ListLatestMessageIDsRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 }
 
@@ -279,4 +281,37 @@ func (s *Service) MarkRead(ctx context.Context, userID, channelID, messageID uui
 		return domain.Internal(err)
 	}
 	return nil
+}
+
+func (s *Service) ReadStates(ctx context.Context, userID uuid.UUID) ([]events.ReadState, error) {
+	rows, err := s.repo.ListReadStates(ctx, userID)
+	if err != nil {
+		return nil, domain.Internal(err)
+	}
+
+	states := make([]events.ReadState, 0, len(rows))
+	for _, row := range rows {
+		states = append(states, events.ReadState{
+			ChannelID:         row.ChannelID,
+			LastReadMessageID: row.LastReadMessageID,
+		})
+	}
+	return states, nil
+}
+
+func (s *Service) LatestMessages(ctx context.Context, channelIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	if len(channelIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.repo.ListLatestMessageIDs(ctx, channelIDs)
+	if err != nil {
+		return nil, domain.Internal(err)
+	}
+
+	latest := make(map[uuid.UUID]uuid.UUID, len(rows))
+	for _, row := range rows {
+		latest[row.ChannelID] = row.ID
+	}
+	return latest, nil
 }

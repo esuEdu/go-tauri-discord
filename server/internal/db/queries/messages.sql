@@ -49,3 +49,10 @@ DO UPDATE SET
 
 -- name: ListReadStates :many
 SELECT * FROM read_states WHERE user_id = @user_id;
+
+-- name: ListLatestMessageIDs :many
+SELECT DISTINCT ON (channel_id) channel_id, id
+FROM messages
+WHERE channel_id = ANY (@channel_ids::uuid[])
+  AND deleted_at IS NULL
+ORDER BY channel_id, id DESC;
