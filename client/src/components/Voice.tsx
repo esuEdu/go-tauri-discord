@@ -1,18 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { gateway } from "../gateway";
-import { voice, type VoiceStatus } from "../voice";
+import {
+  voice,
+  SCREEN_QUALITIES,
+  type ScreenQualityID,
+  type ScreenState,
+  type VoiceStatus,
+} from "../voice";
 import type { Channel, VoiceStateUpdate } from "../types/events.gen";
+
+const emptyScreens: ScreenState = {
+  sharing: false,
+  canShare: false,
+  local: null,
+  remote: [],
+  quality: "smooth",
+};
+
+function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.srcObject = stream;
+    void element.play().catch(() => undefined);
+  }, [stream]);
+
+  return (
+    <figure className="screen-tile">
+      <video ref={ref} autoPlay playsInline muted />
+      <figcaption className="muted">{label}</figcaption>
+    </figure>
+  );
+}
 
 export function Voice({ channel, selfID }: { channel: Channel; selfID: string }) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [activeChannel, setActiveChannel] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
+  const [screens, setScreens] = useState<ScreenState>(emptyScreens);
+  const [pickerRefused, setPickerRefused] = useState(false);
 
   useEffect(() => voice.onStatusChange((s, id) => {
     setStatus(s);
     setActiveChannel(id);
   }), []);
+
+  useEffect(() => voice.onScreenChange(setScreens), []);
 
   useEffect(() => {
     setMembers([]);
@@ -28,6 +64,11 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
 
   const here = activeChannel === channel.id;
 
+  const share = async () => {
+    setPickerRefused(false);
+    if (!(await voice.startScreenShare())) setPickerRefused(true);
+  };
+
   return (
     <div className="chat">
       <header className="chat-header">
@@ -36,6 +77,19 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
       </header>
 
       <div className="voice-panel">
+        {here && (screens.local || screens.remote.length > 0) && (
+          <div className="screen-grid">
+            {screens.local && <ScreenTile label="Your screen" stream={screens.local} />}
+            {screens.remote.map((screen) => (
+              <ScreenTile
+                key={screen.stream.id}
+                label={screen.userID ? `${screen.userID.slice(0, 8)}'s screen` : "A shared screen"}
+                stream={screen.stream}
+              />
+            ))}
+          </div>
+        )}
+
         <div className="voice-members">
           {members.length === 0 && <div className="muted">Nobody is here yet.</div>}
           {members.map((id) => (
@@ -52,6 +106,27 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               <button onClick={() => setMuted(voice.toggleMute())}>
                 {muted ? "Unmute" : "Mute"}
               </button>
+              {screens.sharing ? (
+                <button onClick={() => void voice.stopScreenShare()}>Stop sharing</button>
+              ) : (
+                <button disabled={!screens.canShare} onClick={() => void share()}>
+                  Share screen
+                </button>
+              )}
+              {screens.canShare && (
+                <select
+                  className="quality"
+                  aria-label="Screen share quality"
+                  value={screens.quality}
+                  onChange={(e) => voice.setScreenQuality(e.target.value as ScreenQualityID)}
+                >
+                  {SCREEN_QUALITIES.map((quality) => (
+                    <option key={quality.id} value={quality.id}>
+                      {quality.label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button className="leave" onClick={() => void voice.leave()}>
                 Disconnect
               </button>
@@ -60,6 +135,16 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             <button onClick={() => void voice.join(channel.id)}>Join voice</button>
           )}
         </div>
+
+        {here && !screens.canShare && status === "connected" && (
+          <div className="muted">You do not have permission to share a screen here.</div>
+        )}
+
+        {pickerRefused && (
+          <div className="muted">
+            No screen was picked. Some desktop builds cannot capture a screen — try the browser.
+          </div>
+        )}
 
         {status === "failed" && (
           <div className="error">

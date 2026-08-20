@@ -59,7 +59,7 @@
 - **Language:** Go (1.26+)
 - **Architecture:** Modular monolith — one binary, feature packages, interfaces only at the seams that will actually be cut later
 - **Text Networking:** One multiplexed WebSocket per client (`/gateway`), goroutine-based fanout routed per topic
-- **Voice/Video Routing:** Pion WebRTC / WebSocket signalling *(not yet implemented)*
+- **Voice/Video Routing:** Pion WebRTC SFU with WebSocket signalling
 - **Database:** PostgreSQL 17 with `pgx` + [`sqlc`](https://sqlc.dev) (compile-time checked SQL, no ORM)
 - **Migrations:** [`goose`](https://github.com/pressly/goose), pinned as a Go tool dependency
 
@@ -281,8 +281,69 @@ The server is always the offerer, which removes SDP glare entirely: clients
 only ever answer. Joining requires the `Connect` permission on the channel.
 `ICE_SERVERS` configures STUN, and `VOICE_DISABLED=true` turns voice off.
 
-Screen sharing is not implemented. It becomes a second track on the same peer
-connection once someone wants it.
+### Screen sharing
+
+A screen rides as a second track on the same peer connection, so sharing costs
+no extra ICE negotiation and stops when the call does.
+
+Because the server is the only offerer, a client cannot renegotiate on its own.
+Two things make that workable:
+
+- On join the SFU reserves a **recvonly video transceiver** for the member, and
+  puts its `mid` on every offer. The client binds its capture to that exact
+  transceiver rather than guessing at m-line order, which matters once other
+  people's screens are arriving on video sections of their own.
+- Starting or stopping a share sends `VOICE_SCREEN`, and the server answers
+  with a fresh offer that adds or withdraws the forwarded track.
+
+The sharer has to say it in words because the transport never does. A browser
+that stops sharing calls `replaceTrack(null)` and simply stops sending on the
+same SSRC: the track does not end, so the server's read blocks forever and
+would go on believing the share is live. Viewers would keep the last frame on
+screen for the rest of the call. Nothing in the media path distinguishes a
+stopped share from a screen that has not changed, which is why saying so is a
+message rather than an inference.
+
+Withdrawing does not throw the forwarded track away, because the browser
+resumes on the same SSRC when the member shares again — the SFU would never see
+a new track to forward. The track is taken out of the room and put back, and
+viewers see it appear and disappear.
+
+The transceiver is only reserved for members holding the `Stream` permission.
+Without it there is no video section in the offer at all, so the SDP itself
+refuses the share rather than a check that could be forgotten.
+
+`VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, because
+nothing in a forwarded track says whose it is — the viewer needs it to put a
+name on a tile. Joiners are told about shares already in progress.
+
+Capture uses `getDisplayMedia`, so the window and display picker is the
+browser's. Webviews that do not implement it cannot share; the browser build
+can.
+
+Capture runs to a budget the sharer picks, because the right trade depends on
+what is on the screen and on the link carrying it. Each preset fixes a
+resolution, a framerate, a bitrate ceiling, a `contentHint` and a
+`degradationPreference` together, since setting any one of them without the
+others just moves where the encoder cheats:
+
+| Preset | Capture | Ceiling | Under pressure |
+| --- | --- | --- | --- |
+| Light | 720p 30fps | 0.8 Mbps | keeps resolution |
+| **Smooth** (default) | 720p 60fps | 1.5 Mbps | keeps framerate |
+| Sharp | 1080p 30fps | 2.5 Mbps | keeps resolution |
+| High | 1080p 60fps | 4 Mbps | keeps resolution |
+
+The default is smooth rather than sharp because a share that stutters reads as
+broken, while one that is slightly soft only reads as a screen share. Changing
+the preset mid-share needs no renegotiation: `applyConstraints` retunes the
+capture and `setParameters` the encoder, both on a track already flowing. The
+choice is remembered in `localStorage`.
+
+Keyframes are only sent when somebody needs one — when a viewer's answer is
+applied, and when a viewer's own decoder asks, which the SFU relays to the
+publisher no more than twice a second. A screen that nobody has just subscribed
+to costs nothing, which is where a static share's bitrate goes into detail.
 
 ### Sharing a running instance
 
@@ -408,7 +469,8 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Text messages with keyset-paginated history
 - [ ] Attachments and avatars on S3-compatible storage
 - [x] SFU WebRTC voice channels
-- [ ] High-FPS screen sharing with window selection
+- [x] High-FPS screen sharing with window selection (via `getDisplayMedia`)
+- [ ] Native screen capture for webviews without `getDisplayMedia`
 - [ ] Push-to-Talk with native global shortcuts
 - [ ] Noise suppression & acoustic echo cancellation
 - [ ] End-to-end encrypted direct messaging

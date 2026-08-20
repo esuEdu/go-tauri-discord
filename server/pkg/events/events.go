@@ -21,20 +21,23 @@ const (
 	OpVoiceOffer     Opcode = 8
 	OpVoiceAnswer    Opcode = 9
 	OpVoiceCandidate Opcode = 10
+	OpVoiceResync    Opcode = 11
+	OpVoiceScreen    Opcode = 12
 )
 
 type EventType string
 
 const (
-	EventReady            EventType = "READY"
-	EventGuildCreate      EventType = "GUILD_CREATE"
-	EventChannelCreate    EventType = "CHANNEL_CREATE"
-	EventMessageCreate    EventType = "MESSAGE_CREATE"
-	EventMessageUpdate    EventType = "MESSAGE_UPDATE"
-	EventMessageDelete    EventType = "MESSAGE_DELETE"
-	EventTypingStart      EventType = "TYPING_START"
-	EventPresenceUpdate   EventType = "PRESENCE_UPDATE"
-	EventVoiceStateUpdate EventType = "VOICE_STATE_UPDATE"
+	EventReady             EventType = "READY"
+	EventGuildCreate       EventType = "GUILD_CREATE"
+	EventChannelCreate     EventType = "CHANNEL_CREATE"
+	EventMessageCreate     EventType = "MESSAGE_CREATE"
+	EventMessageUpdate     EventType = "MESSAGE_UPDATE"
+	EventMessageDelete     EventType = "MESSAGE_DELETE"
+	EventTypingStart       EventType = "TYPING_START"
+	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
+	EventVoiceStateUpdate  EventType = "VOICE_STATE_UPDATE"
+	EventVoiceScreenUpdate EventType = "VOICE_SCREEN_UPDATE"
 )
 
 type Frame struct {
@@ -129,8 +132,9 @@ type VoiceStateRequest struct {
 }
 
 type SessionDescription struct {
-	Type string `json:"type"`
-	SDP  string `json:"sdp"`
+	Type      string  `json:"type"`
+	SDP       string  `json:"sdp"`
+	ScreenMid *string `json:"screen_mid"`
 }
 
 type ICECandidate struct {
@@ -146,6 +150,18 @@ type VoiceStateUpdate struct {
 	UserID    uuid.UUID  `json:"user_id"`
 	SelfMute  bool       `json:"self_mute"`
 	SelfDeaf  bool       `json:"self_deaf"`
+}
+
+type VoiceScreenRequest struct {
+	Active bool `json:"active"`
+}
+
+type VoiceScreenUpdate struct {
+	GuildID   uuid.UUID `json:"guild_id"`
+	ChannelID uuid.UUID `json:"channel_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	StreamID  string    `json:"stream_id"`
+	Active    bool      `json:"active"`
 }
 
 func NewDispatch(t EventType, d any) (Frame, error) {

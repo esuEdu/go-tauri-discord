@@ -382,3 +382,48 @@ input:focus {
 .voice-controls .leave {
   background: var(--danger);
 }
+
+.voice-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.voice-controls .quality {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.voice-controls .quality:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.screen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.screen-tile {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screen-tile video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.screen-tile figcaption {
+  font-size: 12px;
+}

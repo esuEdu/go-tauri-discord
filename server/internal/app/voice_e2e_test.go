@@ -5,10 +5,12 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
@@ -22,6 +24,32 @@ type voiceClient struct {
 	track  *webrtc.TrackLocalStaticSample
 	remote chan *webrtc.TrackRemote
 	done   chan struct{}
+
+	keyframes chan struct{}
+
+	mu         sync.Mutex
+	screen     *webrtc.TrackLocalStaticSample
+	screenMid  string
+	screenStop chan struct{}
+	writing    bool
+}
+
+func (c *voiceClient) watchKeyframeRequests(sender *webrtc.RTPSender) {
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		for _, packet := range packets {
+			if _, ok := packet.(*rtcp.PictureLossIndication); !ok {
+				continue
+			}
+			select {
+			case c.keyframes <- struct{}{}:
+			default:
+			}
+		}
+	}
 }
 
 func newVoiceClient(t *testing.T, h *harness) *voiceClient {
@@ -42,12 +70,13 @@ func newVoiceClient(t *testing.T, h *harness) *voiceClient {
 	}
 
 	c := &voiceClient{
-		t:      t,
-		sock:   h.dial(),
-		pc:     pc,
-		track:  track,
-		remote: make(chan *webrtc.TrackRemote, 4),
-		done:   make(chan struct{}),
+		t:         t,
+		sock:      h.dial(),
+		pc:        pc,
+		track:     track,
+		remote:    make(chan *webrtc.TrackRemote, 4),
+		keyframes: make(chan struct{}, 4),
+		done:      make(chan struct{}),
 	}
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
@@ -106,6 +135,8 @@ func (c *voiceClient) pump() {
 				}); err != nil {
 					continue
 				}
+				c.rememberScreenMid(sdp.ScreenMid)
+				c.attachScreen(sdp.ScreenMid)
 				answer, err := c.pc.CreateAnswer(nil)
 				if err != nil {
 					continue
@@ -155,6 +186,215 @@ func (c *voiceClient) streamSilence() {
 			}
 		}
 	}()
+}
+
+func (c *voiceClient) drainKeyframes() {
+	for {
+		select {
+		case <-c.keyframes:
+		default:
+			return
+		}
+	}
+}
+
+func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
+	c.t.Helper()
+
+	deadline := time.After(timeout)
+	for {
+		select {
+		case remote := <-c.remote:
+			if remote.Kind() == webrtc.RTPCodecTypeVideo {
+				return remote
+			}
+		case <-deadline:
+			c.t.Fatal("no screen track arrived through the SFU")
+			return nil
+		}
+	}
+}
+
+func (c *voiceClient) askKeyframe(remote *webrtc.TrackRemote) {
+	c.t.Helper()
+
+	if err := c.pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: uint32(remote.SSRC())},
+	}); err != nil {
+		c.t.Fatalf("send picture loss indication: %v", err)
+	}
+}
+
+func (c *voiceClient) rememberScreenMid(mid *string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if mid != nil {
+		c.screenMid = *mid
+	}
+}
+
+func (c *voiceClient) reservedMid() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.screenMid
+}
+
+func (c *voiceClient) midOf(track *webrtc.TrackRemote) string {
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if receiver := transceiver.Receiver(); receiver != nil {
+			for _, candidate := range receiver.Tracks() {
+				if candidate == track {
+					return transceiver.Mid()
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (c *voiceClient) attachScreen(mid *string) {
+	c.mu.Lock()
+	track := c.screen
+	c.mu.Unlock()
+
+	if track == nil || mid == nil {
+		return
+	}
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if transceiver.Mid() != *mid {
+			continue
+		}
+		sender := transceiver.Sender()
+		if sender == nil {
+			added, err := c.pc.AddTrack(track)
+			if err != nil {
+				c.t.Logf("attach screen track: %v", err)
+				return
+			}
+			go c.watchKeyframeRequests(added)
+			c.startWriting(track)
+			return
+		}
+		if sender.Track() != track {
+			if err := sender.ReplaceTrack(track); err != nil {
+				c.t.Logf("replace screen track: %v", err)
+			}
+		}
+		c.startWriting(track)
+		return
+	}
+}
+
+func (c *voiceClient) share() {
+	c.t.Helper()
+
+	track, err := webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "-", "-")
+	if err != nil {
+		c.t.Fatalf("create screen track: %v", err)
+	}
+
+	c.mu.Lock()
+	c.screen = track
+	c.screenStop = make(chan struct{})
+	c.writing = false
+	c.mu.Unlock()
+
+	c.announceScreen(true)
+}
+
+func (c *voiceClient) startWriting(track *webrtc.TrackLocalStaticSample) {
+	c.mu.Lock()
+	if c.writing || c.screenStop == nil {
+		c.mu.Unlock()
+		return
+	}
+	c.writing = true
+	stop := c.screenStop
+	c.mu.Unlock()
+
+	go c.writeScreen(track, stop)
+}
+
+func (c *voiceClient) writeScreen(track *webrtc.TrackLocalStaticSample, stop chan struct{}) {
+	ticker := time.NewTicker(33 * time.Millisecond)
+	defer ticker.Stop()
+	frame := make([]byte, 128)
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-stop:
+			return
+		case <-ticker.C:
+			_ = track.WriteSample(media.Sample{Data: frame, Duration: 33 * time.Millisecond})
+		}
+	}
+}
+
+func (c *voiceClient) announceScreen(active bool) {
+	c.sock.write(events.Frame{
+		Op: events.OpVoiceScreen,
+		D:  mustJSON(c.t, events.VoiceScreenRequest{Active: active}),
+	})
+}
+
+func (c *voiceClient) stopSharingQuietly() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	stop := c.screenStop
+	c.screenStop = nil
+	c.writing = false
+	c.mu.Unlock()
+
+	if stop != nil {
+		close(stop)
+	}
+	c.announceScreen(false)
+}
+
+func (c *voiceClient) resumeSharing() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	track := c.screen
+	c.screenStop = make(chan struct{})
+	c.writing = false
+	c.mu.Unlock()
+
+	if track == nil {
+		c.t.Fatal("resumed a share that was never started")
+	}
+	c.announceScreen(true)
+	c.startWriting(track)
+}
+
+func (c *voiceClient) stopSharing() {
+	c.t.Helper()
+
+	c.mu.Lock()
+	mid := c.screenMid
+	stop := c.screenStop
+	c.screen = nil
+	c.screenStop = nil
+	c.writing = false
+	c.mu.Unlock()
+
+	if stop != nil {
+		close(stop)
+	}
+	for _, transceiver := range c.pc.GetTransceivers() {
+		if transceiver.Mid() != mid {
+			continue
+		}
+		if sender := transceiver.Sender(); sender != nil {
+			if err := sender.ReplaceTrack(nil); err != nil {
+				c.t.Logf("clear screen track: %v", err)
+			}
+		}
+	}
+	c.announceScreen(false)
 }
 
 func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {

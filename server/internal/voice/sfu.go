@@ -2,21 +2,25 @@ package voice
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
 
 var ErrNotConnected = errors.New("voice: peer is not connected")
 
 type Signaler interface {
-	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription)
+	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid *string)
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
 	VoiceClosed(userID uuid.UUID)
+	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
 }
 
 type SFU struct {
@@ -33,12 +37,18 @@ type room struct {
 	channelID uuid.UUID
 	peers     map[uuid.UUID]*peer
 	tracks    map[string]*webrtc.TrackLocalStaticRTP
+	screens   map[uuid.UUID]string
+	keyframes map[string]func()
 }
 
 type peer struct {
-	userID uuid.UUID
-	pc     *webrtc.PeerConnection
-	owned  map[string]bool
+	userID      uuid.UUID
+	pc          *webrtc.PeerConnection
+	owned       map[string]bool
+	screen      *webrtc.RTPTransceiver
+	screenTrack *webrtc.TrackLocalStaticRTP
+	screenAsk   func()
+	redo        bool
 
 	mu         sync.Mutex
 	pending    []webrtc.ICECandidateInit
@@ -46,10 +56,51 @@ type peer struct {
 }
 
 const (
-	signalAttempts = 25
-	signalBackoff  = 2 * time.Second
-	rtpBufferSize  = 1500
+	signalAttempts   = 25
+	signalBackoff    = 2 * time.Second
+	rtpBufferSize    = 1500
+	keyframeCooldown = 500 * time.Millisecond
 )
+
+type keyframeRequester struct {
+	pc   *webrtc.PeerConnection
+	ssrc webrtc.SSRC
+
+	mu   sync.Mutex
+	last time.Time
+}
+
+func (k *keyframeRequester) ask() {
+	k.mu.Lock()
+	if !k.last.IsZero() && time.Since(k.last) < keyframeCooldown {
+		k.mu.Unlock()
+		return
+	}
+	k.last = time.Now()
+	k.mu.Unlock()
+
+	_ = k.pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: uint32(k.ssrc)},
+	})
+}
+
+func relayKeyframeRequests(sender *webrtc.RTPSender, ask func()) {
+	if sender == nil {
+		return
+	}
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		for _, packet := range packets {
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				ask()
+			}
+		}
+	}
+}
 
 func New(signaler Signaler, iceServers []string) (*SFU, error) {
 	mediaEngine := &webrtc.MediaEngine{}
@@ -81,7 +132,7 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 	}, nil
 }
 
-func (s *SFU) Join(channelID, userID uuid.UUID) error {
+func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	s.Leave(userID)
 
 	pc, err := s.api.NewPeerConnection(s.config)
@@ -96,6 +147,16 @@ func (s *SFU) Join(channelID, userID uuid.UUID) error {
 
 	p := &peer{userID: userID, pc: pc, owned: make(map[string]bool)}
 
+	if mayStream {
+		screen, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
+		if err != nil {
+			pc.Close()
+			return err
+		}
+		p.screen = screen
+	}
+
 	s.mu.Lock()
 	r, ok := s.rooms[channelID]
 	if !ok {
@@ -103,6 +164,8 @@ func (s *SFU) Join(channelID, userID uuid.UUID) error {
 			channelID: channelID,
 			peers:     make(map[uuid.UUID]*peer),
 			tracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
+			screens:   make(map[uuid.UUID]string),
+			keyframes: make(map[string]func()),
 		}
 		s.rooms[channelID] = r
 	}
@@ -135,8 +198,16 @@ func (s *SFU) Join(channelID, userID uuid.UUID) error {
 }
 
 func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
+	screen := remote.Kind() == webrtc.RTPCodecTypeVideo
+
+	trackID, streamID := remote.ID(), remote.StreamID()
+	if screen {
+		trackID = fmt.Sprintf("screen-%s-%d", p.userID, remote.SSRC())
+		streamID = trackID
+	}
+
 	local, err := webrtc.NewTrackLocalStaticRTP(
-		remote.Codec().RTPCodecCapability, remote.ID(), remote.StreamID())
+		remote.Codec().RTPCodecCapability, trackID, streamID)
 	if err != nil {
 		slog.Error("voice: create local track", "error", err)
 		return
@@ -145,15 +216,40 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote) {
 	s.mu.Lock()
 	r.tracks[local.ID()] = local
 	p.owned[local.ID()] = true
+	if screen {
+		r.screens[p.userID] = local.StreamID()
+		r.keyframes[local.ID()] = (&keyframeRequester{pc: p.pc, ssrc: remote.SSRC()}).ask
+		p.screenTrack = local
+		p.screenAsk = r.keyframes[local.ID()]
+	}
 	s.signalLocked(r)
 	s.mu.Unlock()
 
+	if screen {
+		s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), true)
+	}
+
 	defer func() {
 		s.mu.Lock()
+		_, wasLive := r.tracks[local.ID()]
 		delete(r.tracks, local.ID())
 		delete(p.owned, local.ID())
+		delete(r.keyframes, local.ID())
+		if screen {
+			if r.screens[p.userID] == local.StreamID() {
+				delete(r.screens, p.userID)
+			}
+			if p.screenTrack == local {
+				p.screenTrack = nil
+				p.screenAsk = nil
+			}
+		}
 		s.signalLocked(r)
 		s.mu.Unlock()
+
+		if screen && wasLive {
+			s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), false)
+		}
 	}()
 
 	buf := make([]byte, rtpBufferSize)
@@ -184,6 +280,7 @@ func (s *SFU) Leave(userID uuid.UUID) {
 	}
 	p := r.peers[userID]
 	delete(r.peers, userID)
+	delete(r.screens, userID)
 
 	if p != nil {
 		for id := range p.owned {
@@ -211,7 +308,42 @@ func (s *SFU) Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error {
 	if err := p.pc.SetRemoteDescription(sdp); err != nil {
 		return err
 	}
-	return p.drainCandidates()
+	if err := p.drainCandidates(); err != nil {
+		return err
+	}
+	s.refreshSubscribedScreens(userID)
+	return nil
+}
+
+func (s *SFU) refreshSubscribedScreens(userID uuid.UUID) {
+	s.mu.Lock()
+	channelID, ok := s.homes[userID]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		s.mu.Unlock()
+		return
+	}
+	p := r.peers[userID]
+	if p == nil {
+		s.mu.Unlock()
+		return
+	}
+
+	asks := make([]func(), 0, len(r.keyframes))
+	for id, ask := range r.keyframes {
+		if !p.owned[id] {
+			asks = append(asks, ask)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, ask := range asks {
+		go ask()
+	}
 }
 
 func (s *SFU) AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error {
@@ -228,6 +360,88 @@ func (s *SFU) AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) 
 	}
 	p.mu.Unlock()
 	return p.pc.AddICECandidate(candidate)
+}
+
+func (s *SFU) Resync(userID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		return ErrNotConnected
+	}
+
+	p.redo = true
+	s.signalLocked(r)
+	return nil
+}
+
+func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
+	s.mu.Lock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+
+	track := p.screenTrack
+	changed := false
+	if track != nil {
+		_, live := r.tracks[track.ID()]
+		switch {
+		case active && !live:
+			r.tracks[track.ID()] = track
+			r.keyframes[track.ID()] = p.screenAsk
+			r.screens[userID] = track.StreamID()
+			changed = true
+		case !active && live:
+			delete(r.tracks, track.ID())
+			delete(r.keyframes, track.ID())
+			delete(r.screens, userID)
+			changed = true
+		}
+	}
+
+	p.redo = true
+	s.signalLocked(r)
+	s.mu.Unlock()
+
+	if changed {
+		s.signaler.ScreenChanged(channelID, userID, track.StreamID(), active)
+	}
+	return nil
+}
+
+func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := s.rooms[channelID]
+	if r == nil {
+		return nil
+	}
+	out := make(map[uuid.UUID]string, len(r.screens))
+	maps.Copy(out, r.screens)
+	return out
 }
 
 func (s *SFU) ChannelOf(userID uuid.UUID) (uuid.UUID, bool) {
@@ -325,6 +539,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			continue
 		}
 
+		changed := false
 		sent := map[string]bool{}
 		for _, sender := range p.pc.GetSenders() {
 			track := sender.Track()
@@ -335,23 +550,29 @@ func (s *SFU) syncLocked(r *room) bool {
 				if err := p.pc.RemoveTrack(sender); err != nil {
 					return false
 				}
+				changed = true
 				continue
 			}
 			sent[track.ID()] = true
 		}
 
-		changed := false
 		for id, track := range r.tracks {
 			if sent[id] || p.owned[id] {
 				continue
 			}
-			if _, err := p.pc.AddTrack(track); err != nil {
+			transceiver, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
+				Direction: webrtc.RTPTransceiverDirectionSendonly,
+			})
+			if err != nil {
 				return false
+			}
+			if ask := r.keyframes[id]; ask != nil {
+				go relayKeyframeRequests(transceiver.Sender(), ask)
 			}
 			changed = true
 		}
 
-		if !changed && p.pc.LocalDescription() != nil {
+		if !changed && !p.redo && p.pc.LocalDescription() != nil {
 			continue
 		}
 		if p.pc.SignalingState() != webrtc.SignalingStateStable {
@@ -365,7 +586,19 @@ func (s *SFU) syncLocked(r *room) bool {
 		if err := p.pc.SetLocalDescription(offer); err != nil {
 			return false
 		}
-		s.signaler.SendOffer(p.userID, offer)
+		p.redo = false
+		s.signaler.SendOffer(p.userID, offer, p.screenMid())
 	}
 	return true
+}
+
+func (p *peer) screenMid() *string {
+	if p.screen == nil {
+		return nil
+	}
+	mid := p.screen.Mid()
+	if mid == "" {
+		return nil
+	}
+	return &mid
 }
