@@ -477,9 +477,16 @@ stops. Joiners are told about shares already in progress.
 
 Capture uses `getDisplayMedia`, so the window and display picker is the
 browser's. Webviews that do not implement it cannot share; the browser build
-can. Audio is asked for and retried without on refusal, since Chrome offers the
-sound of a tab or a window and WebKit offers none — a silent share is normal
-rather than a failure.
+can. Audio is asked for and retried without on refusal, since a browser offers
+the sound of a **tab** and little else — on macOS, picking a window or a whole
+screen returns video with no audio track at all, and it does so silently. The
+packaged WebKit app offers none under any circumstances.
+
+That silence used to be indistinguishable from a bug: sound played on the
+sharer's machine, nobody heard it, and nothing said why. A share running
+without an audio track now says so, and says what to do about it. `systemAudio:
+"include"` is asked for as well, which buys whole-screen sound on the platforms
+that have it and is ignored where it does not exist.
 
 Capture runs to a budget the sharer picks, because the right trade depends on
 what is on the screen and on the link carrying it. Each preset fixes a
