@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -30,6 +32,11 @@ type SFU struct {
 	mu    sync.Mutex
 	rooms map[uuid.UUID]*room
 	homes map[uuid.UUID]uuid.UUID
+
+	birth    sync.Mutex
+	arriving cc.BandwidthEstimator
+	stop     chan struct{}
+	stopOnce sync.Once
 }
 
 type room struct {
@@ -49,6 +56,7 @@ type peer struct {
 	screenTrack      *webrtc.TrackLocalStaticRTP
 	screenAudioTrack *webrtc.TrackLocalStaticRTP
 	screenAsk        func()
+	estimate         cc.BandwidthEstimator
 	redo             bool
 
 	mu         sync.Mutex
@@ -104,16 +112,6 @@ func relayKeyframeRequests(sender *webrtc.RTPSender, ask func()) {
 }
 
 func New(signaler Signaler, iceServers []string) (*SFU, error) {
-	mediaEngine := &webrtc.MediaEngine{}
-	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
-		return nil, err
-	}
-
-	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
-		return nil, err
-	}
-
 	servers := make([]webrtc.ICEServer, 0, len(iceServers))
 	for _, url := range iceServers {
 		if url != "" {
@@ -121,22 +119,52 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 		}
 	}
 
-	return &SFU{
-		api: webrtc.NewAPI(
-			webrtc.WithMediaEngine(mediaEngine),
-			webrtc.WithInterceptorRegistry(registry),
-		),
+	s := &SFU{
 		config:   webrtc.Configuration{ICEServers: servers},
 		signaler: signaler,
 		rooms:    make(map[uuid.UUID]*room),
 		homes:    make(map[uuid.UUID]uuid.UUID),
-	}, nil
+		stop:     make(chan struct{}),
+	}
+
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		return nil, err
+	}
+
+	registry := &interceptor.Registry{}
+
+	congestion, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+		return gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(initialEstimate))
+	})
+	if err != nil {
+		return nil, err
+	}
+	congestion.OnNewPeerConnection(func(_ string, estimator cc.BandwidthEstimator) {
+		s.arriving = estimator
+	})
+	registry.Add(congestion)
+
+	if err := webrtc.ConfigureTWCCHeaderExtensionSender(mediaEngine, registry); err != nil {
+		return nil, err
+	}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
+		return nil, err
+	}
+
+	s.api = webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithInterceptorRegistry(registry),
+	)
+
+	go s.sampleBandwidth()
+	return s, nil
 }
 
 func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	s.Leave(userID)
 
-	pc, err := s.api.NewPeerConnection(s.config)
+	pc, estimator, err := s.newPeerConnection()
 	if err != nil {
 		return err
 	}
@@ -146,7 +174,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		return err
 	}
 
-	p := &peer{userID: userID, pc: pc, owned: make(map[string]bool)}
+	p := &peer{userID: userID, pc: pc, owned: make(map[string]bool), estimate: estimator}
 
 	if mayStream {
 		screen, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
@@ -504,6 +532,8 @@ func (s *SFU) Participants(channelID uuid.UUID) []uuid.UUID {
 }
 
 func (s *SFU) Close() {
+	s.stopOnce.Do(func() { close(s.stop) })
+
 	s.mu.Lock()
 	peers := make([]*peer, 0)
 	for _, r := range s.rooms {
