@@ -98,6 +98,7 @@ export const SCREEN_QUALITIES: ScreenQuality[] = [
 
 export type ScreenState = {
   sharing: boolean;
+  sound: boolean;
   canShare: boolean;
   local: MediaStream | null;
   remote: RemoteScreen[];
@@ -183,6 +184,7 @@ class VoiceClient {
     }
     return {
       sharing: this.display !== null,
+      sound: (this.display?.getAudioTracks().length ?? 0) > 0,
       canShare: this.screenMid !== null,
       local: this.display,
       remote,
@@ -340,7 +342,11 @@ class VoiceClient {
     if (this.display) return true;
 
     const capture = (audio: boolean) =>
-      navigator.mediaDevices.getDisplayMedia({ video: this.captureConstraints(), audio });
+      navigator.mediaDevices.getDisplayMedia({
+        video: this.captureConstraints(),
+        audio,
+        systemAudio: "include",
+      } as DisplayMediaStreamOptions);
 
     let stream: MediaStream;
     try {

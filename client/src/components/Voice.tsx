@@ -14,6 +14,7 @@ import type { Channel, VoiceStateUpdate } from "../types/events.gen";
 
 const emptyScreens: ScreenState = {
   sharing: false,
+  sound: false,
   canShare: false,
   local: null,
   remote: [],
@@ -140,7 +141,9 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                 {muted ? "Unmute" : "Mute"}
               </button>
               {screens.sharing ? (
-                <button onClick={() => void voice.stopScreenShare()}>Stop sharing</button>
+                <button onClick={() => void voice.stopScreenShare()}>
+                  {screens.sound ? "Stop sharing (with sound)" : "Stop sharing"}
+                </button>
               ) : (
                 <button disabled={!screens.canShare} onClick={() => void share()}>
                   Share screen
@@ -168,6 +171,13 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             <button onClick={() => void voice.join(channel.id)}>Join voice</button>
           )}
         </div>
+
+        {here && screens.sharing && !screens.sound && (
+          <div className="muted">
+            Sharing without sound. A browser only captures audio from a tab — reshare, pick the
+            tab that is playing, and tick “Also share tab audio”.
+          </div>
+        )}
 
         {here && !screens.canShare && status === "connected" && (
           <div className="muted">You do not have permission to share a screen here.</div>
