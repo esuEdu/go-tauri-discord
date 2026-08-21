@@ -509,6 +509,38 @@ applied, and when a viewer's own decoder asks, which the SFU relays to the
 publisher no more than twice a second. A screen that nobody has just subscribed
 to costs nothing, which is where a static share's bitrate goes into detail.
 
+#### What every viewer gets, and what that costs
+
+The same stream. The SFU copies one incoming track and forwards those packets
+to everybody, so what a share costs is fixed at the publisher by whichever
+preset the sharer picked. A viewer on a weak link cannot ask for less, and one
+on a good link cannot get more.
+
+The fix for that is simulcast, and it is **not reachable from the current
+signalling model**. A browser only sends multiple encodings if it created the
+transceiver with `sendEncodings`, which only an offerer can do; the other route,
+a server offer carrying `a=simulcast:recv`, does not exist in pion — the rids
+that would generate it are read from the *remote* description, so an offer that
+nothing has answered yet cannot declare them. Simulcast means letting the client
+offer for its screen, which means giving up the no-glare property above. That is
+a real trade, not an oversight.
+
+So the server measures before anyone decides. Each subscriber peer connection
+carries a send-side bandwidth estimator, and while a share is live the SFU
+records, every five seconds, how much its viewers can take:
+
+```
+voice: screen bandwidth channel_id=… viewers=3 lowest_bps=420000
+    highest_bps=6100000 spread=14.5 one_stream_fits_all=false
+```
+
+`spread` is the ratio between the best-off viewer and the worst-off one, and it
+is the number that settles the argument. Near 1 and the cheap fix works: relay
+the minimum estimate to the publisher and everyone is served by one stream. Far
+from 1 and that same fix means the person on hotel wifi decides what everyone
+else watches, and only simulcast will do. Nothing has been built on top of this
+yet on purpose — the estimates are the evidence, and there is not enough of it.
+
 ### Sharing a running instance
 
 The Go server can serve the built UI, so the whole app lives on one port and
