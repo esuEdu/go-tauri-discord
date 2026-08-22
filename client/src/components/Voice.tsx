@@ -5,8 +5,10 @@ import {
   MAX_VOLUME,
   SCREEN_QUALITIES,
   type ScreenQualityID,
+  noVolumes,
   type ScreenState,
   type VoiceStatus,
+  type VolumeTarget,
   type Volumes,
 } from "../voice";
 import { emptySession, session, type SessionState } from "../session";
@@ -18,6 +20,7 @@ const emptyScreens: ScreenState = {
   canShare: false,
   local: null,
   remote: [],
+  audible: [],
   quality: "smooth",
 };
 
@@ -39,19 +42,32 @@ function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
   );
 }
 
-function VolumeSlider({ userID, level }: { userID: string; level: number }) {
+function VolumeSlider({
+  userID,
+  name,
+  target,
+  level,
+  tagged,
+}: {
+  userID: string;
+  name: string;
+  target: VolumeTarget;
+  level: number;
+  tagged: boolean;
+}) {
   const percent = Math.round(level * 100);
 
   return (
     <label className="volume">
+      {tagged && <span className="volume-tag muted">{target}</span>}
       <input
         type="range"
         min={0}
         max={MAX_VOLUME * 100}
         step={5}
         value={percent}
-        aria-label={`Volume for ${userID.slice(0, 8)}`}
-        onChange={(e) => voice.setVolume(userID, Number(e.target.value) / 100)}
+        aria-label={target === "screen" ? `Screen volume for ${name}` : `Volume for ${name}`}
+        onChange={(e) => voice.setVolume(userID, target, Number(e.target.value) / 100)}
       />
       <span className="muted">{percent}%</span>
     </label>
@@ -64,7 +80,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const [members, setMembers] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
-  const [volumes, setVolumes] = useState<Volumes>({});
+  const [volumes, setVolumes] = useState<Volumes>(noVolumes);
   const [people, setPeople] = useState<SessionState>(emptySession);
   const [pickerRefused, setPickerRefused] = useState(false);
 
@@ -128,7 +144,24 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                 {id === selfID ? "You" : people.names[id] ?? id.slice(0, 8)}
               </span>
               {here && id !== selfID && (
-                <VolumeSlider userID={id} level={volumes[id] ?? 1} />
+                <div className="volumes">
+                  <VolumeSlider
+                    userID={id}
+                    name={people.names[id] ?? id.slice(0, 8)}
+                    target="voice"
+                    level={volumes.voice[id] ?? 1}
+                    tagged={screens.audible.includes(id)}
+                  />
+                  {screens.audible.includes(id) && (
+                    <VolumeSlider
+                      userID={id}
+                      name={people.names[id] ?? id.slice(0, 8)}
+                      target="screen"
+                      level={volumes.screen[id] ?? 1}
+                      tagged
+                    />
+                  )}
+                </div>
               )}
             </div>
           ))}

@@ -431,6 +431,15 @@ audio element, because Chrome will not pump a remote stream into Web Audio
 unless a media element holds it too; that element is the fallback path when a
 browser refuses to build the graph at all, and there volume stops at 100%.
 
+A person and **what that person is showing you are two different sounds**, so
+they get two sliders. Someone narrating over a film they are sharing can be
+turned down without silencing the film, and the film can be turned down without
+losing the narration. Both are keyed by user, and the source segment of the
+track name is what tells them apart on arrival — a mic stream is voice, a
+`screenaudio` stream is screen. The second slider appears only while that
+person's share is actually making sound, because a control for silence is
+furniture rather than a control.
+
 ### Screen sharing
 
 A screen rides as a second track on the same peer connection, so sharing costs

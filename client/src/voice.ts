@@ -38,7 +38,15 @@ export function parseTrackName(name: string): TrackOwner | null {
 
 export const MAX_VOLUME = 2;
 
-export type Volumes = Record<string, number>;
+export type VolumeTarget = "voice" | "screen";
+
+export type Volumes = Record<VolumeTarget, Record<string, number>>;
+
+export const noVolumes: Volumes = { voice: {}, screen: {} };
+
+function targetOf(source: TrackSource): VolumeTarget {
+  return source === "screenaudio" ? "screen" : "voice";
+}
 
 export type ScreenQualityID = "light" | "smooth" | "sharp" | "high";
 
@@ -102,6 +110,7 @@ export type ScreenState = {
   canShare: boolean;
   local: MediaStream | null;
   remote: RemoteScreen[];
+  audible: string[];
   quality: ScreenQualityID;
 };
 
@@ -120,15 +129,24 @@ function qualityOf(id: ScreenQualityID): ScreenQuality {
   return SCREEN_QUALITIES.find((q) => q.id === id) ?? SCREEN_QUALITIES[1];
 }
 
-function storedVolumes(): Map<string, number> {
-  try {
-    const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? "{}") as Volumes;
-    const usable = Object.entries(saved).filter(
+function usableLevels(saved: unknown): Record<string, number> {
+  if (typeof saved !== "object" || saved === null) return {};
+  return Object.fromEntries(
+    Object.entries(saved).filter(
       ([, level]) => typeof level === "number" && level >= 0 && level <= MAX_VOLUME,
-    );
-    return new Map(usable);
+    ),
+  ) as Record<string, number>;
+}
+
+function storedVolumes(): Volumes {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? "{}") as Record<string, unknown>;
+    if (saved.voice === undefined && saved.screen === undefined) {
+      return { voice: usableLevels(saved), screen: {} };
+    }
+    return { voice: usableLevels(saved.voice), screen: usableLevels(saved.screen) };
   } catch {
-    return new Map();
+    return { voice: {}, screen: {} };
   }
 }
 
@@ -137,6 +155,7 @@ type Output = {
   node: MediaStreamAudioSourceNode | null;
   gain: GainNode | null;
   userID: string | null;
+  target: VolumeTarget;
 };
 
 class VoiceClient {
@@ -188,8 +207,19 @@ class VoiceClient {
       canShare: this.screenMid !== null,
       local: this.display,
       remote,
+      audible: this.audibleShares(),
       quality: this.quality.id,
     };
+  }
+
+  private audibleShares(): string[] {
+    const owners: string[] = [];
+    for (const output of this.outputs.values()) {
+      if (output.target === "screen" && output.userID && !owners.includes(output.userID)) {
+        owners.push(output.userID);
+      }
+    }
+    return owners;
   }
 
   private emitScreens() {
@@ -199,26 +229,32 @@ class VoiceClient {
 
   onVolumeChange(fn: (v: Volumes) => void): () => void {
     this.volumeListeners.add(fn);
-    fn(Object.fromEntries(this.volumes));
+    fn(this.volumes);
     return () => this.volumeListeners.delete(fn);
   }
 
-  volumeOf(userID: string): number {
-    return this.volumes.get(userID) ?? 1;
+  volumeOf(userID: string, target: VolumeTarget): number {
+    return this.volumes[target][userID] ?? 1;
   }
 
-  setVolume(userID: string, level: number) {
-    this.volumes.set(userID, Math.min(MAX_VOLUME, Math.max(0, level)));
-    localStorage.setItem(VOLUME_KEY, JSON.stringify(Object.fromEntries(this.volumes)));
+  setVolume(userID: string, target: VolumeTarget, level: number) {
+    this.volumes = {
+      ...this.volumes,
+      [target]: {
+        ...this.volumes[target],
+        [userID]: Math.min(MAX_VOLUME, Math.max(0, level)),
+      },
+    };
+    localStorage.setItem(VOLUME_KEY, JSON.stringify(this.volumes));
 
     for (const output of this.outputs.values()) {
-      if (output.userID === userID) this.applyVolume(output);
+      if (output.userID === userID && output.target === target) this.applyVolume(output);
     }
-    for (const fn of this.volumeListeners) fn(Object.fromEntries(this.volumes));
+    for (const fn of this.volumeListeners) fn(this.volumes);
   }
 
   private applyVolume(output: Output) {
-    const level = output.userID ? this.volumeOf(output.userID) : 1;
+    const level = output.userID ? this.volumeOf(output.userID, output.target) : 1;
     if (output.gain) {
       output.gain.gain.value = level;
       return;
@@ -485,11 +521,13 @@ class VoiceClient {
     audio.srcObject = stream;
     audio.autoplay = true;
 
+    const owner = parseTrackName(stream.id);
     const output: Output = {
       audio,
       node: null,
       gain: null,
-      userID: parseTrackName(stream.id)?.userID ?? null,
+      userID: owner?.userID ?? null,
+      target: owner ? targetOf(owner.source) : "voice",
     };
 
     const context = this.context();
@@ -509,6 +547,7 @@ class VoiceClient {
     this.applyVolume(output);
     void audio.play().catch(() => undefined);
     this.outputs.set(stream.id, output);
+    if (output.target === "screen") this.emitScreens();
 
     stream.onremovetrack = () => this.dropOutput(stream.id);
   }
@@ -516,6 +555,7 @@ class VoiceClient {
   private dropOutput(id: string) {
     const output = this.outputs.get(id);
     if (!output) return;
+    if (output.target === "screen") queueMicrotask(() => this.emitScreens());
 
     output.node?.disconnect();
     output.gain?.disconnect();
