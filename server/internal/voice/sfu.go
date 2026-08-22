@@ -16,8 +16,10 @@ import (
 
 var ErrNotConnected = errors.New("voice: peer is not connected")
 
+var ErrNotAllowed = errors.New("voice: not allowed to share a screen here")
+
 type Signaler interface {
-	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription, screenMid, screenAudioMid *string)
+	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription)
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
 	VoiceClosed(userID uuid.UUID)
 	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
@@ -60,8 +62,7 @@ type peer struct {
 	userID           uuid.UUID
 	pc               *webrtc.PeerConnection
 	owned            map[string]bool
-	screen           *webrtc.RTPTransceiver
-	screenAudio      *webrtc.RTPTransceiver
+	mayStream        bool
 	screenTrack      *webrtc.TrackLocalStaticRTP
 	screenAudioTrack *webrtc.TrackLocalStaticRTP
 	screenAsk        func()
@@ -188,25 +189,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	p := &peer{
 		userID: userID, pc: pc, owned: make(map[string]bool),
 		estimate: estimator, ignored: make(map[uuid.UUID]bool),
-		sizes: make(map[uuid.UUID]string),
-	}
-
-	if mayStream {
-		screen, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
-			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
-		if err != nil {
-			pc.Close()
-			return err
-		}
-		p.screen = screen
-
-		screenAudio, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio,
-			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
-		if err != nil {
-			pc.Close()
-			return err
-		}
-		p.screenAudio = screenAudio
+		sizes: make(map[uuid.UUID]string), mayStream: mayStream,
 	}
 
 	s.mu.Lock()
@@ -240,8 +223,8 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		}
 	})
 
-	pc.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		s.forward(r, p, remote, p.sourceOf(receiver))
+	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		s.forward(r, p, remote, SourceMicrophone)
 	})
 
 	s.mu.Lock()
@@ -251,10 +234,10 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 }
 
 func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote, source Source) {
-	s.forwardLayer(r, p, remote, source, remote.RID())
+	s.forwardLayer(r, p, p.pc, remote, source, remote.RID())
 }
 
-func (s *SFU) forwardLayer(r *room, p *peer, remote *webrtc.TrackRemote, source Source, rid string) {
+func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote *webrtc.TrackRemote, source Source, rid string) {
 	trackID := TrackName(source, p.userID, uint32(remote.SSRC()))
 
 	local, err := webrtc.NewTrackLocalStaticRTP(
@@ -270,7 +253,7 @@ func (s *SFU) forwardLayer(r *room, p *peer, remote *webrtc.TrackRemote, source 
 	switch source {
 	case SourceScreen:
 		r.screens[p.userID] = local.StreamID()
-		r.keyframes[local.ID()] = (&keyframeRequester{pc: p.pc, ssrc: remote.SSRC()}).ask
+		r.keyframes[local.ID()] = (&keyframeRequester{pc: from, ssrc: remote.SSRC()}).ask
 		r.layers[local.ID()] = layer{owner: p.userID, rid: rid}
 		p.screenTrack = local
 		p.screenAsk = r.keyframes[local.ID()]
@@ -582,17 +565,6 @@ func (p *peer) sharedTracks() []*webrtc.TrackLocalStaticRTP {
 	return out
 }
 
-func (p *peer) sourceOf(receiver *webrtc.RTPReceiver) Source {
-	switch {
-	case p.screen != nil && receiver == p.screen.Receiver():
-		return SourceScreen
-	case p.screenAudio != nil && receiver == p.screenAudio.Receiver():
-		return SourceScreenAudio
-	default:
-		return SourceMicrophone
-	}
-}
-
 func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -805,18 +777,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			return false
 		}
 		p.redo = false
-		s.signaler.SendOffer(p.userID, offer, midOf(p.screen), midOf(p.screenAudio))
+		s.signaler.SendOffer(p.userID, offer)
 	}
 	return true
-}
-
-func midOf(transceiver *webrtc.RTPTransceiver) *string {
-	if transceiver == nil {
-		return nil
-	}
-	mid := transceiver.Mid()
-	if mid == "" {
-		return nil
-	}
-	return &mid
 }

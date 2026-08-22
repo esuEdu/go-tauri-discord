@@ -31,6 +31,11 @@ func TestTheServerAcceptsAScreenPublishedInSeveralSizes(t *testing.T) {
 	signals := &recordingPublishSignaler{answers: make(chan webrtc.SessionDescription, 1)}
 	sfu.AttachPublishSignaler(signals)
 
+	userID := uuid.New()
+	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
 	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatalf("client peer connection: %v", err)
@@ -57,7 +62,6 @@ func TestTheServerAcceptsAScreenPublishedInSeveralSizes(t *testing.T) {
 		t.Fatalf("set local: %v", err)
 	}
 
-	userID := uuid.New()
 	if err := sfu.PublishScreen(userID, offer); err != nil {
 		t.Fatalf("publish screen: %v", err)
 	}
