@@ -280,10 +280,48 @@ button.link.danger {
 }
 
 .channels-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   padding: 6px 6px 10px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
+}
+
+.add-channel {
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  text-decoration: none;
+}
+
+.inline-form select {
+  font: inherit;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  padding: 0 6px;
+}
+
+.channel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.channel-group + .channel-group {
+  margin-top: 10px;
+}
+
+.category {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 4px 8px;
 }
 
 .channel {
@@ -379,14 +417,32 @@ button.link.danger {
   word-break: break-word;
 }
 
-.message .delete {
+.message .delete,
+.message .edit {
   visibility: hidden;
-  color: var(--danger);
   padding: 0 6px;
 }
 
-.message:hover .delete {
+.message .delete {
+  color: var(--danger);
+}
+
+.message:hover .delete,
+.message:hover .edit {
   visibility: visible;
+}
+
+.edit-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.typing {
+  padding: 0 16px 4px;
+  font-size: 12px;
+  min-height: 18px;
 }
 
 .load-more {
@@ -466,6 +522,43 @@ button.link.danger {
 .invite-link {
   font-size: 11px;
   margin-bottom: 8px;
+}
+
+.invite-limits {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.invite-limits input {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.invite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.invite-row code {
+  flex: none;
+}
+
+.invite-row span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .error.banner {

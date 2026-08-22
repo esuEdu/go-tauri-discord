@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Channel, Guild } from "../types/events.gen";
+import type { Invite } from "../api";
 
 interface Props {
   guilds: Guild[];
@@ -13,6 +14,22 @@ interface Props {
   unread: Record<string, boolean>;
 }
 
+type ChannelGroup = { category: Channel | null; channels: Channel[] };
+
+function groupByCategory(channels: Channel[]): ChannelGroup[] {
+  const categories = channels.filter((c) => c.kind === "category");
+  const rest = channels.filter((c) => c.kind !== "category");
+
+  const loose = rest.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id));
+  const groups: ChannelGroup[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
+
+  for (const category of categories) {
+    const under = rest.filter((c) => c.parent_id === category.id);
+    if (under.length > 0) groups.push({ category, channels: under });
+  }
+  return groups;
+}
+
 export function Sidebar({
   guilds,
   channels,
@@ -23,11 +40,20 @@ export function Sidebar({
   onGuildsChanged,
   unread,
 }: Props) {
+  const grouped = groupByCategory(channels);
+
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [channelName, setChannelName] = useState("");
+  const [channelKind, setChannelKind] = useState<"text" | "voice" | "category">("text");
   const [code, setCode] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [maxUses, setMaxUses] = useState("");
+  const [expiresIn, setExpiresIn] = useState("");
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [managing, setManaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function createGuild(e: React.FormEvent) {
@@ -40,6 +66,19 @@ export function Sidebar({
       onGuildsChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not create");
+    }
+  }
+
+  async function createChannel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeGuild || !channelName.trim()) return;
+    setError(null);
+    try {
+      await api.createChannel(activeGuild.id, channelName.trim(), channelKind, channels.length);
+      setChannelName("");
+      setAddingChannel(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not create the channel");
     }
   }
 
@@ -57,11 +96,47 @@ export function Sidebar({
     }
   }
 
+  const loadInvites = useCallback(async () => {
+    if (!activeGuild) return;
+    try {
+      setInvites(await api.invites(activeGuild.id));
+    } catch {
+      setInvites([]);
+    }
+  }, [activeGuild]);
+
+  useEffect(() => {
+    setManaging(false);
+    setInvites([]);
+    setInviteLink(null);
+  }, [activeGuild]);
+
+  useEffect(() => {
+    if (managing) void loadInvites();
+  }, [managing, loadInvites]);
+
+  async function revoke(code: string) {
+    setError(null);
+    try {
+      await api.revokeInvite(code);
+      await loadInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not revoke");
+    }
+  }
+
   async function makeInvite() {
     if (!activeGuild) return;
     setError(null);
     try {
-      const invite = await api.createInvite(activeGuild.id);
+      const uses = Number(maxUses);
+      const hours = Number(expiresIn);
+      const invite = await api.createInvite(
+        activeGuild.id,
+        uses > 0 ? uses : undefined,
+        hours > 0 ? hours : undefined,
+      );
+      if (managing) void loadInvites();
       const link = `${location.origin}/?invite=${invite.code}`;
       setInviteLink(link);
       try {
@@ -107,33 +182,113 @@ export function Sidebar({
           </form>
         )}
 
-        <div className="channels-head">{activeGuild?.name ?? "No server"}</div>
-
-        {channels
-          .filter((c) => c.kind !== "category")
-          .map((c) => (
+        <div className="channels-head">
+          <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
+          {activeGuild && (
             <button
-              key={c.id}
-              className={c.id === activeChannel?.id ? "channel active" : "channel"}
-              onClick={() => onSelectChannel(c)}
+              className="link add-channel"
+              title="New channel"
+              onClick={() => setAddingChannel(!addingChannel)}
             >
-              <span className="channel-name">
-                {c.kind === "voice" ? "🔊" : "#"} {c.name}
-              </span>
-              {unread[c.id] && c.id !== activeChannel?.id && (
-                <span className="unread" aria-label="unread messages" />
-              )}
+              +
             </button>
-          ))}
+          )}
+        </div>
+
+        {addingChannel && activeGuild && (
+          <form className="inline-form" onSubmit={createChannel}>
+            <input
+              placeholder="channel name"
+              value={channelName}
+              autoFocus
+              onChange={(e) => setChannelName(e.target.value)}
+            />
+            <select
+              aria-label="Channel kind"
+              value={channelKind}
+              onChange={(e) => setChannelKind(e.target.value as "text" | "voice" | "category")}
+            >
+              <option value="text">Text</option>
+              <option value="voice">Voice</option>
+              <option value="category">Category</option>
+            </select>
+            <button type="submit">Create</button>
+          </form>
+        )}
+
+        {grouped.map((group) => (
+          <div key={group.category?.id ?? "loose"} className="channel-group">
+            {group.category && (
+              <div className="category">{group.category.name.toUpperCase()}</div>
+            )}
+            {group.channels.map((c) => (
+              <button
+                key={c.id}
+                className={c.id === activeChannel?.id ? "channel active" : "channel"}
+                onClick={() => onSelectChannel(c)}
+              >
+                <span className="channel-name">
+                  {c.kind === "voice" ? "🔊" : "#"} {c.name}
+                </span>
+                {unread[c.id] && c.id !== activeChannel?.id && (
+                  <span className="unread" aria-label="unread messages" />
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
 
         <div className="join-box">
           {activeGuild && (
             <>
+              <div className="invite-limits">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="uses"
+                  aria-label="Maximum uses, blank for unlimited"
+                  value={maxUses}
+                  onChange={(e) => setMaxUses(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="hours"
+                  aria-label="Expires after, blank for never"
+                  value={expiresIn}
+                  onChange={(e) => setExpiresIn(e.target.value)}
+                />
+              </div>
               <button className="invite-button" onClick={() => void makeInvite()}>
                 {copied ? "Link copied" : "Invite a friend"}
               </button>
               {inviteLink && (
                 <input className="invite-link" readOnly value={inviteLink} onFocus={(e) => e.target.select()} />
+              )}
+
+              <button className="link" onClick={() => setManaging(!managing)}>
+                {managing ? "Hide invites" : "Manage invites"}
+              </button>
+
+              {managing && (
+                <div className="invite-list">
+                  {invites.length === 0 && <div className="muted">No invites yet.</div>}
+                  {invites.map((invite) => (
+                    <div key={invite.code} className="invite-row">
+                      <code>{invite.code}</code>
+                      <span className="muted">
+                        {invite.uses}
+                        {invite.max_uses ? `/${invite.max_uses}` : ""} used
+                        {invite.expires_at
+                          ? `, until ${new Date(invite.expires_at).toLocaleDateString()}`
+                          : ""}
+                      </span>
+                      <button className="link danger" onClick={() => void revoke(invite.code)}>
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}

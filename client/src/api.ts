@@ -11,9 +11,12 @@ export interface Invite {
   code: string;
   guild_id: string;
   guild_name: string;
+  inviter_id: string;
   member_count: number;
   uses: number;
   max_uses: number | null;
+  expires_at: string | null;
+  created_at: string;
 }
 
 export interface AuthResponse {
@@ -164,11 +167,19 @@ export class Api {
     return this.request<Guild>("POST", "/api/v1/guilds", { name });
   }
 
-  createInvite(guildID: string, maxUses?: number): Promise<Invite> {
+  createInvite(guildID: string, maxUses?: number, expiresInHours?: number): Promise<Invite> {
     return this.request<Invite>("POST", `/api/v1/guilds/${guildID}/invites`, {
       max_uses: maxUses ?? null,
-      expires_in_hours: null,
+      expires_in_hours: expiresInHours ?? null,
     });
+  }
+
+  invites(guildID: string): Promise<Invite[]> {
+    return this.request<Invite[]>("GET", `/api/v1/guilds/${guildID}/invites`);
+  }
+
+  revokeInvite(code: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/invites/${code}`);
   }
 
   previewInvite(code: string): Promise<Invite> {
@@ -177,6 +188,19 @@ export class Api {
 
   redeemInvite(code: string): Promise<Guild> {
     return this.request<Guild>("POST", `/api/v1/invites/${code}`);
+  }
+
+  createChannel(
+    guildID: string,
+    name: string,
+    kind: "text" | "voice" | "category",
+    position: number,
+  ): Promise<Channel> {
+    return this.request<Channel>("POST", `/api/v1/guilds/${guildID}/channels`, {
+      name,
+      kind,
+      position,
+    });
   }
 
   channels(guildID: string): Promise<Channel[]> {
@@ -196,6 +220,14 @@ export class Api {
     return this.request<Message>("POST", `/api/v1/channels/${channelID}/messages`, {
       content,
     });
+  }
+
+  editMessage(messageID: string, content: string): Promise<Message> {
+    return this.request<Message>("PATCH", `/api/v1/messages/${messageID}`, { content });
+  }
+
+  typing(channelID: string): Promise<void> {
+    return this.request<void>("POST", `/api/v1/channels/${channelID}/typing`);
   }
 
   deleteMessage(messageID: string): Promise<void> {

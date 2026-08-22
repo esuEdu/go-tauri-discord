@@ -224,21 +224,31 @@ useless when it is not connected.
 **Starting up** — the moment before the app knows who you are.
 
 **A channel in the list** — normal · the one you are reading · **has something
-unread**. Unread is a yes/no; the server does not say how many, so a number
+unread**. Channels may sit under a category heading or loose above them. Unread is a yes/no; the server does not say how many, so a number
 badge would need new work.
 
 **Messages** — loading · none yet · older ones available to load · failed to
-send. Messages are plain text, up to 4000 characters, at 60 per minute. No
-images, no files, no emoji picker, no replies, no reactions, no editing in the
-interface (the server supports editing; nothing offers it).
+send · being edited. Messages are plain text, up to 4000 characters, at 60 per
+minute. No images, no files, no emoji picker, no replies, no reactions.
+
+**Somebody typing** — one person, several people, nobody. It arrives as a
+moment rather than a state, so it fades on its own after a few seconds rather
+than being taken back.
 
 **Making a server** — a name, 1–100 characters. Nothing else: no picture, no
 description, no template.
 
+**Making a channel** — a name and one of three kinds: text, voice, or a category
+to group the other two under. Needs the `ManageChannels` permission, which the
+default role does not carry, so for most members this fails — and the app finds
+out by being refused rather than by knowing in advance. Worth designing for the
+refusal.
+
 **Joining a server** — by pasted code, or by opening a link.
 
-**Inviting someone** — produces a link to copy. It can be limited by number of
-uses and by expiry, though nothing in the interface offers either yet.
+**Inviting someone** — produces a link to copy, optionally limited by number of
+uses and by expiry, both blank by default. Existing invites can be listed and
+revoked, which is its own small state: none yet · several · one being revoked.
 
 **Deleting an account** — needs the password, and must state plainly that
 messages stay behind under "Deleted User", that owned servers pass to another
@@ -272,12 +282,10 @@ available to design without new server work:
 - **Roles and permissions.** Twelve of them — who can post, delete other
   people's messages, make channels, manage roles, kick, ban, join voice, speak,
   share a screen, invite, and administer. All enforced. None visible. Today the
-  only sign is a button missing or a message saying you cannot.
-- **Typing indicators.** The server announces when somebody is typing. Nothing
-  draws it.
-- **Editing a message.**
-- **Channel categories**, for grouping channels under headings.
-- **Invite limits** — uses and expiry.
+  only sign is a button missing or a message saying you cannot. This is by far
+  the largest of them.
+- **Kicking and banning.** Both are permissions the server enforces, and neither
+  has anything behind it — not even a request the app could make.
 - **A member list** for a server. The app knows who is in one; it only uses that
   inside calls.
 
