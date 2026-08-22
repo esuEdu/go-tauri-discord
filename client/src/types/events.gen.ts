@@ -18,6 +18,7 @@ export const OpVoiceAnswer: Opcode = 9;
 export const OpVoiceCandidate: Opcode = 10;
 export const OpVoiceResync: Opcode = 11;
 export const OpVoiceScreen: Opcode = 12;
+export const OpVoiceMute: Opcode = 13;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -151,6 +152,9 @@ export interface VoiceStateUpdate {
   user_id: string;
   self_mute: boolean;
   self_deaf: boolean;
+}
+export interface VoiceMuteRequest {
+  self_mute: boolean;
 }
 export interface VoiceScreenRequest {
   active: boolean;

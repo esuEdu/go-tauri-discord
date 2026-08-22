@@ -157,3 +157,73 @@ func TestResyncOnAnUnknownUserFails(t *testing.T) {
 		t.Errorf("resync error = %v, want %v", err, ErrNotConnected)
 	}
 }
+
+func TestMuteIsRememberedForWhoeverJoinsNext(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, false); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if muted := sfu.Muted(channelID); muted[userID] {
+		t.Fatal("a member arrived already muted")
+	}
+
+	if err := sfu.SetMuted(userID, true); err != nil {
+		t.Fatalf("set muted: %v", err)
+	}
+	if muted := sfu.Muted(channelID); !muted[userID] {
+		t.Error("mute was not remembered, so anyone joining afterwards is told this member is " +
+			"live when they are not; the state has to outlast the announcement that set it")
+	}
+
+	if err := sfu.SetMuted(userID, false); err != nil {
+		t.Fatalf("unset muted: %v", err)
+	}
+	if muted := sfu.Muted(channelID); muted[userID] {
+		t.Error("unmuting left the member muted")
+	}
+}
+
+func TestMutingSomebodyWhoIsNotInACallFails(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	if err := sfu.SetMuted(uuid.New(), true); err != ErrNotConnected {
+		t.Errorf("SetMuted error = %v, want %v", err, ErrNotConnected)
+	}
+}
+
+func TestLeavingForgetsTheMute(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, false); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if err := sfu.SetMuted(userID, true); err != nil {
+		t.Fatalf("set muted: %v", err)
+	}
+
+	sfu.Leave(userID)
+	if err := sfu.Join(channelID, userID, false); err != nil {
+		t.Fatalf("rejoin: %v", err)
+	}
+
+	if muted := sfu.Muted(channelID); muted[userID] {
+		t.Error("a member who left muted came back muted, while their microphone came back live; " +
+			"the two would disagree and nothing would correct it until they toggled")
+	}
+}

@@ -603,3 +603,89 @@ func TestVoiceRejectsTextChannels(t *testing.T) {
 		t.Error("joining a text channel produced a voice state update")
 	}
 }
+
+func (c *voiceClient) setMuted(muted bool) {
+	c.sock.write(events.Frame{
+		Op: events.OpVoiceMute,
+		D:  mustJSON(c.t, events.VoiceMuteRequest{SelfMute: muted}),
+	})
+}
+
+func awaitVoiceState(t *testing.T, s *socket, userID uuid.UUID) events.VoiceStateUpdate {
+	t.Helper()
+	for range 10 {
+		var state events.VoiceStateUpdate
+		decode(t, s.readEvent(events.EventVoiceStateUpdate).D, &state)
+		if state.UserID == userID {
+			return state
+		}
+	}
+	t.Fatalf("no voice state about %s arrived", userID)
+	return events.VoiceStateUpdate{}
+}
+
+func TestMutingIsAnnouncedToTheChannel(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Mutes")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := friend.dial()
+	watcher.identify(friend.token)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.SelfMute {
+		t.Fatal("a member arrived already muted")
+	}
+
+	speaker.setMuted(true)
+
+	state := awaitVoiceState(t, watcher, speakerID)
+	if !state.SelfMute {
+		t.Fatal("muting reached nobody, so a muted member is indistinguishable from a quiet one")
+	}
+	if state.ChannelID == nil || *state.ChannelID != voiceChannel {
+		t.Errorf("mute update named channel %v, want %s", state.ChannelID, voiceChannel)
+	}
+}
+
+func TestSomebodyJoiningLaterIsToldWhoIsMuted(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Late Joiners")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	speaker.setMuted(true)
+	time.Sleep(500 * time.Millisecond)
+
+	latecomer := friend.dial()
+	latecomer.identify(friend.token)
+	latecomer.write(events.Frame{
+		Op: events.OpVoiceState,
+		D:  mustJSON(t, events.VoiceStateRequest{ChannelID: &voiceChannel}),
+	})
+
+	state := awaitVoiceState(t, latecomer, speakerID)
+	if !state.SelfMute {
+		t.Fatal("the snapshot sent on joining reported a muted member as live; mute would only " +
+			"become visible the next time they happened to toggle it")
+	}
+}

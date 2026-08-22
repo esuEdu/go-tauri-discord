@@ -3,11 +3,13 @@ import {
   EventVoiceScreenUpdate,
   OpVoiceAnswer,
   OpVoiceCandidate,
+  OpVoiceMute,
   OpVoiceOffer,
   OpVoiceScreen,
   OpVoiceState,
   type ICECandidate,
   type SessionDescription,
+  type VoiceMuteRequest,
   type VoiceScreenRequest,
   type VoiceScreenUpdate,
 } from "./types/events.gen";
@@ -363,8 +365,11 @@ class VoiceClient {
   toggleMute(): boolean {
     const track = this.microphone?.getAudioTracks()[0];
     if (!track) return false;
+
     track.enabled = !track.enabled;
-    return !track.enabled;
+    const muted = !track.enabled;
+    gateway.sendRaw({ op: OpVoiceMute, d: { self_mute: muted } satisfies VoiceMuteRequest });
+    return muted;
   }
 
   async join(channelID: string, selfID: string) {

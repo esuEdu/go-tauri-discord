@@ -510,6 +510,11 @@ button.link.danger {
   white-space: nowrap;
 }
 
+.voice-muted {
+  font-size: 11px;
+  flex: none;
+}
+
 .volumes {
   display: flex;
   flex-direction: column;

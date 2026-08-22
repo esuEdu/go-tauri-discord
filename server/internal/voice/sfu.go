@@ -56,6 +56,7 @@ type peer struct {
 	screenAudioTrack *webrtc.TrackLocalStaticRTP
 	screenAsk        func()
 	estimate         cc.BandwidthEstimator
+	muted            bool
 	redo             bool
 
 	mu         sync.Mutex
@@ -526,6 +527,44 @@ func (s *SFU) Participants(channelID uuid.UUID) []uuid.UUID {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (s *SFU) Muted(channelID uuid.UUID) map[uuid.UUID]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := s.rooms[channelID]
+	if r == nil {
+		return nil
+	}
+	out := make(map[uuid.UUID]bool, len(r.peers))
+	for id, p := range r.peers {
+		if p.muted {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+func (s *SFU) SetMuted(userID uuid.UUID, muted bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		return ErrNotConnected
+	}
+
+	p.muted = muted
+	return nil
 }
 
 func (s *SFU) Close() {
