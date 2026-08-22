@@ -203,9 +203,13 @@ better.
 
 ### What a viewer sees
 
-The screen itself, and **whose it is**. Nothing else — no way to make it
-fullscreen, no way to pop it out, no way to hide one share while watching
-another, and no way to choose to receive lower quality on a weak connection.
+The screen itself, and **whose it is**, and a way to stop watching it — which
+actually stops it being sent, rather than only hiding it. A dropped share can be
+taken back at any time.
+
+Not offered: making a share fullscreen, popping it out, or choosing to receive
+lower quality on a weak connection. Quality is still whatever the sharer picked;
+the only choice a viewer has is all or nothing.
 
 ### States
 

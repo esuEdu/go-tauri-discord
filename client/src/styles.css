@@ -688,5 +688,21 @@ button.link.danger {
 }
 
 .screen-tile figcaption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dropped-shares {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dropped-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
 }

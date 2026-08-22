@@ -50,6 +50,7 @@ type VoiceEngine interface {
 	Participants(channelID uuid.UUID) []uuid.UUID
 	Muted(channelID uuid.UUID) map[uuid.UUID]bool
 	SetMuted(userID uuid.UUID, muted bool) error
+	SetWatching(viewerID, sharerID uuid.UUID, watching bool) error
 	Sharers(channelID uuid.UUID) map[uuid.UUID]string
 }
 

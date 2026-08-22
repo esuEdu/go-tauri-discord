@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/internal/voice"
@@ -341,4 +342,56 @@ func TestViewerKeyframeRequestReachesThePublisher(t *testing.T) {
 		t.Fatal("a viewer whose decoder asked for a keyframe was never relayed to the publisher, " +
 			"so a tile knocked out by packet loss stays black for the rest of the call")
 	}
+}
+
+func (c *voiceClient) watch(sharer uuid.UUID, watching bool) {
+	c.sock.write(events.Frame{
+		Op: events.OpVoiceWatch,
+		D:  mustJSON(c.t, events.VoiceWatchRequest{UserID: sharer, Watching: watching}),
+	})
+}
+
+func TestAViewerCanDropAShareAndTakeItBack(t *testing.T) {
+	owner := newHarness(t)
+	presenterID, _ := owner.registerUser()
+	guild := owner.createGuild("Dropped Shares")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	viewer := newVoiceClient(t, friend)
+	presenter.pump()
+	viewer.pump()
+
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	presenter.share()
+	remote := viewer.awaitScreen(30 * time.Second)
+	readScreen(t, remote)
+
+	viewer.watch(presenterID, false)
+
+	if err := remote.SetReadDeadline(time.Now().Add(8 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1500)
+	for {
+		if _, _, err := remote.Read(buf); err != nil {
+			break
+		}
+	}
+
+	viewer.watch(presenterID, true)
+
+	again := viewer.awaitScreen(30 * time.Second)
+	readScreen(t, again)
 }

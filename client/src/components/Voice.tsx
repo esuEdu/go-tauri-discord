@@ -22,10 +22,19 @@ const emptyScreens: ScreenState = {
   local: null,
   remote: [],
   audible: [],
+  dropped: [],
   quality: "smooth",
 };
 
-function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
+function ScreenTile({
+  label,
+  stream,
+  onDrop,
+}: {
+  label: string;
+  stream: MediaStream;
+  onDrop?: () => void;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -38,7 +47,14 @@ function ScreenTile({ label, stream }: { label: string; stream: MediaStream }) {
   return (
     <figure className="screen-tile">
       <video ref={ref} autoPlay playsInline muted />
-      <figcaption className="muted">{label}</figcaption>
+      <figcaption className="muted">
+        <span className="channel-name">{label}</span>
+        {onDrop && (
+          <button className="link" onClick={onDrop}>
+            Stop watching
+          </button>
+        )}
+      </figcaption>
     </figure>
   );
 }
@@ -139,7 +155,27 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                 key={screen.stream.id}
                 label={screen.userID ? `${session.nameOf(screen.userID)}'s screen` : "A shared screen"}
                 stream={screen.stream}
+                onDrop={
+                  screen.userID
+                    ? () => voice.watchScreen(screen.userID as string, false)
+                    : undefined
+                }
               />
+            ))}
+          </div>
+        )}
+
+        {here && screens.dropped.length > 0 && (
+          <div className="dropped-shares">
+            {screens.dropped.map((id) => (
+              <div key={id} className="dropped-share muted">
+                <span className="channel-name">
+                  Not watching {session.nameOf(id)}'s screen
+                </span>
+                <button className="link" onClick={() => voice.watchScreen(id, true)}>
+                  Watch again
+                </button>
+              </div>
             ))}
           </div>
         )}

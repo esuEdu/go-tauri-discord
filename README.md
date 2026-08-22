@@ -536,6 +536,19 @@ the preset mid-share needs no renegotiation: `applyConstraints` retunes the
 capture and `setParameters` the encoder, both on a track already flowing. The
 choice is remembered in `localStorage`.
 
+A viewer who is not watching can **say so and stop receiving**. The SFU keeps a
+set of screens each peer has dropped and leaves them out when it builds that
+peer's offer, so the bytes stop rather than being decoded and discarded. Only
+the picture goes: the microphone of the person sharing is untouched, and so is
+the sound of the share, which is cheap and already has a volume of its own.
+Resuming asks the publisher for a keyframe, so the picture returns immediately
+instead of waiting for the next natural one.
+
+This is not the per-viewer quality adaptation that issue #16 is about, and does
+not pretend to be. It is the honest version of the same sentence: a viewer who
+cannot afford a share can decline it, rather than being handed a stream they
+have no way to refuse.
+
 Keyframes are only sent when somebody needs one — when a viewer's answer is
 applied, and when a viewer's own decoder asks, which the SFU relays to the
 publisher no more than twice a second. A screen that nobody has just subscribed
