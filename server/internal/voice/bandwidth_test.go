@@ -4,7 +4,41 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pion/interceptor"
+	"github.com/pion/rtp"
 )
+
+func TestTheEstimatorMeasuresWithoutHoldingPacketsBack(t *testing.T) {
+	estimator, err := newEstimator()
+	if err != nil {
+		t.Fatalf("new estimator: %v", err)
+	}
+	t.Cleanup(func() { estimator.Close() })
+
+	const ssrc = 4321
+	forwarded := 0
+	out := estimator.AddStream(
+		&interceptor.StreamInfo{SSRC: ssrc},
+		interceptor.RTPWriterFunc(func(*rtp.Header, []byte, interceptor.Attributes) (int, error) {
+			forwarded++
+			return 0, nil
+		}),
+	)
+
+	const burst = 400
+	for range burst {
+		if _, err := out.Write(&rtp.Header{SSRC: ssrc}, make([]byte, 1200), nil); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	if forwarded != burst {
+		t.Fatalf("%d of %d packets had left by the time the writes returned; the rest are sitting "+
+			"in a pacer queue draining at the current estimate. A screen share metered that way "+
+			"falls further behind every second the estimate is below what the publisher sends, "+
+			"which is delay this server invented rather than measured", forwarded, burst)
+	}
+}
 
 func TestJoinAttachesABandwidthEstimator(t *testing.T) {
 	sfu, err := New(newRecordingSignaler(), nil)

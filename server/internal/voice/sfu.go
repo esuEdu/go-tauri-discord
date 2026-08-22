@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
-	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -134,9 +133,7 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 
 	registry := &interceptor.Registry{}
 
-	congestion, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
-		return gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(initialEstimate))
-	})
+	congestion, err := cc.NewInterceptor(newEstimator)
 	if err != nil {
 		return nil, err
 	}
