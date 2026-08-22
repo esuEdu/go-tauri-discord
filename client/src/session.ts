@@ -8,6 +8,7 @@ export type SessionState = {
   unread: Record<string, boolean>;
   guildAllows: Record<string, number>;
   channelAllows: Record<string, number>;
+  membersByGuild: Record<string, string[]>;
 };
 
 export const emptySession: SessionState = {
@@ -16,6 +17,7 @@ export const emptySession: SessionState = {
   unread: {},
   guildAllows: {},
   channelAllows: {},
+  membersByGuild: {},
 };
 
 class SessionStore {
@@ -26,6 +28,7 @@ class SessionStore {
   private open: string | null = null;
   private guildAllows: Record<string, number> = {};
   private channelAllows: Record<string, number> = {};
+  private membersByGuild: Record<string, string[]> = {};
   private listeners = new Set<(s: SessionState) => void>();
 
   constructor() {
@@ -62,6 +65,7 @@ class SessionStore {
     this.open = null;
     this.guildAllows = {};
     this.channelAllows = {};
+    this.membersByGuild = {};
     this.emit();
   }
 
@@ -76,6 +80,7 @@ class SessionStore {
       unread,
       guildAllows: this.guildAllows,
       channelAllows: this.channelAllows,
+      membersByGuild: this.membersByGuild,
     };
   }
 
@@ -86,8 +91,10 @@ class SessionStore {
 
   private absorb(ready: Ready) {
     this.names = { [ready.user.id]: ready.user.username };
+    this.membersByGuild = {};
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
+      this.remember(member.guild_id, member.user.id);
     }
 
     this.online = {};
@@ -109,6 +116,12 @@ class SessionStore {
 
     if (this.open) this.catchUp(this.open);
     this.emit();
+  }
+
+  private remember(guildID: string, userID: string) {
+    const here = this.membersByGuild[guildID] ?? [];
+    if (here.includes(userID)) return;
+    this.membersByGuild = { ...this.membersByGuild, [guildID]: [...here, userID] };
   }
 
   private absorbAllowed(allowed: GuildPermissions[]) {

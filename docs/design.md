@@ -227,6 +227,15 @@ useless when it is not connected.
 
 **Starting up** — the moment before the app knows who you are.
 
+**Somebody in the member list** — online or offline, grouped and counted
+separately. Offline is shown rather than hidden: in a group of friends, knowing
+somebody exists matters more than knowing they are out.
+
+**Somebody who joins while you are looking does not appear** until the app is
+reopened. The server tells the person who joined, and tells nobody else, so the
+list is a snapshot taken at connect. Worth knowing before designing anything
+that implies it is live.
+
 **A channel in the list** — normal · the one you are reading · **has something
 unread**. Channels may sit under a category heading or loose above them. Unread is a yes/no; the server does not say how many, so a number
 badge would need new work.
@@ -302,10 +311,14 @@ available to design without new server work:
 
 - **Kicking and banning.** Both are permissions the server enforces, and neither
   has anything behind it — not even a request the app could make.
-- **A member list** for a server. The app knows who is in one; it only uses that
-  inside calls, and in the settings dialog.
 - **Overwrites aimed at one person** rather than a role. The server accepts
   either; the settings dialog only offers roles.
+- **Who is in a voice channel, before you join it.** The server only names people
+  in a call once you are in it, and announces arrivals only while you are
+  watching. Showing faces under a voice channel — what people expect — needs
+  server work first.
+- **Somebody joining a server, to everybody already in it.** Only the person who
+  joined is told, so a member list goes stale until the app is reopened.
 
 ---
 
