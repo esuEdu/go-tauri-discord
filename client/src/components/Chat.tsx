@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { gateway } from "../gateway";
-import { session } from "../session";
+import { emptySession, session, type SessionState } from "../session";
+import { SEND_MESSAGES, allows } from "../permissions";
 import type { Channel, Message, TypingStart } from "../types/events.gen";
 
 const PAGE_SIZE = 50;
@@ -17,6 +18,9 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [typists, setTypists] = useState<string[]>([]);
+  const [people, setPeople] = useState<SessionState>(emptySession);
+
+  const maySend = allows(people.channelAllows[channel.id], SEND_MESSAGES);
 
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -81,6 +85,8 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       offTyping();
     };
   }, [channel.id, selfID]);
+
+  useEffect(() => session.onChange(setPeople), []);
 
   useEffect(() => {
     setTypists([]);
@@ -253,11 +259,14 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
 
       <form className="composer" onSubmit={send}>
         <input
-          placeholder={`Message #${channel.name}`}
+          placeholder={
+            maySend ? `Message #${channel.name}` : "You cannot post in this channel"
+          }
           value={draft}
+          disabled={!maySend}
           onChange={(e) => onDraftChange(e.target.value)}
         />
-        <button type="submit" disabled={!draft.trim()}>
+        <button type="submit" disabled={!maySend || !draft.trim()}>
           Send
         </button>
       </form>
