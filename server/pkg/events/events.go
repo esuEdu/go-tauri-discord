@@ -210,6 +210,7 @@ type ScreenPublish struct {
 type VoiceWatchRequest struct {
 	UserID   uuid.UUID `json:"user_id"`
 	Watching bool      `json:"watching"`
+	Size     string    `json:"size"`
 }
 
 type VoiceMuteRequest struct {

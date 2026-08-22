@@ -859,6 +859,17 @@ button.link.danger {
   font-size: 12px;
 }
 
+.screen-tile figcaption .link {
+  font-size: 11px;
+  padding: 0 2px;
+  text-decoration: none;
+}
+
+.screen-tile figcaption .link.active {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 .dropped-shares {
   display: flex;
   flex-direction: column;

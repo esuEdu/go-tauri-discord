@@ -23,17 +23,18 @@ const emptyScreens: ScreenState = {
   remote: [],
   audible: [],
   dropped: [],
+  sizes: {},
   quality: "smooth",
 };
 
 function ScreenTile({
   label,
   stream,
-  onDrop,
+  controls,
 }: {
   label: string;
   stream: MediaStream;
-  onDrop?: () => void;
+  controls?: React.ReactNode;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -49,11 +50,7 @@ function ScreenTile({
       <video ref={ref} autoPlay playsInline muted />
       <figcaption className="muted">
         <span className="channel-name">{label}</span>
-        {onDrop && (
-          <button className="link" onClick={onDrop}>
-            Stop watching
-          </button>
-        )}
+        {controls}
       </figcaption>
     </figure>
   );
@@ -155,10 +152,29 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                 key={screen.stream.id}
                 label={screen.userID ? `${session.nameOf(screen.userID)}'s screen` : "A shared screen"}
                 stream={screen.stream}
-                onDrop={
-                  screen.userID
-                    ? () => voice.watchScreen(screen.userID as string, false)
-                    : undefined
+                controls={
+                  screen.userID && (
+                    <>
+                      <button
+                        className={screens.sizes[screen.userID] === "half" ? "link" : "link active"}
+                        onClick={() => voice.watchScreen(screen.userID as string, true, "full")}
+                      >
+                        Full
+                      </button>
+                      <button
+                        className={screens.sizes[screen.userID] === "half" ? "link active" : "link"}
+                        onClick={() => voice.watchScreen(screen.userID as string, true, "half")}
+                      >
+                        Smaller
+                      </button>
+                      <button
+                        className="link"
+                        onClick={() => voice.watchScreen(screen.userID as string, false)}
+                      >
+                        Stop
+                      </button>
+                    </>
+                  )
                 }
               />
             ))}

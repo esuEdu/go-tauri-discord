@@ -175,6 +175,7 @@ export interface ScreenPublish {
 export interface VoiceWatchRequest {
   user_id: string;
   watching: boolean;
+  size: string;
 }
 export interface VoiceMuteRequest {
   self_mute: boolean;

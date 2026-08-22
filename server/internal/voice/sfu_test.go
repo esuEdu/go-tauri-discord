@@ -270,7 +270,7 @@ func TestWatchingSomebodyWhileNotInACallFails(t *testing.T) {
 	}
 	t.Cleanup(sfu.Close)
 
-	if err := sfu.SetWatching(uuid.New(), uuid.New(), false); err != ErrNotConnected {
+	if err := sfu.SetWatching(uuid.New(), uuid.New(), false, ""); err != ErrNotConnected {
 		t.Errorf("SetWatching error = %v, want %v", err, ErrNotConnected)
 	}
 }
@@ -287,7 +287,7 @@ func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
 		t.Fatalf("join: %v", err)
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, false); err != nil {
+	if err := sfu.SetWatching(viewer, sharer, false, ""); err != nil {
 		t.Fatalf("stop watching: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
 		t.Fatal("a dropped share was not recorded, so the next renegotiation sends it again")
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, true); err != nil {
+	if err := sfu.SetWatching(viewer, sharer, true, ""); err != nil {
 		t.Fatalf("resume watching: %v", err)
 	}
 
@@ -347,5 +347,72 @@ func TestAScreenWithNoLayersIsStillSent(t *testing.T) {
 	if !p.wants(r, only) {
 		t.Error("a screen published in one size was withheld; a browser that will not do " +
 			"simulcast has to keep working exactly as it did")
+	}
+}
+
+func TestAskingForASmallerScreenIsRemembered(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if err := sfu.SetWatching(viewer, sharer, true, SmallerLayer); err != nil {
+		t.Fatalf("ask for the smaller size: %v", err)
+	}
+
+	sfu.mu.Lock()
+	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	sfu.mu.Unlock()
+	if chosen != SmallerLayer {
+		t.Fatalf("chosen size = %q, want %q", chosen, SmallerLayer)
+	}
+
+	if err := sfu.SetWatching(viewer, sharer, true, "enormous"); err != nil {
+		t.Fatalf("ask for a size that does not exist: %v", err)
+	}
+
+	sfu.mu.Lock()
+	after := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	sfu.mu.Unlock()
+	if after != SmallerLayer {
+		t.Errorf("a size the server does not publish overwrote a real choice: %q", after)
+	}
+}
+
+func TestTakingAShareBackKeepsTheSizeYouChose(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if err := sfu.SetWatching(viewer, sharer, true, SmallerLayer); err != nil {
+		t.Fatalf("choose smaller: %v", err)
+	}
+	if err := sfu.SetWatching(viewer, sharer, false, ""); err != nil {
+		t.Fatalf("stop watching: %v", err)
+	}
+	if err := sfu.SetWatching(viewer, sharer, true, ""); err != nil {
+		t.Fatalf("watch again: %v", err)
+	}
+
+	sfu.mu.Lock()
+	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	sfu.mu.Unlock()
+	if chosen != SmallerLayer {
+		t.Error("watching again reset somebody to the full size, so a viewer who chose smaller " +
+			"because their connection could not take it is handed the large one the moment they " +
+			"look away and back")
 	}
 }
