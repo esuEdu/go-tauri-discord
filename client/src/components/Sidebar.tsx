@@ -19,6 +19,10 @@ interface Props {
 
 type ChannelGroup = { category: Channel | null; channels: Channel[] };
 
+function categoriesIn(channels: Channel[]): Channel[] {
+  return channels.filter((c) => c.kind === "category");
+}
+
 function groupByCategory(channels: Channel[]): ChannelGroup[] {
   const categories = channels.filter((c) => c.kind === "category");
   const rest = channels.filter((c) => c.kind !== "category");
@@ -27,8 +31,7 @@ function groupByCategory(channels: Channel[]): ChannelGroup[] {
   const groups: ChannelGroup[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
 
   for (const category of categories) {
-    const under = rest.filter((c) => c.parent_id === category.id);
-    if (under.length > 0) groups.push({ category, channels: under });
+    groups.push({ category, channels: rest.filter((c) => c.parent_id === category.id) });
   }
   return groups;
 }
@@ -59,6 +62,7 @@ export function Sidebar({
   const [addingChannel, setAddingChannel] = useState(false);
   const [channelName, setChannelName] = useState("");
   const [channelKind, setChannelKind] = useState<"text" | "voice" | "category">("text");
+  const [channelParent, setChannelParent] = useState("");
   const [code, setCode] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -86,7 +90,13 @@ export function Sidebar({
     if (!activeGuild || !channelName.trim()) return;
     setError(null);
     try {
-      await api.createChannel(activeGuild.id, channelName.trim(), channelKind, channels.length);
+      await api.createChannel(
+        activeGuild.id,
+        channelName.trim(),
+        channelKind,
+        channels.length,
+        channelKind === "category" || !channelParent ? undefined : channelParent,
+      );
       setChannelName("");
       setAddingChannel(false);
     } catch (err) {
@@ -245,6 +255,20 @@ export function Sidebar({
               <option value="voice">Voice</option>
               <option value="category">Category</option>
             </select>
+            {channelKind !== "category" && categoriesIn(channels).length > 0 && (
+              <select
+                aria-label="Category"
+                value={channelParent}
+                onChange={(e) => setChannelParent(e.target.value)}
+              >
+                <option value="">No category</option>
+                {categoriesIn(channels).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <button type="submit">Create</button>
           </form>
         )}

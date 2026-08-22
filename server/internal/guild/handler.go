@@ -203,16 +203,17 @@ func (h *Handler) createChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name     string `json:"name"`
-		Kind     string `json:"kind"`
-		Position int32  `json:"position"`
+		Name     string     `json:"name"`
+		Kind     string     `json:"kind"`
+		Position int32      `json:"position"`
+		ParentID *uuid.UUID `json:"parent_id"`
 	}
 	if err := httpx.Decode(w, r, &in); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 
-	ch, err := h.svc.CreateChannel(r.Context(), auth.MustUserID(r.Context()), guildID, in.Name, in.Kind, in.Position)
+	ch, err := h.svc.CreateChannel(r.Context(), auth.MustUserID(r.Context()), guildID, in.Name, in.Kind, in.Position, in.ParentID)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
