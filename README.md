@@ -439,6 +439,14 @@ still lights up, because the question is who is speaking rather than what you
 chose to hear. A muted microphone produces silence, so it reads as not speaking
 without being told anything.
 
+**Muting says so out loud**, on an opcode of its own. The obvious route —
+re-sending the voice state — would have gone through `Join`, which begins by
+leaving, so every mute would have torn the call down and rebuilt it. The SFU
+also remembers the flag per participant, because a listener who arrives after
+somebody muted has to be told: otherwise mute would only become visible the next
+time that person happened to toggle it. Without this, silence is ambiguous —
+the speaking indicator above cannot tell a deliberate mute from a pause.
+
 A person and **what that person is showing you are two different sounds**, so
 they get two sliders. Someone narrating over a film they are sharing can be
 turned down without silencing the film, and the film can be turned down without

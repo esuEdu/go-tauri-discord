@@ -98,6 +98,7 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 }
 
 func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uuid.UUID) {
+	muted := g.voice.Muted(channelID)
 	for _, participant := range g.voice.Participants(channelID) {
 		if participant == sess.userID {
 			continue
@@ -106,6 +107,7 @@ func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uui
 			GuildID:   guildID,
 			ChannelID: &channelID,
 			UserID:    participant,
+			SelfMute:  muted[participant],
 		})
 		if err != nil {
 			continue
@@ -146,6 +148,38 @@ func (g *Gateway) handleVoiceResync(sess *session) {
 	if err := g.voice.Resync(sess.userID); err != nil {
 		slog.Error("voice resync", "user_id", sess.userID, "error", err)
 	}
+}
+
+func (g *Gateway) handleVoiceMute(sess *session, raw json.RawMessage) {
+	if g.voice == nil {
+		return
+	}
+	var payload events.VoiceMuteRequest
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return
+	}
+	if err := g.voice.SetMuted(sess.userID, payload.SelfMute); err != nil {
+		return
+	}
+
+	channelID, connected := g.voice.ChannelOf(sess.userID)
+	if !connected {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	channel, err := g.guilds.Channel(ctx, channelID)
+	if err != nil {
+		return
+	}
+	g.publishVoice(ctx, channel.GuildID, events.VoiceStateUpdate{
+		GuildID:   channel.GuildID,
+		ChannelID: &channelID,
+		UserID:    sess.userID,
+		SelfMute:  payload.SelfMute,
+	})
 }
 
 func (g *Gateway) handleVoiceScreen(sess *session, raw json.RawMessage) {

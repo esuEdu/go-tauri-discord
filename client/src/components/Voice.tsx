@@ -84,6 +84,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const [volumes, setVolumes] = useState<Volumes>(noVolumes);
   const [people, setPeople] = useState<SessionState>(emptySession);
   const [speaking, setSpeaking] = useState<Speaking>({});
+  const [mutes, setMutes] = useState<Record<string, boolean>>({});
   const [pickerRefused, setPickerRefused] = useState(false);
 
   useEffect(() => session.onChange(setPeople), []);
@@ -91,6 +92,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   useEffect(() => voice.onStatusChange((s, id) => {
     setStatus(s);
     setActiveChannel(id);
+    setMuted(voice.muted);
   }), []);
 
   useEffect(() => voice.onScreenChange(setScreens), []);
@@ -101,13 +103,16 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
 
   useEffect(() => {
     setMembers([]);
+    setMutes({});
     return gateway.on("VOICE_STATE_UPDATE", (payload) => {
       const state = payload as VoiceStateUpdate;
+      const here = state.channel_id === channel.id;
+
       setMembers((prev) => {
         const without = prev.filter((id) => id !== state.user_id);
-        if (state.channel_id === channel.id) return [...without, state.user_id];
-        return without;
+        return here ? [...without, state.user_id] : without;
       });
+      setMutes((prev) => ({ ...prev, [state.user_id]: here && state.self_mute }));
     });
   }, [channel.id]);
 
@@ -147,6 +152,9 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               <span className="voice-name">
                 {id === selfID ? "You" : people.names[id] ?? id.slice(0, 8)}
               </span>
+              {(id === selfID ? muted : mutes[id]) && (
+                <span className="muted voice-muted">muted</span>
+              )}
               {here && id !== selfID && (
                 <div className="volumes">
                   <VolumeSlider

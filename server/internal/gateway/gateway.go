@@ -48,6 +48,8 @@ type VoiceEngine interface {
 	SetScreenActive(userID uuid.UUID, active bool) error
 	ChannelOf(userID uuid.UUID) (uuid.UUID, bool)
 	Participants(channelID uuid.UUID) []uuid.UUID
+	Muted(channelID uuid.UUID) map[uuid.UUID]bool
+	SetMuted(userID uuid.UUID, muted bool) error
 	Sharers(channelID uuid.UUID) map[uuid.UUID]string
 }
 
