@@ -519,7 +519,7 @@ func (p *peer) sizeFor(owner uuid.UUID) string {
 	return DefaultLayer
 }
 
-func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool) error {
+func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool, size string) error {
 	s.mu.Lock()
 
 	channelID, ok := s.homes[viewerID]
@@ -540,14 +540,22 @@ func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool) error {
 
 	if watching {
 		delete(p.ignored, sharerID)
+		if KnownLayer(size) {
+			p.sizes[sharerID] = size
+		}
 	} else {
 		p.ignored[sharerID] = true
 	}
 
 	asks := make([]func(), 0, 1)
 	if watching {
+		wanted := p.sizeFor(sharerID)
 		for id, ask := range r.keyframes {
-			if source, owner, ok := ParseTrackName(id); ok && source == SourceScreen && owner == sharerID {
+			known, layered := r.layers[id]
+			if !layered || known.owner != sharerID {
+				continue
+			}
+			if known.rid == "" || known.rid == wanted {
 				asks = append(asks, ask)
 			}
 		}

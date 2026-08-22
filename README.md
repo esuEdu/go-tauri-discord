@@ -555,6 +555,25 @@ the preset mid-share needs no renegotiation: `applyConstraints` retunes the
 capture and `setParameters` the encoder, both on a track already flowing. The
 choice is remembered in `localStorage`.
 
+A screen goes up a **connection of its own**, offered by the client and answered
+by the server. That is the only way a browser will publish more than one size: it
+does so only for a transceiver created with `sendEncodings`, and only an offerer
+can do that. Rather than give up being the offerer everywhere — the thing that
+removes glare — the screen gets its own connection and the rest is untouched.
+Both Chrome and the packaged WebKit app publish two sizes this way.
+
+The SFU keeps every size and **sends each viewer exactly one**, so a viewer who
+asks for the smaller one genuinely receives less rather than being sent a large
+picture to shrink. A screen published in one size still reaches everybody, so a
+browser that will not do this is left where it was.
+
+Which size is **chosen rather than guessed**. The obvious design drives it from
+the bandwidth estimates, and those are a floor rather than a ceiling — they
+cannot tell a viewer on a fast link watching a cheap stream from one that is
+struggling. A person clicking *smaller* carries no such ambiguity, and there is
+no switching policy, so nothing can flap. Automatic selection can sit on top of
+this later, once there is something to select between.
+
 A viewer who is not watching can **say so and stop receiving**. The SFU keeps a
 set of screens each peer has dropped and leaves them out when it builds that
 peer's offer, so the bytes stop rather than being decoded and discarded. Only

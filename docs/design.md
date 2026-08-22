@@ -203,13 +203,15 @@ better.
 
 ### What a viewer sees
 
-The screen itself, and **whose it is**, and a way to stop watching it — which
-actually stops it being sent, rather than only hiding it. A dropped share can be
-taken back at any time.
+The screen itself, **whose it is**, and a choice of how much of it to receive:
+**full**, **smaller**, or **stop**. All three are real — the server sends only
+what was asked for, so choosing smaller genuinely costs less rather than shrinking
+a picture that arrived anyway. A stopped share can be taken back at any time, and
+a viewer who chose smaller keeps that choice when they do.
 
-Not offered: making a share fullscreen, popping it out, or choosing to receive
-lower quality on a weak connection. Quality is still whatever the sharer picked;
-the only choice a viewer has is all or nothing.
+Not offered: making a share fullscreen or popping it out. And the sizes are the
+sharer's two, not a slider — the publisher decides what exists, the viewer picks
+from it.
 
 ### States
 

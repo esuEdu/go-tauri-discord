@@ -50,7 +50,7 @@ type VoiceEngine interface {
 	Participants(channelID uuid.UUID) []uuid.UUID
 	Muted(channelID uuid.UUID) map[uuid.UUID]bool
 	SetMuted(userID uuid.UUID, muted bool) error
-	SetWatching(viewerID, sharerID uuid.UUID, watching bool) error
+	SetWatching(viewerID, sharerID uuid.UUID, watching bool, size string) error
 	PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) error
 	PublishCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error
 	StopPublishing(userID uuid.UUID)

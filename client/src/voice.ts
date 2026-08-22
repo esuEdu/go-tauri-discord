@@ -21,6 +21,8 @@ export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
 
 export type RemoteScreen = { userID: string | null; stream: MediaStream };
 
+export type ScreenSize = "full" | "half";
+
 export type TrackSource = "mic" | "screen" | "screenaudio";
 
 export type TrackOwner = { source: TrackSource; userID: string };
@@ -117,6 +119,7 @@ export type ScreenState = {
   remote: RemoteScreen[];
   audible: string[];
   dropped: string[];
+  sizes: Record<string, ScreenSize>;
   quality: ScreenQualityID;
 };
 
@@ -201,6 +204,7 @@ class VoiceClient {
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private dropped = new Set<string>();
+  private sizes: Record<string, ScreenSize> = {};
   private screenListeners = new Set<(s: ScreenState) => void>();
 
   onStatusChange(fn: (s: VoiceStatus, channelID: string | null) => void): () => void {
@@ -233,21 +237,27 @@ class VoiceClient {
       remote,
       audible: this.audibleShares(),
       dropped: [...this.dropped],
+      sizes: this.sizes,
       quality: this.quality.id,
     };
   }
 
-  watchScreen(userID: string, watching: boolean) {
+  watchScreen(userID: string, watching: boolean, size?: ScreenSize) {
     if (watching) {
       this.dropped.delete(userID);
+      if (size) this.sizes = { ...this.sizes, [userID]: size };
     } else {
       this.dropped.add(userID);
     }
     gateway.sendRaw({
       op: OpVoiceWatch,
-      d: { user_id: userID, watching } satisfies VoiceWatchRequest,
+      d: { user_id: userID, watching, size: size ?? "" } satisfies VoiceWatchRequest,
     });
     this.emitScreens();
+  }
+
+  sizeOf(userID: string): ScreenSize {
+    return this.sizes[userID] ?? "full";
   }
 
   private audibleShares(): string[] {
@@ -711,6 +721,7 @@ class VoiceClient {
     this.videoStreams.clear();
     this.owners.clear();
     this.dropped.clear();
+    this.sizes = {};
 
     this.microphone?.getTracks().forEach((t) => t.stop());
     this.microphone = null;
