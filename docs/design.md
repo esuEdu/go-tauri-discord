@@ -143,6 +143,7 @@ The part you asked about specifically.
 | **Their volume**, for you | 0–200%, yours alone, remembered between calls, never shown to them |
 | **Their screen volume**, separately | 0–200%, and only when their share is actually making sound |
 | **Whether they are sharing a screen** | And their screen itself, if so |
+| **Whether they are talking right now** | Measured from the audio arriving, so it is honest about what you can actually hear |
 
 Yourself appears in the same list, as **You**, with no volume controls.
 
@@ -151,17 +152,15 @@ Yourself appears in the same list, as **You**, with no volume controls.
 These are gaps, not oversights to design around silently. Every one of them is
 something people will expect:
 
-- **Whether they are talking.** There is no speaking indicator and no audio
-  level. In a call of four you cannot tell who is making the noise.
 - **Whether they muted themselves.** Muting is entirely private right now — it
-  turns off your own microphone and tells nobody. So a muted person looks
-  exactly like a silent one.
+  turns off your own microphone and tells nobody. So a muted person and a person
+  who simply is not talking look identical.
 - **Whether they can hear you** (deafened).
 - **Their connection quality.**
 
-The first two are the ones people will notice within a minute of using it.
-Designing them means asking for server work first — worth raising early rather
-than drawing something that cannot be filled.
+The mute one is what people notice first, and it needs server work before it can
+be drawn — worth raising early rather than designing something that cannot be
+filled.
 
 ### Who is in a voice channel before you join
 
@@ -300,4 +299,4 @@ These need server work before they can be designed as anything real:
 - Direct messages
 - Recovering a forgotten password
 - Statuses beyond online and offline
-- Speaking indicators, and seeing whether someone else is muted
+- Seeing whether someone else has muted themselves
