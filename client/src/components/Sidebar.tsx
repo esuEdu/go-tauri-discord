@@ -13,6 +13,22 @@ interface Props {
   unread: Record<string, boolean>;
 }
 
+type ChannelGroup = { category: Channel | null; channels: Channel[] };
+
+function groupByCategory(channels: Channel[]): ChannelGroup[] {
+  const categories = channels.filter((c) => c.kind === "category");
+  const rest = channels.filter((c) => c.kind !== "category");
+
+  const loose = rest.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id));
+  const groups: ChannelGroup[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
+
+  for (const category of categories) {
+    const under = rest.filter((c) => c.parent_id === category.id);
+    if (under.length > 0) groups.push({ category, channels: under });
+  }
+  return groups;
+}
+
 export function Sidebar({
   guilds,
   channels,
@@ -23,6 +39,8 @@ export function Sidebar({
   onGuildsChanged,
   unread,
 }: Props) {
+  const grouped = groupByCategory(channels);
+
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -109,22 +127,27 @@ export function Sidebar({
 
         <div className="channels-head">{activeGuild?.name ?? "No server"}</div>
 
-        {channels
-          .filter((c) => c.kind !== "category")
-          .map((c) => (
-            <button
-              key={c.id}
-              className={c.id === activeChannel?.id ? "channel active" : "channel"}
-              onClick={() => onSelectChannel(c)}
-            >
-              <span className="channel-name">
-                {c.kind === "voice" ? "🔊" : "#"} {c.name}
-              </span>
-              {unread[c.id] && c.id !== activeChannel?.id && (
-                <span className="unread" aria-label="unread messages" />
-              )}
-            </button>
-          ))}
+        {grouped.map((group) => (
+          <div key={group.category?.id ?? "loose"} className="channel-group">
+            {group.category && (
+              <div className="category">{group.category.name.toUpperCase()}</div>
+            )}
+            {group.channels.map((c) => (
+              <button
+                key={c.id}
+                className={c.id === activeChannel?.id ? "channel active" : "channel"}
+                onClick={() => onSelectChannel(c)}
+              >
+                <span className="channel-name">
+                  {c.kind === "voice" ? "🔊" : "#"} {c.name}
+                </span>
+                {unread[c.id] && c.id !== activeChannel?.id && (
+                  <span className="unread" aria-label="unread messages" />
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
 
         <div className="join-box">
           {activeGuild && (
