@@ -384,6 +384,7 @@ func (g *Gateway) Close() {
 	g.mu.Unlock()
 
 	for _, s := range sessions {
+		s.stopExpiry()
 		s.kill()
 	}
 }
