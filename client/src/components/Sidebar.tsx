@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { ServerSettings } from "./ServerSettings";
 import type { Channel, Guild } from "../types/events.gen";
 import type { Invite } from "../api";
 
@@ -44,6 +45,7 @@ export function Sidebar({
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addingChannel, setAddingChannel] = useState(false);
   const [channelName, setChannelName] = useState("");
   const [channelKind, setChannelKind] = useState<"text" | "voice" | "category">("text");
@@ -153,6 +155,14 @@ export function Sidebar({
 
   return (
     <>
+      {settingsOpen && activeGuild && (
+        <ServerSettings
+          guild={activeGuild}
+          channels={channels}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       <nav className="guilds">
         {guilds.map((g) => (
           <button
@@ -185,13 +195,22 @@ export function Sidebar({
         <div className="channels-head">
           <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
           {activeGuild && (
-            <button
-              className="link add-channel"
-              title="New channel"
-              onClick={() => setAddingChannel(!addingChannel)}
-            >
-              +
-            </button>
+            <>
+              <button
+                className="link add-channel"
+                title="Server settings"
+                onClick={() => setSettingsOpen(true)}
+              >
+                ⚙
+              </button>
+              <button
+                className="link add-channel"
+                title="New channel"
+                onClick={() => setAddingChannel(!addingChannel)}
+              >
+                +
+              </button>
+            </>
           )}
         </div>
 

@@ -242,6 +242,17 @@ than being taken back.
 **Making a server** — a name, 1–100 characters. Nothing else: no picture, no
 description, no template.
 
+**Managing a server** — roles, who has them, and what each role may do in each
+channel. A role has a name, a position that decides what it outranks, and
+thirteen permissions. Per channel, each permission can be **allowed, denied, or
+left to inherit** from the role itself, which is three states rather than two and
+is the hardest thing here to make legible. Deny beats allow. The everyone role
+cannot be renamed, moved or removed, and cannot be taken away from anybody.
+
+Every one of these actions can be refused: you cannot edit a role that outranks
+you, and you cannot grant a permission you do not hold. The refusal arrives as a
+message after the attempt, not as a control that was never offered.
+
 **Making a channel** — a name and one of three kinds: text, voice, or a category
 to group the other two under. Needs the `ManageChannels` permission, which the
 default role does not carry, so for most members this fails — and the app finds
@@ -283,15 +294,12 @@ member, and that every device is signed out. It cannot be undone.
 Built and working on the server, with no interface at all. Any of these is
 available to design without new server work:
 
-- **Roles and permissions.** Twelve of them — who can post, delete other
-  people's messages, make channels, manage roles, kick, ban, join voice, speak,
-  share a screen, invite, and administer. All enforced. None visible. Today the
-  only sign is a button missing or a message saying you cannot. This is by far
-  the largest of them.
 - **Kicking and banning.** Both are permissions the server enforces, and neither
   has anything behind it — not even a request the app could make.
 - **A member list** for a server. The app knows who is in one; it only uses that
-  inside calls.
+  inside calls, and in the settings dialog.
+- **Overwrites aimed at one person** rather than a role. The server accepts
+  either; the settings dialog only offers roles.
 
 ---
 
