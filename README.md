@@ -480,15 +480,8 @@ furniture rather than a control.
 A screen rides as a second track on the same peer connection, so sharing costs
 no extra ICE negotiation and stops when the call does.
 
-Because the server is the only offerer, a client cannot renegotiate on its own.
-Two things make that workable:
-
-- On join the SFU reserves a **recvonly video transceiver** for the member, and
-  puts its `mid` on every offer. The client binds its capture to that exact
-  transceiver rather than guessing at m-line order, which matters once other
-  people's screens are arriving on video sections of their own.
-- Starting or stopping a share sends `VOICE_SCREEN`, and the server answers
-  with a fresh offer that adds or withdraws the forwarded track.
+Starting or stopping a share sends `VOICE_SCREEN`, and the server answers with a
+fresh offer that adds or withdraws the forwarded track.
 
 The sharer has to say it in words because the transport never does. A browser
 that stops sharing calls `replaceTrack(null)` and simply stops sending on the
@@ -503,17 +496,15 @@ resumes on the same SSRC when the member shares again — the SFU would never se
 a new track to forward. The track is taken out of the room and put back, and
 viewers see it appear and disappear.
 
-The transceiver is only reserved for members holding the `Stream` permission.
-Without it there is no video section in the offer at all, so the SDP itself
-refuses the share rather than a check that could be forgotten.
+Sharing needs the `Stream` permission, checked when the publishing connection is
+offered. That check used to be the shape of the SDP itself — without the
+permission there was no video section to send on — which was pleasingly hard to
+forget. Moving the screen to its own connection means the refusal is now an
+ordinary check, so it is written down here: **`PublishScreen` is the only thing
+standing between a member and sharing a screen they may not share.**
 
-Sound from the shared screen rides a **second recvonly audio transceiver**,
-reserved by the same permission and announced by its own `mid`. It has to be a
-slot of its own, because the SFU decides what an arriving track is by the
-transceiver it came in on rather than by its codec: display audio and a
-microphone are both Opus, and nothing in the media tells them apart. Sound
-joins and leaves the room with the picture, so a withdrawn share goes quiet as
-well as dark.
+Sound from the shared screen goes up the same connection, so it joins and leaves
+with the picture.
 
 `VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, so a viewer
 can name a tile before any media arrives and can drop the tile when the share

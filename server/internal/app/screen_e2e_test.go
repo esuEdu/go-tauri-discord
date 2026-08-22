@@ -419,7 +419,7 @@ func TestAScreenPublishedOnItsOwnConnectionReachesAViewer(t *testing.T) {
 	viewer.streamSilence()
 	time.Sleep(500 * time.Millisecond)
 
-	presenter.publishScreen()
+	presenter.publishScreen(false)
 
 	remote := viewer.awaitTrack(voice.SourceScreen, presenterID, 30*time.Second)
 	readScreen(t, remote)

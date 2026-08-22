@@ -141,9 +141,6 @@ func (c *voiceClient) pump() {
 				}); err != nil {
 					continue
 				}
-				c.rememberScreenMids(sdp.ScreenMid, sdp.ScreenAudioMid)
-				c.attachScreen(sdp.ScreenMid)
-				c.attachScreenSound(sdp.ScreenAudioMid)
 				answer, err := c.pc.CreateAnswer(nil)
 				if err != nil {
 					continue
@@ -385,30 +382,7 @@ func (c *voiceClient) shareWithSound() {
 
 func (c *voiceClient) startSharing(withSound bool) {
 	c.t.Helper()
-
-	track, err := webrtc.NewTrackLocalStaticSample(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "-", "-")
-	if err != nil {
-		c.t.Fatalf("create screen track: %v", err)
-	}
-
-	var sound *webrtc.TrackLocalStaticSample
-	if withSound {
-		sound, err = webrtc.NewTrackLocalStaticSample(
-			webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "sound", "-")
-		if err != nil {
-			c.t.Fatalf("create screen sound track: %v", err)
-		}
-	}
-
-	c.mu.Lock()
-	c.screen = track
-	c.screenSound = sound
-	c.screenStop = make(chan struct{})
-	c.writing = false
-	c.writingSound = false
-	c.mu.Unlock()
-
+	c.publishScreen(withSound)
 	c.announceScreen(true)
 }
 
@@ -723,7 +697,7 @@ func TestSomebodyJoiningLaterIsToldWhoIsMuted(t *testing.T) {
 	}
 }
 
-func (c *voiceClient) publishScreen() {
+func (c *voiceClient) publishScreen(withSound bool) {
 	c.t.Helper()
 
 	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
@@ -737,8 +711,23 @@ func (c *voiceClient) publishScreen() {
 	if err != nil {
 		c.t.Fatalf("publish track: %v", err)
 	}
-	if _, err := pc.AddTrack(track); err != nil {
+
+	sender, err := pc.AddTrack(track)
+	if err != nil {
 		c.t.Fatalf("add publish track: %v", err)
+	}
+	go c.watchKeyframeRequests(sender)
+
+	if withSound {
+		sound, err := webrtc.NewTrackLocalStaticSample(
+			webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "sound", "share")
+		if err != nil {
+			c.t.Fatalf("publish sound track: %v", err)
+		}
+		if _, err := pc.AddTrack(sound); err != nil {
+			c.t.Fatalf("add publish sound: %v", err)
+		}
+		c.screenSound = sound
 	}
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
@@ -766,8 +755,10 @@ func (c *voiceClient) publishScreen() {
 	c.mu.Lock()
 	c.publishPC = pc
 	c.publishTrack = track
+	c.screen = track
 	c.screenStop = make(chan struct{})
 	stop := c.screenStop
+	sound := c.screenSound
 	c.mu.Unlock()
 
 	c.sock.write(events.Frame{
@@ -776,4 +767,7 @@ func (c *voiceClient) publishScreen() {
 	})
 
 	go c.writeScreen(track, stop)
+	if sound != nil {
+		go c.writeScreenSound(sound, stop)
+	}
 }

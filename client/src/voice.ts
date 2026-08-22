@@ -114,7 +114,6 @@ export const SCREEN_QUALITIES: ScreenQuality[] = [
 export type ScreenState = {
   sharing: boolean;
   sound: boolean;
-  canShare: boolean;
   local: MediaStream | null;
   remote: RemoteScreen[];
   audible: string[];
@@ -199,8 +198,6 @@ class VoiceClient {
 
   private display: MediaStream | null = null;
   private quality: ScreenQuality = storedQuality();
-  private screenMid: string | null = null;
-  private screenAudioMid: string | null = null;
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private dropped = new Set<string>();
@@ -232,7 +229,6 @@ class VoiceClient {
     return {
       sharing: this.display !== null,
       sound: (this.display?.getAudioTracks().length ?? 0) > 0,
-      canShare: this.screenMid !== null,
       local: this.display,
       remote,
       audible: this.audibleShares(),
@@ -459,14 +455,8 @@ class VoiceClient {
         const offer = payload as SessionDescription;
         if (!this.pc) return;
         await this.pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
-        const known = this.screenMid;
-        this.screenMid = offer.screen_mid ?? null;
-        this.screenAudioMid = offer.screen_audio_mid ?? null;
-        this.applyScreen();
-        if (known !== this.screenMid) this.emitScreens();
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
-        this.tuneScreen();
         gateway.sendRaw({
           op: OpVoiceAnswer,
           d: { type: "answer", sdp: answer.sdp ?? "" } satisfies SessionDescription,
@@ -498,7 +488,7 @@ class VoiceClient {
   }
 
   async startScreenShare(): Promise<boolean> {
-    if (!this.pc || this.screenMid === null) return false;
+    if (!this.pc) return false;
     if (this.display) return true;
 
     const capture = (audio: boolean) =>
@@ -530,11 +520,12 @@ class VoiceClient {
     track.onended = () => void this.stopScreenShare();
 
     this.display = stream;
-    this.applyScreen();
     this.announceScreen(true);
     this.emitScreens();
 
-    void screenPublisher.publish(stream).catch(() => undefined);
+    void screenPublisher
+      .publish(stream, this.quality.maxBitrate, this.quality.degradation)
+      .catch(() => undefined);
 
     return true;
   }
@@ -545,7 +536,6 @@ class VoiceClient {
     this.display.getTracks().forEach((t) => t.stop());
     this.display = null;
     void screenPublisher.stop();
-    this.applyScreen();
     this.announceScreen(false);
     this.emitScreens();
   }
@@ -554,34 +544,9 @@ class VoiceClient {
     gateway.sendRaw({ op: OpVoiceScreen, d: { active } satisfies VoiceScreenRequest });
   }
 
-  private transceiverAt(mid: string | null): RTCRtpTransceiver | null {
-    if (!this.pc || mid === null) return null;
-    return this.pc.getTransceivers().find((t) => t.mid === mid) ?? null;
-  }
 
-  private screenTransceiver(): RTCRtpTransceiver | null {
-    return this.transceiverAt(this.screenMid);
-  }
 
-  private applyScreen() {
-    this.publish(this.screenMid, null);
-    this.publish(this.screenAudioMid, null);
-  }
 
-  private publish(mid: string | null, track: MediaStreamTrack | null) {
-    const transceiver = this.transceiverAt(mid);
-    if (!transceiver) return;
-
-    if (transceiver.sender.track !== track) {
-      void transceiver.sender.replaceTrack(track);
-    }
-    if (this.display && transceiver.sender.setStreams) {
-      transceiver.sender.setStreams(this.display);
-    }
-    if (transceiver.direction !== "sendonly") {
-      transceiver.direction = "sendonly";
-    }
-  }
 
   private captureConstraints(): MediaTrackConstraints {
     const { width, height, frameRate } = this.quality;
@@ -592,20 +557,6 @@ class VoiceClient {
     };
   }
 
-  private tuneScreen() {
-    const sender = this.screenTransceiver()?.sender;
-    if (!sender?.track) return;
-
-    const parameters = sender.getParameters();
-    if (!parameters.encodings?.length) return;
-
-    parameters.degradationPreference = this.quality.degradation;
-    for (const encoding of parameters.encodings) {
-      encoding.maxBitrate = this.quality.maxBitrate;
-      encoding.maxFramerate = this.quality.frameRate;
-    }
-    void sender.setParameters(parameters).catch(() => undefined);
-  }
 
   setScreenQuality(id: ScreenQualityID) {
     this.quality = qualityOf(id);
@@ -615,7 +566,7 @@ class VoiceClient {
     if (track) {
       track.contentHint = this.quality.contentHint;
       void track.applyConstraints(this.captureConstraints()).catch(() => undefined);
-      this.tuneScreen();
+      void screenPublisher.retune(this.quality.maxBitrate, this.quality.degradation);
     }
     this.emitScreens();
   }
@@ -716,8 +667,6 @@ class VoiceClient {
 
     this.display?.getTracks().forEach((t) => t.stop());
     this.display = null;
-    this.screenMid = null;
-    this.screenAudioMid = null;
     this.videoStreams.clear();
     this.owners.clear();
     this.dropped.clear();
