@@ -605,3 +605,67 @@ func TestAChannelMadeAfterSomebodyJoinsReachesThem(t *testing.T) {
 		t.Fatalf("CHANNEL_CREATE carried %s, want %s", ch.ID, fresh)
 	}
 }
+
+func allowedIn(t *testing.T, allowed []events.GuildPermissions, guildID, channelID uuid.UUID) domain.Permission {
+	t.Helper()
+	for _, g := range allowed {
+		if g.GuildID != guildID {
+			continue
+		}
+		for _, c := range g.Channels {
+			if c.ChannelID == channelID {
+				return domain.Permission(c.Permissions)
+			}
+		}
+	}
+	t.Fatalf("READY carried no permissions for channel %s", channelID)
+	return 0
+}
+
+func TestReadyTellsAMemberWhatTheyMayDo(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("What May I Do")
+	text, _ := owner.textAndVoice(guild.ID)
+	member := owner.inviteMember(guild.ID)
+
+	ready := member.dial().identify(member.token)
+
+	perms := allowedIn(t, ready.Allowed, guild.ID, text)
+	if !perms.Has(domain.PermSendMessages) {
+		t.Error("a member was not told they may post, so a client cannot know without trying")
+	}
+	if perms.Has(domain.PermManageChannels) {
+		t.Error("a member was told they may manage channels, which the default role does not grant")
+	}
+}
+
+func TestRaisingTheEveryoneRoleReachesTheMemberLive(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Everyone Raised")
+	text, _ := owner.textAndVoice(guild.ID)
+	member := owner.inviteMember(guild.ID)
+
+	sock := member.dial()
+	ready := sock.identify(member.token)
+
+	if allowedIn(t, ready.Allowed, guild.ID, text).Has(domain.PermManageChannels) {
+		t.Fatal("the member could already manage channels")
+	}
+
+	everyone := owner.everyone(guild.ID)
+	owner.mustDo(http.MethodPatch, "/api/v1/roles/"+everyone.ID.String(), http.StatusOK,
+		map[string]any{"permissions": int64(domain.PermAll)}, nil)
+
+	var update events.GuildPermissions
+	decode(t, sock.readEvent(events.EventPermissionsUpdate).D, &update)
+
+	if update.GuildID != guild.ID {
+		t.Fatalf("permissions update named guild %s, want %s", update.GuildID, guild.ID)
+	}
+	if !allowedIn(t, []events.GuildPermissions{update}, guild.ID, text).Has(domain.PermManageChannels) {
+		t.Error("raising the everyone role never reached a member who was already connected; " +
+			"the change is real on the server and the app has no way to notice it")
+	}
+}

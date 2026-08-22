@@ -29,6 +29,7 @@ export const EventMessageUpdate: EventType = "MESSAGE_UPDATE";
 export const EventMessageDelete: EventType = "MESSAGE_DELETE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
+export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
 export const EventVoiceScreenUpdate: EventType = "VOICE_SCREEN_UPDATE";
 export interface Frame {
@@ -73,6 +74,15 @@ export interface Member {
   guild_id: string;
   user: User;
 }
+export interface ChannelPermission {
+  channel_id: string;
+  permissions: number /* int64 */;
+}
+export interface GuildPermissions {
+  guild_id: string;
+  permissions: number /* int64 */;
+  channels: ChannelPermission[];
+}
 export interface ReadState {
   channel_id: string;
   last_read_message_id?: string;
@@ -115,6 +125,7 @@ export interface Ready {
   channels: Channel[];
   members: Member[];
   read_states: ReadState[];
+  allowed: GuildPermissions[];
   online: string[];
 }
 export interface MessageDelete {

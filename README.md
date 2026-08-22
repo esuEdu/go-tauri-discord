@@ -250,6 +250,19 @@ sessions listen. A client that falls more than 256 frames behind is
 disconnected on purpose — it reconnects and resumes, which is far cheaper
 than letting one slow client stall delivery for everyone else.
 
+#### What a member may do
+
+`READY` carries the member's **resolved permissions**, per guild and per channel,
+and `PERMISSIONS_UPDATE` carries them again whenever they change — which is the
+same moment the gateway already re-resolves what that member may see, so it costs
+no extra query.
+
+Without this the client could only discover what it was allowed to do by trying
+and being refused, which is why a permission granted to a connected member
+appeared to do nothing: the change was real, and nothing told the app. Resolution
+happens per channel anyway to decide visibility; the full bitfield was being
+computed and thrown away.
+
 #### What READY carries
 
 Enough to paint a sidebar without a request per channel: the account, its
