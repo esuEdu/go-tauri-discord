@@ -86,6 +86,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 			slog.Error("voice disabled: could not start the SFU", "error", err)
 		} else {
 			gw.AttachVoice(sfu)
+			sfu.AttachPublishSignaler(gw)
 			application.voice = sfu
 		}
 	}

@@ -182,6 +182,62 @@ func (g *Gateway) handleVoiceMute(sess *session, raw json.RawMessage) {
 	})
 }
 
+func (g *Gateway) ScreenAnswer(userID uuid.UUID, sdp webrtc.SessionDescription) {
+	g.sendToUser(userID, events.Frame{
+		Op: events.OpScreenAnswer,
+		D:  mustJSON(events.ScreenPublish{SDP: sdp.SDP}),
+	})
+}
+
+func (g *Gateway) ScreenCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) {
+	g.sendToUser(userID, events.Frame{
+		Op: events.OpScreenIce,
+		D: mustJSON(events.ICECandidate{
+			Candidate:        candidate.Candidate,
+			SDPMid:           candidate.SDPMid,
+			SDPMLineIndex:    candidate.SDPMLineIndex,
+			UsernameFragment: candidate.UsernameFragment,
+		}),
+	})
+}
+
+func (g *Gateway) handleScreenPublish(sess *session, raw json.RawMessage) {
+	if g.voice == nil {
+		return
+	}
+	var payload events.ScreenPublish
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return
+	}
+	if payload.SDP == "" {
+		g.voice.StopPublishing(sess.userID)
+		return
+	}
+	if err := g.voice.PublishScreen(sess.userID, webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer, SDP: payload.SDP,
+	}); err != nil {
+		slog.Error("screen publish", "user_id", sess.userID, "error", err)
+	}
+}
+
+func (g *Gateway) handleScreenIce(sess *session, raw json.RawMessage) {
+	if g.voice == nil {
+		return
+	}
+	var payload events.ICECandidate
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return
+	}
+	if err := g.voice.PublishCandidate(sess.userID, webrtc.ICECandidateInit{
+		Candidate:        payload.Candidate,
+		SDPMid:           payload.SDPMid,
+		SDPMLineIndex:    payload.SDPMLineIndex,
+		UsernameFragment: payload.UsernameFragment,
+	}); err != nil {
+		slog.Error("screen candidate", "user_id", sess.userID, "error", err)
+	}
+}
+
 func (g *Gateway) handleVoiceWatch(sess *session, raw json.RawMessage) {
 	if g.voice == nil {
 		return

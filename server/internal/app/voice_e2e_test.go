@@ -34,6 +34,8 @@ type voiceClient struct {
 	screenMid      string
 	screenSoundMid string
 	screenStop     chan struct{}
+	publishPC      *webrtc.PeerConnection
+	publishTrack   *webrtc.TrackLocalStaticSample
 	writing        bool
 	writingSound   bool
 }
@@ -153,6 +155,37 @@ func (c *voiceClient) pump() {
 					Op: events.OpVoiceAnswer,
 					D:  mustJSON(c.t, events.SessionDescription{Type: answer.Type.String(), SDP: answer.SDP}),
 				})
+
+			case events.OpScreenAnswer:
+				var sdp events.ScreenPublish
+				if json.Unmarshal(frame.D, &sdp) != nil {
+					continue
+				}
+				c.mu.Lock()
+				pc := c.publishPC
+				c.mu.Unlock()
+				if pc != nil {
+					_ = pc.SetRemoteDescription(webrtc.SessionDescription{
+						Type: webrtc.SDPTypeAnswer, SDP: sdp.SDP,
+					})
+				}
+
+			case events.OpScreenIce:
+				var candidate events.ICECandidate
+				if json.Unmarshal(frame.D, &candidate) != nil {
+					continue
+				}
+				c.mu.Lock()
+				pc := c.publishPC
+				c.mu.Unlock()
+				if pc != nil {
+					_ = pc.AddICECandidate(webrtc.ICECandidateInit{
+						Candidate:        candidate.Candidate,
+						SDPMid:           candidate.SDPMid,
+						SDPMLineIndex:    candidate.SDPMLineIndex,
+						UsernameFragment: candidate.UsernameFragment,
+					})
+				}
 
 			case events.OpVoiceCandidate:
 				var candidate events.ICECandidate
@@ -688,4 +721,59 @@ func TestSomebodyJoiningLaterIsToldWhoIsMuted(t *testing.T) {
 		t.Fatal("the snapshot sent on joining reported a muted member as live; mute would only " +
 			"become visible the next time they happened to toggle it")
 	}
+}
+
+func (c *voiceClient) publishScreen() {
+	c.t.Helper()
+
+	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		c.t.Fatalf("publish peer connection: %v", err)
+	}
+	c.t.Cleanup(func() { pc.Close() })
+
+	track, err := webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "screen", "share")
+	if err != nil {
+		c.t.Fatalf("publish track: %v", err)
+	}
+	if _, err := pc.AddTrack(track); err != nil {
+		c.t.Fatalf("add publish track: %v", err)
+	}
+
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			return
+		}
+		init := candidate.ToJSON()
+		c.sock.write(events.Frame{
+			Op: events.OpScreenIce,
+			D: mustJSON(c.t, events.ICECandidate{
+				Candidate: init.Candidate, SDPMid: init.SDPMid,
+				SDPMLineIndex: init.SDPMLineIndex, UsernameFragment: init.UsernameFragment,
+			}),
+		})
+	})
+
+	offer, err := pc.CreateOffer(nil)
+	if err != nil {
+		c.t.Fatalf("publish offer: %v", err)
+	}
+	if err := pc.SetLocalDescription(offer); err != nil {
+		c.t.Fatalf("publish set local: %v", err)
+	}
+
+	c.mu.Lock()
+	c.publishPC = pc
+	c.publishTrack = track
+	c.screenStop = make(chan struct{})
+	stop := c.screenStop
+	c.mu.Unlock()
+
+	c.sock.write(events.Frame{
+		Op: events.OpScreenPublish,
+		D:  mustJSON(c.t, events.ScreenPublish{SDP: offer.SDP}),
+	})
+
+	go c.writeScreen(track, stop)
 }

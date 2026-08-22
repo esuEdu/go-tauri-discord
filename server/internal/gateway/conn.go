@@ -277,6 +277,10 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			g.handleVoiceMute(sess, frame.D)
 		case events.OpVoiceWatch:
 			g.handleVoiceWatch(sess, frame.D)
+		case events.OpScreenPublish:
+			g.handleScreenPublish(sess, frame.D)
+		case events.OpScreenIce:
+			g.handleScreenIce(sess, frame.D)
 		}
 	}
 }

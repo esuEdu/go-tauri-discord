@@ -1,4 +1,5 @@
 import { gateway } from "./gateway";
+import { screenPublisher } from "./simulcast";
 import {
   EventVoiceScreenUpdate,
   OpVoiceAnswer,
@@ -522,6 +523,9 @@ class VoiceClient {
     this.applyScreen();
     this.announceScreen(true);
     this.emitScreens();
+
+    void screenPublisher.publish(stream).catch(() => undefined);
+
     return true;
   }
 
@@ -530,6 +534,7 @@ class VoiceClient {
 
     this.display.getTracks().forEach((t) => t.stop());
     this.display = null;
+    void screenPublisher.stop();
     this.applyScreen();
     this.announceScreen(false);
     this.emitScreens();
@@ -549,8 +554,8 @@ class VoiceClient {
   }
 
   private applyScreen() {
-    this.publish(this.screenMid, this.display?.getVideoTracks()[0] ?? null);
-    this.publish(this.screenAudioMid, this.display?.getAudioTracks()[0] ?? null);
+    this.publish(this.screenMid, null);
+    this.publish(this.screenAudioMid, null);
   }
 
   private publish(mid: string | null, track: MediaStreamTrack | null) {

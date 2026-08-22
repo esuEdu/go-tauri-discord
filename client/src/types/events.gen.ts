@@ -20,6 +20,9 @@ export const OpVoiceResync: Opcode = 11;
 export const OpVoiceScreen: Opcode = 12;
 export const OpVoiceMute: Opcode = 13;
 export const OpVoiceWatch: Opcode = 14;
+export const OpScreenPublish: Opcode = 15;
+export const OpScreenAnswer: Opcode = 16;
+export const OpScreenIce: Opcode = 17;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -165,6 +168,9 @@ export interface VoiceStateUpdate {
   user_id: string;
   self_mute: boolean;
   self_deaf: boolean;
+}
+export interface ScreenPublish {
+  sdp: string;
 }
 export interface VoiceWatchRequest {
   user_id: string;
