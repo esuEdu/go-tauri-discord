@@ -313,10 +313,11 @@ available to design without new server work:
   has anything behind it — not even a request the app could make.
 - **Overwrites aimed at one person** rather than a role. The server accepts
   either; the settings dialog only offers roles.
-- **Who is in a voice channel, before you join it.** The server only names people
-  in a call once you are in it, and announces arrivals only while you are
-  watching. Showing faces under a voice channel — what people expect — needs
-  server work first.
+- **Who is in a voice channel, before you join it.** The server names people in a
+  call only once you are in it, and announces arrivals only while you are
+  watching. So the app knows who is in a call it has joined, and nothing about
+  one it has not. Showing faces under every voice channel — what people expect —
+  needs server work first.
 
 ---
 

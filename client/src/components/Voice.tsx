@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { gateway } from "../gateway";
 import {
   voice,
   MAX_VOLUME,
@@ -13,7 +12,7 @@ import {
   type Volumes,
 } from "../voice";
 import { emptySession, session, type SessionState } from "../session";
-import type { Channel, VoiceStateUpdate } from "../types/events.gen";
+import type { Channel } from "../types/events.gen";
 
 const emptyScreens: ScreenState = {
   sharing: false,
@@ -91,13 +90,11 @@ function VolumeSlider({
 export function Voice({ channel, selfID }: { channel: Channel; selfID: string }) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [activeChannel, setActiveChannel] = useState<string | null>(null);
-  const [members, setMembers] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
   const [volumes, setVolumes] = useState<Volumes>(noVolumes);
   const [people, setPeople] = useState<SessionState>(emptySession);
   const [speaking, setSpeaking] = useState<Speaking>({});
-  const [mutes, setMutes] = useState<Record<string, boolean>>({});
   const [pickerRefused, setPickerRefused] = useState(false);
 
   useEffect(() => session.onChange(setPeople), []);
@@ -114,22 +111,10 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
 
   useEffect(() => voice.onSpeakingChange(setSpeaking), []);
 
-  useEffect(() => {
-    setMembers([]);
-    setMutes({});
-    return gateway.on("VOICE_STATE_UPDATE", (payload) => {
-      const state = payload as VoiceStateUpdate;
-      const here = state.channel_id === channel.id;
-
-      setMembers((prev) => {
-        const without = prev.filter((id) => id !== state.user_id);
-        return here ? [...without, state.user_id] : without;
-      });
-      setMutes((prev) => ({ ...prev, [state.user_id]: here && state.self_mute }));
-    });
-  }, [channel.id]);
 
   const here = activeChannel === channel.id;
+  const members = people.inVoice[channel.id] ?? [];
+  const mutes = people.mutedInVoice;
 
   const share = async () => {
     setPickerRefused(false);
