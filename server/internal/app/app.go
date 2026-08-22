@@ -57,7 +57,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	authHandler.Routes(mux)
 	protected.HandleFunc("GET /api/v1/users/@me", authHandler.Me)
 	protected.HandleFunc("DELETE /api/v1/users/@me", authHandler.DeleteMe)
-	guildHandler := guild.NewHandler(guildSvc, publisher)
+	guildHandler := guild.NewHandler(guildSvc, publisher, gw)
 	guildHandler.Routes(protected)
 	guildHandler.PublicRoutes(mux)
 	message.NewHandler(messageSvc).Routes(protected)
