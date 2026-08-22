@@ -562,3 +562,46 @@ func memberIdentity(t *testing.T, h *harness) (uuid.UUID, string) {
 	h.mustDo(http.MethodGet, "/api/v1/users/@me", http.StatusOK, nil, &me)
 	return me.ID, me.Username
 }
+
+func TestJoiningAGuildWhileConnectedStartsDeliveringIt(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Joined Late")
+	text, _ := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+
+	sock := friend.dial()
+	sock.identify(friend.token)
+
+	friend.mustDo(http.MethodPost, "/api/v1/invites/"+invite.Code, http.StatusOK, nil, nil)
+
+	owner.post(text, "anybody there")
+
+	if got := sock.nextMessage(); got.Content != "anybody there" {
+		t.Fatalf("message = %q, want the one sent after they joined", got.Content)
+	}
+}
+
+func TestAChannelMadeAfterSomebodyJoinsReachesThem(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Late Channels")
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+
+	sock := friend.dial()
+	sock.identify(friend.token)
+
+	friend.mustDo(http.MethodPost, "/api/v1/invites/"+invite.Code, http.StatusOK, nil, nil)
+
+	fresh := owner.newTextChannel(guild.ID, "made-afterwards")
+
+	var ch events.Channel
+	decode(t, sock.readEvent(events.EventChannelCreate).D, &ch)
+	if ch.ID != fresh {
+		t.Fatalf("CHANNEL_CREATE carried %s, want %s", ch.ID, fresh)
+	}
+}

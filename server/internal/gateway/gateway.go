@@ -77,6 +77,19 @@ func New(authSvc *auth.Service, guilds *guild.Service, reads ReadStates, broker 
 	}
 }
 
+func (g *Gateway) JoinedGuild(userID, guildID uuid.UUID) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.closed {
+		return
+	}
+	for s := range g.byUser[userID] {
+		g.subscribeLocked(pubsub.TopicGuild(guildID), s)
+		g.subscribeLocked(pubsub.TopicGuildControl(guildID), s)
+	}
+}
+
 func (g *Gateway) AttachVoice(engine VoiceEngine) {
 	g.voice = engine
 }

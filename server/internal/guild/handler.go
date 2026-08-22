@@ -14,12 +14,23 @@ import (
 )
 
 type Handler struct {
-	svc *Service
-	pub *bus.Publisher
+	svc   *Service
+	pub   *bus.Publisher
+	rooms Rooms
 }
 
-func NewHandler(svc *Service, pub *bus.Publisher) *Handler {
-	return &Handler{svc: svc, pub: pub}
+type Rooms interface {
+	JoinedGuild(userID, guildID uuid.UUID)
+}
+
+func NewHandler(svc *Service, pub *bus.Publisher, rooms Rooms) *Handler {
+	return &Handler{svc: svc, pub: pub, rooms: rooms}
+}
+
+func (h *Handler) joined(userID, guildID uuid.UUID) {
+	if h.rooms != nil {
+		h.rooms.JoinedGuild(userID, guildID)
+	}
 }
 
 func (h *Handler) Routes(mux httpx.Router) {
@@ -60,6 +71,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.joined(userID, g.ID)
 	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(g))
 	httpx.JSON(w, http.StatusCreated, PublicGuild(g))
 }
@@ -124,6 +136,7 @@ func (h *Handler) redeemInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.joined(userID, guild.ID)
 	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(guild))
 	httpx.JSON(w, http.StatusOK, PublicGuild(guild))
 }

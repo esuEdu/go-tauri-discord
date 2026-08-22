@@ -238,6 +238,12 @@ seconds, keeping a 256-frame replay buffer, so a brief network drop is
 recovered with **RESUME** rather than a full refetch. Clients must ignore any
 frame whose `s` is not greater than the last one processed.
 
+A session subscribes to its guilds when it identifies, **and to any guild it
+joins afterwards**. Without the second half a member who accepted an invite
+while already connected was subscribed to nothing for that guild: no messages,
+no new channels, no voice states, no permission re-resolution. The server was
+behaving correctly and the app looked dead, until a reload.
+
 Fanout is routed **per topic, not per session**: one broker subscription and
 one forwarding goroutine exist per active topic regardless of how many
 sessions listen. A client that falls more than 256 frames behind is
