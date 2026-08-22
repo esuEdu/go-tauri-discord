@@ -44,6 +44,9 @@ export function Sidebar({
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [channelName, setChannelName] = useState("");
+  const [channelKind, setChannelKind] = useState<"text" | "voice" | "category">("text");
   const [code, setCode] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -63,6 +66,19 @@ export function Sidebar({
       onGuildsChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not create");
+    }
+  }
+
+  async function createChannel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeGuild || !channelName.trim()) return;
+    setError(null);
+    try {
+      await api.createChannel(activeGuild.id, channelName.trim(), channelKind, channels.length);
+      setChannelName("");
+      setAddingChannel(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not create the channel");
     }
   }
 
@@ -166,7 +182,39 @@ export function Sidebar({
           </form>
         )}
 
-        <div className="channels-head">{activeGuild?.name ?? "No server"}</div>
+        <div className="channels-head">
+          <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
+          {activeGuild && (
+            <button
+              className="link add-channel"
+              title="New channel"
+              onClick={() => setAddingChannel(!addingChannel)}
+            >
+              +
+            </button>
+          )}
+        </div>
+
+        {addingChannel && activeGuild && (
+          <form className="inline-form" onSubmit={createChannel}>
+            <input
+              placeholder="channel name"
+              value={channelName}
+              autoFocus
+              onChange={(e) => setChannelName(e.target.value)}
+            />
+            <select
+              aria-label="Channel kind"
+              value={channelKind}
+              onChange={(e) => setChannelKind(e.target.value as "text" | "voice" | "category")}
+            >
+              <option value="text">Text</option>
+              <option value="voice">Voice</option>
+              <option value="category">Category</option>
+            </select>
+            <button type="submit">Create</button>
+          </form>
+        )}
 
         {grouped.map((group) => (
           <div key={group.category?.id ?? "loose"} className="channel-group">

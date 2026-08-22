@@ -280,10 +280,30 @@ button.link.danger {
 }
 
 .channels-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   padding: 6px 6px 10px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
+}
+
+.add-channel {
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  text-decoration: none;
+}
+
+.inline-form select {
+  font: inherit;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  padding: 0 6px;
 }
 
 .channel-group {

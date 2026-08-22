@@ -190,6 +190,19 @@ export class Api {
     return this.request<Guild>("POST", `/api/v1/invites/${code}`);
   }
 
+  createChannel(
+    guildID: string,
+    name: string,
+    kind: "text" | "voice" | "category",
+    position: number,
+  ): Promise<Channel> {
+    return this.request<Channel>("POST", `/api/v1/guilds/${guildID}/channels`, {
+      name,
+      kind,
+      position,
+    });
+  }
+
   channels(guildID: string): Promise<Channel[]> {
     return this.request<Channel[]>("GET", `/api/v1/guilds/${guildID}/channels`);
   }

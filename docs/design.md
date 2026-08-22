@@ -238,6 +238,12 @@ than being taken back.
 **Making a server** — a name, 1–100 characters. Nothing else: no picture, no
 description, no template.
 
+**Making a channel** — a name and one of three kinds: text, voice, or a category
+to group the other two under. Needs the `ManageChannels` permission, which the
+default role does not carry, so for most members this fails — and the app finds
+out by being refused rather than by knowing in advance. Worth designing for the
+refusal.
+
 **Joining a server** — by pasted code, or by opening a link.
 
 **Inviting someone** — produces a link to copy, optionally limited by number of
