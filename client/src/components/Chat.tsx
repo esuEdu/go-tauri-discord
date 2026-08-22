@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { gateway } from "../gateway";
-import type { Channel, Message } from "../types/events.gen";
+import { session } from "../session";
+import type { Channel, Message, TypingStart } from "../types/events.gen";
 
 const PAGE_SIZE = 50;
+const TYPING_EVERY = 5000;
+const TYPING_FORGET = 8000;
 
 export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -11,9 +14,13 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [hasMore, setHasMore] = useState(true);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [typists, setTypists] = useState<string[]>([]);
 
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
+  const announcedTyping = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,11 +65,26 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       setMessages((prev) => prev.filter((m) => m.id !== id));
     });
 
+    const offTyping = gateway.on("TYPING_START", (payload) => {
+      const start = payload as TypingStart;
+      if (start.channel_id !== channel.id || start.user_id === selfID) return;
+      setTypists((prev) => (prev.includes(start.user_id) ? prev : [...prev, start.user_id]));
+      setTimeout(() => {
+        setTypists((prev) => prev.filter((id) => id !== start.user_id));
+      }, TYPING_FORGET);
+    });
+
     return () => {
       offCreate();
       offUpdate();
       offDelete();
+      offTyping();
     };
+  }, [channel.id, selfID]);
+
+  useEffect(() => {
+    setTypists([]);
+    setEditing(null);
   }, [channel.id]);
 
   useEffect(() => {
@@ -94,12 +116,37 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     if (el.scrollTop < 80 && hasMore && !loading) void loadOlder();
   }
 
+  function onDraftChange(value: string) {
+    setDraft(value);
+    if (!value.trim()) return;
+
+    const now = Date.now();
+    if (now - announcedTyping.current < TYPING_EVERY) return;
+    announcedTyping.current = now;
+    void api.typing(channel.id).catch(() => undefined);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    const id = editing;
+    const content = editDraft.trim();
+    if (!id || !content) return;
+
+    setEditing(null);
+    try {
+      await api.editMessage(id, content);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not edit");
+    }
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = draft.trim();
     if (!content) return;
 
     setDraft("");
+    announcedTyping.current = 0;
     pinnedToBottom.current = true;
     try {
       const sent = await api.sendMessage(channel.id, content);
@@ -146,19 +193,50 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
                   </span>
                 </div>
               )}
-              <div className="message-body">
-                {m.content}
-                {m.edited_at && <span className="muted"> (edited)</span>}
-                {m.author.id === selfID && (
-                  <button
-                    className="link delete"
-                    title="Delete"
-                    onClick={() => void api.deleteMessage(m.id).catch(() => undefined)}
-                  >
-                    ×
+              {editing === m.id ? (
+                <form className="edit-form" onSubmit={saveEdit}>
+                  <input
+                    value={editDraft}
+                    autoFocus
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                  />
+                  <button type="submit" disabled={!editDraft.trim()}>
+                    Save
                   </button>
-                )}
-              </div>
+                  <button type="button" className="link" onClick={() => setEditing(null)}>
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <div className="message-body">
+                  {m.content}
+                  {m.edited_at && <span className="muted"> (edited)</span>}
+                  {m.author.id === selfID && (
+                    <>
+                      <button
+                        className="link edit"
+                        title="Edit"
+                        onClick={() => {
+                          setEditing(m.id);
+                          setEditDraft(m.content);
+                        }}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className="link delete"
+                        title="Delete"
+                        onClick={() => void api.deleteMessage(m.id).catch(() => undefined)}
+                      >
+                        ×
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -166,11 +244,18 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
 
       {error && <div className="error inline">{error}</div>}
 
+      {typists.length > 0 && (
+        <div className="muted typing">
+          {typists.map((id) => session.nameOf(id)).join(", ")}
+          {typists.length === 1 ? " is typing…" : " are typing…"}
+        </div>
+      )}
+
       <form className="composer" onSubmit={send}>
         <input
           placeholder={`Message #${channel.name}`}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onDraftChange(e.target.value)}
         />
         <button type="submit" disabled={!draft.trim()}>
           Send

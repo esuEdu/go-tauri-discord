@@ -379,14 +379,32 @@ button.link.danger {
   word-break: break-word;
 }
 
-.message .delete {
+.message .delete,
+.message .edit {
   visibility: hidden;
-  color: var(--danger);
   padding: 0 6px;
 }
 
-.message:hover .delete {
+.message .delete {
+  color: var(--danger);
+}
+
+.message:hover .delete,
+.message:hover .edit {
   visibility: visible;
+}
+
+.edit-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.typing {
+  padding: 0 16px 4px;
+  font-size: 12px;
+  min-height: 18px;
 }
 
 .load-more {
