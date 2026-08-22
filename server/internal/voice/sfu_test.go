@@ -230,7 +230,8 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 
 func TestDroppingAShareOnlyDropsThatPersonsScreen(t *testing.T) {
 	sharer, other := uuid.New(), uuid.New()
-	p := &peer{ignored: map[uuid.UUID]bool{sharer: true}}
+	r := &room{layers: make(map[string]layer)}
+	p := &peer{ignored: map[uuid.UUID]bool{sharer: true}, sizes: map[uuid.UUID]string{}}
 
 	cases := []struct {
 		track string
@@ -247,16 +248,17 @@ func TestDroppingAShareOnlyDropsThatPersonsScreen(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if got := p.wants(c.track); got != c.want {
+		if got := p.wants(r, c.track); got != c.want {
 			t.Errorf("wants(%q) = %v, want %v: %s", c.track, got, c.want, c.why)
 		}
 	}
 }
 
 func TestAViewerWhoDroppedNothingWantsEverything(t *testing.T) {
-	p := &peer{ignored: map[uuid.UUID]bool{}}
+	r := &room{layers: make(map[string]layer)}
+	p := &peer{ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
 
-	if !p.wants(TrackName(SourceScreen, uuid.New(), 1)) {
+	if !p.wants(r, TrackName(SourceScreen, uuid.New(), 1)) {
 		t.Error("a viewer who dropped nothing was refused a screen")
 	}
 }
@@ -305,5 +307,45 @@ func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
 	sfu.mu.Unlock()
 	if stillDropped {
 		t.Error("resuming left the share dropped")
+	}
+}
+
+func TestAViewerIsSentOneSizeOfAScreenAndNotTheOther(t *testing.T) {
+	sharer, viewer := uuid.New(), uuid.New()
+	full := TrackName(SourceScreen, sharer, 1)
+	half := TrackName(SourceScreen, sharer, 2)
+
+	r := &room{layers: map[string]layer{
+		full: {owner: sharer, rid: DefaultLayer},
+		half: {owner: sharer, rid: SmallerLayer},
+	}}
+	p := &peer{userID: viewer, ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+
+	if !p.wants(r, full) || p.wants(r, half) {
+		t.Fatal("a viewer who has asked for nothing is not being sent exactly one size; sending " +
+			"both is the whole cost of simulcast with none of the benefit")
+	}
+
+	p.sizes[sharer] = SmallerLayer
+	if p.wants(r, full) || !p.wants(r, half) {
+		t.Error("asking for the smaller size did not switch which one is sent")
+	}
+
+	p.ignored[sharer] = true
+	if p.wants(r, full) || p.wants(r, half) {
+		t.Error("dropping a screen left one of its sizes still being sent")
+	}
+}
+
+func TestAScreenWithNoLayersIsStillSent(t *testing.T) {
+	sharer := uuid.New()
+	only := TrackName(SourceScreen, sharer, 1)
+
+	r := &room{layers: map[string]layer{}}
+	p := &peer{ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+
+	if !p.wants(r, only) {
+		t.Error("a screen published in one size was withheld; a browser that will not do " +
+			"simulcast has to keep working exactly as it did")
 	}
 }

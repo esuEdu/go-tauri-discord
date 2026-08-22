@@ -57,12 +57,23 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		p.sawLayer(remote)
 
-		buf := make([]byte, rtpBufferSize)
-		for {
-			if _, _, err := remote.Read(buf); err != nil {
-				return
+		source := SourceScreenAudio
+		rid := ""
+		if remote.Kind() == webrtc.RTPCodecTypeVideo {
+			source = SourceScreen
+			rid = remote.RID()
+			if rid == "" {
+				rid = DefaultLayer
 			}
 		}
+
+		r, owner := s.roomFor(userID)
+		if r == nil || owner == nil {
+			slog.Warn("voice: published screen has nowhere to go",
+				"user_id", userID, "in_room", r != nil, "has_peer", owner != nil)
+			return
+		}
+		s.forwardLayer(r, owner, remote, source, rid)
 	})
 
 	if err := pc.SetRemoteDescription(offer); err != nil {

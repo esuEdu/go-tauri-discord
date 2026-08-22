@@ -48,6 +48,12 @@ type room struct {
 	tracks    map[string]*webrtc.TrackLocalStaticRTP
 	screens   map[uuid.UUID]string
 	keyframes map[string]func()
+	layers    map[string]layer
+}
+
+type layer struct {
+	owner uuid.UUID
+	rid   string
 }
 
 type peer struct {
@@ -62,6 +68,7 @@ type peer struct {
 	estimate         cc.BandwidthEstimator
 	muted            bool
 	ignored          map[uuid.UUID]bool
+	sizes            map[uuid.UUID]string
 	redo             bool
 
 	mu         sync.Mutex
@@ -181,6 +188,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	p := &peer{
 		userID: userID, pc: pc, owned: make(map[string]bool),
 		estimate: estimator, ignored: make(map[uuid.UUID]bool),
+		sizes: make(map[uuid.UUID]string),
 	}
 
 	if mayStream {
@@ -210,6 +218,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 			tracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
 			screens:   make(map[uuid.UUID]string),
 			keyframes: make(map[string]func()),
+			layers:    make(map[string]layer),
 		}
 		s.rooms[channelID] = r
 	}
@@ -242,6 +251,10 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 }
 
 func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote, source Source) {
+	s.forwardLayer(r, p, remote, source, remote.RID())
+}
+
+func (s *SFU) forwardLayer(r *room, p *peer, remote *webrtc.TrackRemote, source Source, rid string) {
 	trackID := TrackName(source, p.userID, uint32(remote.SSRC()))
 
 	local, err := webrtc.NewTrackLocalStaticRTP(
@@ -258,6 +271,7 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote, source Sourc
 	case SourceScreen:
 		r.screens[p.userID] = local.StreamID()
 		r.keyframes[local.ID()] = (&keyframeRequester{pc: p.pc, ssrc: remote.SSRC()}).ask
+		r.layers[local.ID()] = layer{owner: p.userID, rid: rid}
 		p.screenTrack = local
 		p.screenAsk = r.keyframes[local.ID()]
 	case SourceScreenAudio:
@@ -278,6 +292,7 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote, source Sourc
 		delete(r.keyframes, local.ID())
 		switch source {
 		case SourceScreen:
+			delete(r.layers, local.ID())
 			if r.screens[p.userID] == local.StreamID() {
 				delete(r.screens, p.userID)
 			}
@@ -481,15 +496,27 @@ func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 	return nil
 }
 
-func (p *peer) wants(trackID string) bool {
-	if len(p.ignored) == 0 {
-		return true
-	}
+func (p *peer) wants(r *room, trackID string) bool {
 	source, owner, ok := ParseTrackName(trackID)
 	if !ok || source != SourceScreen {
 		return true
 	}
-	return !p.ignored[owner]
+	if p.ignored[owner] {
+		return false
+	}
+
+	known, layered := r.layers[trackID]
+	if !layered || known.rid == "" {
+		return true
+	}
+	return known.rid == p.sizeFor(owner)
+}
+
+func (p *peer) sizeFor(owner uuid.UUID) string {
+	if chosen := p.sizes[owner]; chosen != "" {
+		return chosen
+	}
+	return DefaultLayer
 }
 
 func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool) error {
@@ -650,6 +677,21 @@ func (s *SFU) Close() {
 	}
 }
 
+func (s *SFU) roomFor(userID uuid.UUID) (*room, *peer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		return nil, nil
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		return nil, nil
+	}
+	return r, r.peers[userID]
+}
+
 func (s *SFU) peerFor(userID uuid.UUID) *peer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -714,7 +756,7 @@ func (s *SFU) syncLocked(r *room) bool {
 				continue
 			}
 			_, live := r.tracks[track.ID()]
-			if !live || !p.wants(track.ID()) {
+			if !live || !p.wants(r, track.ID()) {
 				if err := p.pc.RemoveTrack(sender); err != nil {
 					return false
 				}
@@ -725,7 +767,7 @@ func (s *SFU) syncLocked(r *room) bool {
 		}
 
 		for id, track := range r.tracks {
-			if sent[id] || p.owned[id] || !p.wants(id) {
+			if sent[id] || p.owned[id] || !p.wants(r, id) {
 				continue
 			}
 			transceiver, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{

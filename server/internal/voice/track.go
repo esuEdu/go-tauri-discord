@@ -36,3 +36,12 @@ func ParseTrackName(name string) (Source, uuid.UUID, bool) {
 	}
 	return Source(source), userID, true
 }
+
+const (
+	DefaultLayer = "full"
+	SmallerLayer = "half"
+)
+
+func KnownLayer(rid string) bool {
+	return rid == DefaultLayer || rid == SmallerLayer
+}

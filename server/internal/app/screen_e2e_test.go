@@ -395,3 +395,32 @@ func TestAViewerCanDropAShareAndTakeItBack(t *testing.T) {
 	again := viewer.awaitScreen(30 * time.Second)
 	readScreen(t, again)
 }
+
+func TestAScreenPublishedOnItsOwnConnectionReachesAViewer(t *testing.T) {
+	owner := newHarness(t)
+	presenterID, _ := owner.registerUser()
+	guild := owner.createGuild("Own Connection")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	presenter := newVoiceClient(t, owner)
+	viewer := newVoiceClient(t, friend)
+	presenter.pump()
+	viewer.pump()
+
+	presenter.join(voiceChannel)
+	presenter.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	viewer.join(voiceChannel)
+	viewer.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	presenter.publishScreen()
+
+	remote := viewer.awaitTrack(voice.SourceScreen, presenterID, 30*time.Second)
+	readScreen(t, remote)
+}

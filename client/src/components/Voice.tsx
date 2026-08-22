@@ -23,7 +23,6 @@ const emptyScreens: ScreenState = {
   remote: [],
   audible: [],
   dropped: [],
-  layers: null,
   quality: "smooth",
 };
 
@@ -253,14 +252,6 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             <button onClick={() => void voice.join(channel.id, selfID)}>Join voice</button>
           )}
         </div>
-
-        {here && screens.layers && (
-          <div className="muted">
-            Sizes asked for: {screens.layers.asked.join(", ")} — offered:{" "}
-            {screens.layers.offered.join(", ") || "none"} — negotiated:{" "}
-            {screens.layers.negotiated.join(", ") || "none"}. {screens.layers.note}
-          </div>
-        )}
 
         {here && screens.sharing && !screens.sound && (
           <div className="muted">
