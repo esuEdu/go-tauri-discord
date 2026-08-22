@@ -137,6 +137,9 @@ func (h *Handler) redeemInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.joined(userID, guild.ID)
+	if member, err := h.svc.NewMember(r.Context(), guild.ID, userID); err == nil {
+		h.pub.ToGuild(r.Context(), guild.ID, events.EventGuildMemberAdd, member)
+	}
 	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(guild))
 	httpx.JSON(w, http.StatusOK, PublicGuild(guild))
 }

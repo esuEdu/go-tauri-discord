@@ -30,6 +30,7 @@ export const EventMessageDelete: EventType = "MESSAGE_DELETE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
+export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
 export const EventVoiceScreenUpdate: EventType = "VOICE_SCREEN_UPDATE";
 export interface Frame {
