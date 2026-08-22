@@ -1,5 +1,5 @@
 import { apiBase, serverURL } from "./server";
-import type { Channel, Guild, Message, User } from "./types/events.gen";
+import type { Channel, Guild, Message, Overwrite, Role, User } from "./types/events.gen";
 
 export interface TokenPair {
   access_token: string;
@@ -17,6 +17,13 @@ export interface Invite {
   max_uses: number | null;
   expires_at: string | null;
   created_at: string;
+}
+
+export interface GuildMember {
+  user_id: string;
+  username: string;
+  nickname: string | null;
+  avatar_key: string | null;
 }
 
 export interface AuthResponse {
@@ -201,6 +208,71 @@ export class Api {
       kind,
       position,
     });
+  }
+
+  roles(guildID: string): Promise<Role[]> {
+    return this.request<Role[]>("GET", `/api/v1/guilds/${guildID}/roles`);
+  }
+
+  createRole(guildID: string, name: string, permissions: number): Promise<Role> {
+    return this.request<Role>("POST", `/api/v1/guilds/${guildID}/roles`, {
+      name,
+      permissions,
+      position: null,
+    });
+  }
+
+  updateRole(
+    roleID: string,
+    patch: { name?: string; permissions?: number; position?: number },
+  ): Promise<Role> {
+    return this.request<Role>("PATCH", `/api/v1/roles/${roleID}`, {
+      name: patch.name ?? null,
+      permissions: patch.permissions ?? null,
+      position: patch.position ?? null,
+    });
+  }
+
+  deleteRole(roleID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/roles/${roleID}`);
+  }
+
+  members(guildID: string): Promise<GuildMember[]> {
+    return this.request<GuildMember[]>("GET", `/api/v1/guilds/${guildID}/members`);
+  }
+
+  memberRoles(guildID: string, userID: string): Promise<Role[]> {
+    return this.request<Role[]>("GET", `/api/v1/guilds/${guildID}/members/${userID}/roles`);
+  }
+
+  assignRole(guildID: string, userID: string, roleID: string): Promise<void> {
+    return this.request<void>(
+      "PUT",
+      `/api/v1/guilds/${guildID}/members/${userID}/roles/${roleID}`,
+    );
+  }
+
+  unassignRole(guildID: string, userID: string, roleID: string): Promise<void> {
+    return this.request<void>(
+      "DELETE",
+      `/api/v1/guilds/${guildID}/members/${userID}/roles/${roleID}`,
+    );
+  }
+
+  overwrites(channelID: string): Promise<Overwrite[]> {
+    return this.request<Overwrite[]>("GET", `/api/v1/channels/${channelID}/overwrites`);
+  }
+
+  setOverwrite(channelID: string, targetID: string, allow: number, deny: number): Promise<void> {
+    return this.request<void>("PUT", `/api/v1/channels/${channelID}/overwrites/${targetID}`, {
+      target_type: "role",
+      allow,
+      deny,
+    });
+  }
+
+  clearOverwrite(channelID: string, targetID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/channels/${channelID}/overwrites/${targetID}`);
   }
 
   channels(guildID: string): Promise<Channel[]> {
