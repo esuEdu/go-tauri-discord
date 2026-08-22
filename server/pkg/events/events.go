@@ -39,6 +39,7 @@ const (
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
+	EventGuildMemberAdd    EventType = "GUILD_MEMBER_ADD"
 	EventVoiceStateUpdate  EventType = "VOICE_STATE_UPDATE"
 	EventVoiceScreenUpdate EventType = "VOICE_SCREEN_UPDATE"
 )

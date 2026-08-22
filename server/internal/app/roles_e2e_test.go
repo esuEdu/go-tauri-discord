@@ -669,3 +669,26 @@ func TestRaisingTheEveryoneRoleReachesTheMemberLive(t *testing.T) {
 			"the change is real on the server and the app has no way to notice it")
 	}
 }
+
+func TestJoiningAServerIsAnnouncedToWhoIsAlreadyThere(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Who Is Here")
+
+	watcher := owner.dial()
+	watcher.identify(owner.token)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo(http.MethodPost, "/api/v1/invites/"+invite.Code, http.StatusOK, nil, nil)
+
+	var member events.Member
+	decode(t, watcher.readEvent(events.EventGuildMemberAdd).D, &member)
+
+	if member.GuildID != guild.ID {
+		t.Errorf("member add named guild %s, want %s", member.GuildID, guild.ID)
+	}
+	if member.User.Username == "" {
+		t.Error("member add carried no username, so a list can only show an id until a reload")
+	}
+}

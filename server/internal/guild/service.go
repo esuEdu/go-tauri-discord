@@ -17,6 +17,7 @@ import (
 
 type Repository interface {
 	CreateGuild(ctx context.Context, arg dbgen.CreateGuildParams) (dbgen.Guild, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 	GetGuild(ctx context.Context, id uuid.UUID) (dbgen.Guild, error)
 	ListGuildsForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Guild, error)
 	CreateChannel(ctx context.Context, arg dbgen.CreateChannelParams) (dbgen.Channel, error)
@@ -256,6 +257,19 @@ func (s *Service) MemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID
 		return nil, domain.Internal(err)
 	}
 	return ids, nil
+}
+
+func (s *Service) NewMember(ctx context.Context, guildID, userID uuid.UUID) (events.Member, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return events.Member{}, domain.Internal(err)
+	}
+	return events.Member{
+		GuildID: guildID,
+		User: events.User{
+			ID: user.ID, Username: user.Username, AvatarKey: user.AvatarKey,
+		},
+	}, nil
 }
 
 func (s *Service) Members(ctx context.Context, userID, guildID uuid.UUID) ([]dbgen.ListGuildMembersRow, error) {

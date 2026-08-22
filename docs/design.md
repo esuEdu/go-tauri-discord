@@ -231,10 +231,8 @@ useless when it is not connected.
 separately. Offline is shown rather than hidden: in a group of friends, knowing
 somebody exists matters more than knowing they are out.
 
-**Somebody who joins while you are looking does not appear** until the app is
-reopened. The server tells the person who joined, and tells nobody else, so the
-list is a snapshot taken at connect. Worth knowing before designing anything
-that implies it is live.
+**Somebody who joins while you are looking appears straight away**, without a
+reload.
 
 **A channel in the list** — normal · the one you are reading · **has something
 unread**. Channels may sit under a category heading or loose above them. Unread is a yes/no; the server does not say how many, so a number
@@ -317,8 +315,6 @@ available to design without new server work:
   in a call once you are in it, and announces arrivals only while you are
   watching. Showing faces under a voice channel — what people expect — needs
   server work first.
-- **Somebody joining a server, to everybody already in it.** Only the person who
-  joined is told, so a member list goes stale until the app is reopened.
 
 ---
 

@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { gateway } from "./gateway";
-import type { GuildPermissions, Message, PresenceUpdate, Ready } from "./types/events.gen";
+import type { GuildPermissions, Member, Message, PresenceUpdate, Ready } from "./types/events.gen";
 
 export type SessionState = {
   names: Record<string, string>;
@@ -35,6 +35,12 @@ class SessionStore {
     gateway.on("READY", (payload) => this.absorb(payload as Ready));
     gateway.on("PRESENCE_UPDATE", (payload) => this.presence(payload as PresenceUpdate));
     gateway.on("MESSAGE_CREATE", (payload) => this.arrived(payload as Message));
+    gateway.on("GUILD_MEMBER_ADD", (payload) => {
+      const member = payload as Member;
+      this.names = { ...this.names, [member.user.id]: member.user.username };
+      this.remember(member.guild_id, member.user.id);
+      this.emit();
+    });
     gateway.on("PERMISSIONS_UPDATE", (payload) => {
       this.absorbAllowed([payload as GuildPermissions]);
       this.emit();
