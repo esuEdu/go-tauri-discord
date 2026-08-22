@@ -268,20 +268,30 @@ func (g *Gateway) refreshVisibility(topic string, guildID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hiddenFor := make(map[uuid.UUID][]uuid.UUID, len(sessions))
+	resolvedFor := make(map[uuid.UUID]guild.Access, len(sessions))
 	for _, s := range sessions {
-		hidden, cached := hiddenFor[s.userID]
+		access, cached := resolvedFor[s.userID]
 		if !cached {
-			_, resolved, err := g.guilds.PartitionChannels(ctx, s.userID, guildID)
+			resolved, err := g.guilds.ResolveAccess(ctx, s.userID, guildID)
 			if err != nil {
 				slog.ErrorContext(ctx, "refresh channel visibility",
 					"user_id", s.userID, "guild_id", guildID, "error", err)
 				continue
 			}
-			hidden = resolved
-			hiddenFor[s.userID] = hidden
+			access = resolved
+			resolvedFor[s.userID] = access
 		}
-		s.hideInGuild(guildID, hidden)
+		s.hideInGuild(guildID, access.Hidden)
+
+		frame, err := events.NewDispatch(events.EventPermissionsUpdate, allowedFrom(guildID, access))
+		if err != nil {
+			continue
+		}
+		raw, err := json.Marshal(frame)
+		if err != nil {
+			continue
+		}
+		s.enqueue(raw)
 	}
 }
 

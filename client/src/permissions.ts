@@ -37,3 +37,14 @@ export function summarise(permissions: number): string {
   if (held.length <= 2) return held.map((p) => p.name).join(", ");
   return `${held.length} permissions`;
 }
+
+export const VIEW_CHANNEL = 1 << 0;
+export const SEND_MESSAGES = 1 << 1;
+export const MANAGE_CHANNELS = 1 << 3;
+export const MANAGE_ROLES = 1 << 4;
+export const CREATE_INVITE = 1 << 11;
+
+export function allows(held: number | undefined, bit: number): boolean {
+  if (held === undefined) return false;
+  return has(held, ADMINISTRATOR) || has(held, bit);
+}

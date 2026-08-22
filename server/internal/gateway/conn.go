@@ -144,17 +144,19 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		Guilds:    make([]events.Guild, 0, len(guilds)),
 		Channels:  make([]events.Channel, 0),
 		Members:   make([]events.Member, 0),
+		Allowed:   make([]events.GuildPermissions, 0, len(guilds)),
 	}
 	for _, gl := range guilds {
 		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
-		channels, hidden, err := g.guilds.PartitionChannels(ctx, sess.userID, gl.ID)
+		access, err := g.guilds.ResolveAccess(ctx, sess.userID, gl.ID)
 		if err != nil {
 			return err
 		}
-		for _, ch := range channels {
+		for _, ch := range access.Visible {
 			ready.Channels = append(ready.Channels, guild.PublicChannel(ch))
 		}
-		sess.hideInGuild(gl.ID, hidden)
+		sess.hideInGuild(gl.ID, access.Hidden)
+		ready.Allowed = append(ready.Allowed, allowedFrom(gl.ID, access))
 
 		members, err := g.guilds.Members(ctx, sess.userID, gl.ID)
 		if err != nil {
@@ -185,6 +187,20 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 	}
 	sess.enqueue(raw)
 	return nil
+}
+
+func allowedFrom(guildID uuid.UUID, access guild.Access) events.GuildPermissions {
+	out := events.GuildPermissions{
+		GuildID:     guildID,
+		Permissions: int64(access.Guild),
+		Channels:    make([]events.ChannelPermission, 0, len(access.ByChannel)),
+	}
+	for channelID, perms := range access.ByChannel {
+		out.Channels = append(out.Channels, events.ChannelPermission{
+			ChannelID: channelID, Permissions: int64(perms),
+		})
+	}
+	return out
 }
 
 func (g *Gateway) attachReadState(ctx context.Context, sess *session, ready *events.Ready) error {

@@ -138,31 +138,46 @@ func (s *Service) ListChannels(ctx context.Context, userID, guildID uuid.UUID) (
 	return visible, err
 }
 
+type Access struct {
+	Visible   []dbgen.Channel
+	Hidden    []uuid.UUID
+	Guild     domain.Permission
+	ByChannel map[uuid.UUID]domain.Permission
+}
+
 func (s *Service) PartitionChannels(ctx context.Context, userID, guildID uuid.UUID) (visible []dbgen.Channel, hidden []uuid.UUID, err error) {
+	access, err := s.ResolveAccess(ctx, userID, guildID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return access.Visible, access.Hidden, nil
+}
+
+func (s *Service) ResolveAccess(ctx context.Context, userID, guildID uuid.UUID) (Access, error) {
 	access, err := s.repo.ResolveGuildAccess(ctx, dbgen.ResolveGuildAccessParams{
 		GuildID: guildID, UserID: userID,
 	})
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, nil, domain.NotFound("guild")
+			return Access{}, domain.NotFound("guild")
 		}
-		return nil, nil, domain.Internal(err)
+		return Access{}, domain.Internal(err)
 	}
 	if !access.IsMember {
-		return nil, nil, domain.NotFound("guild")
+		return Access{}, domain.NotFound("guild")
 	}
 	roles, err := decodeRoles(access.Roles)
 	if err != nil {
-		return nil, nil, err
+		return Access{}, err
 	}
 
 	channels, err := s.repo.ListChannels(ctx, guildID)
 	if err != nil {
-		return nil, nil, domain.Internal(err)
+		return Access{}, domain.Internal(err)
 	}
 	rows, err := s.repo.ListGuildOverwrites(ctx, guildID)
 	if err != nil {
-		return nil, nil, domain.Internal(err)
+		return Access{}, domain.Internal(err)
 	}
 
 	byChannel := make(map[uuid.UUID][]domain.Overwrite, len(rows))
@@ -175,16 +190,22 @@ func (s *Service) PartitionChannels(ctx context.Context, userID, guildID uuid.UU
 		})
 	}
 
-	visible = make([]dbgen.Channel, 0, len(channels))
-	hidden = make([]uuid.UUID, 0)
+	out := Access{
+		Visible:   make([]dbgen.Channel, 0, len(channels)),
+		Hidden:    make([]uuid.UUID, 0),
+		Guild:     domain.ResolvePermissions(access.OwnerID, userID, roles, nil),
+		ByChannel: make(map[uuid.UUID]domain.Permission, len(channels)),
+	}
 	for _, ch := range channels {
-		if domain.ResolvePermissions(access.OwnerID, userID, roles, byChannel[ch.ID]).Has(domain.PermViewChannel) {
-			visible = append(visible, ch)
+		perms := domain.ResolvePermissions(access.OwnerID, userID, roles, byChannel[ch.ID])
+		out.ByChannel[ch.ID] = perms
+		if perms.Has(domain.PermViewChannel) {
+			out.Visible = append(out.Visible, ch)
 		} else {
-			hidden = append(hidden, ch.ID)
+			out.Hidden = append(out.Hidden, ch.ID)
 		}
 	}
-	return visible, hidden, nil
+	return out, nil
 }
 
 func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, name, kind string, position int32) (dbgen.Channel, error) {

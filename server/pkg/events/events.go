@@ -38,6 +38,7 @@ const (
 	EventMessageDelete     EventType = "MESSAGE_DELETE"
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
+	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
 	EventVoiceStateUpdate  EventType = "VOICE_STATE_UPDATE"
 	EventVoiceScreenUpdate EventType = "VOICE_SCREEN_UPDATE"
 )
@@ -92,6 +93,17 @@ type Member struct {
 	User    User      `json:"user"`
 }
 
+type ChannelPermission struct {
+	ChannelID   uuid.UUID `json:"channel_id"`
+	Permissions int64     `json:"permissions"`
+}
+
+type GuildPermissions struct {
+	GuildID     uuid.UUID           `json:"guild_id"`
+	Permissions int64               `json:"permissions"`
+	Channels    []ChannelPermission `json:"channels"`
+}
+
 type ReadState struct {
 	ChannelID         uuid.UUID  `json:"channel_id"`
 	LastReadMessageID *uuid.UUID `json:"last_read_message_id"`
@@ -133,13 +145,14 @@ type Message struct {
 }
 
 type Ready struct {
-	SessionID  string      `json:"session_id"`
-	User       User        `json:"user"`
-	Guilds     []Guild     `json:"guilds"`
-	Channels   []Channel   `json:"channels"`
-	Members    []Member    `json:"members"`
-	ReadStates []ReadState `json:"read_states"`
-	Online     []uuid.UUID `json:"online"`
+	SessionID  string             `json:"session_id"`
+	User       User               `json:"user"`
+	Guilds     []Guild            `json:"guilds"`
+	Channels   []Channel          `json:"channels"`
+	Members    []Member           `json:"members"`
+	ReadStates []ReadState        `json:"read_states"`
+	Allowed    []GuildPermissions `json:"allowed"`
+	Online     []uuid.UUID        `json:"online"`
 }
 
 type MessageDelete struct {

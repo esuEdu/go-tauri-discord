@@ -250,14 +250,20 @@ is the hardest thing here to make legible. Deny beats allow. The everyone role
 cannot be renamed, moved or removed, and cannot be taken away from anybody.
 
 Every one of these actions can be refused: you cannot edit a role that outranks
-you, and you cannot grant a permission you do not hold. The refusal arrives as a
-message after the attempt, not as a control that was never offered.
+you, and you cannot grant a permission you do not hold. Those two refusals still
+arrive as a message after the attempt, because they depend on which role you are
+editing rather than on what you hold.
+
+**Everything else the app now knows in advance.** A member is told what they may
+do, per channel and per server, when they connect and again the moment it
+changes. So controls they cannot use are not offered at all: no settings gear
+without Manage roles, no new-channel button without Manage channels, no invite
+box without Create invites, and a composer that says so rather than failing on
+send.
 
 **Making a channel** — a name and one of three kinds: text, voice, or a category
 to group the other two under. Needs the `ManageChannels` permission, which the
-default role does not carry, so for most members this fails — and the app finds
-out by being refused rather than by knowing in advance. Worth designing for the
-refusal.
+default role does not carry, so for most members the control is simply absent.
 
 **Joining a server** — by pasted code, or by opening a link.
 

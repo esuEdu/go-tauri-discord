@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { ServerSettings } from "./ServerSettings";
+import { emptySession, session, type SessionState } from "../session";
+import { CREATE_INVITE, MANAGE_CHANNELS, MANAGE_ROLES, allows } from "../permissions";
 import type { Channel, Guild } from "../types/events.gen";
 import type { Invite } from "../api";
 
@@ -42,6 +44,14 @@ export function Sidebar({
   unread,
 }: Props) {
   const grouped = groupByCategory(channels);
+
+  const [people, setPeople] = useState<SessionState>(emptySession);
+  useEffect(() => session.onChange(setPeople), []);
+
+  const guildAllows = activeGuild ? people.guildAllows[activeGuild.id] : undefined;
+  const mayManageChannels = allows(guildAllows, MANAGE_CHANNELS);
+  const mayManageRoles = allows(guildAllows, MANAGE_ROLES);
+  const mayInvite = allows(guildAllows, CREATE_INVITE);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -196,25 +206,29 @@ export function Sidebar({
           <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
           {activeGuild && (
             <>
-              <button
-                className="link add-channel"
-                title="Server settings"
-                onClick={() => setSettingsOpen(true)}
-              >
-                ⚙
-              </button>
-              <button
-                className="link add-channel"
-                title="New channel"
-                onClick={() => setAddingChannel(!addingChannel)}
-              >
-                +
-              </button>
+              {mayManageRoles && (
+                <button
+                  className="link add-channel"
+                  title="Server settings"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  ⚙
+                </button>
+              )}
+              {mayManageChannels && (
+                <button
+                  className="link add-channel"
+                  title="New channel"
+                  onClick={() => setAddingChannel(!addingChannel)}
+                >
+                  +
+                </button>
+              )}
             </>
           )}
         </div>
 
-        {addingChannel && activeGuild && (
+        {addingChannel && activeGuild && mayManageChannels && (
           <form className="inline-form" onSubmit={createChannel}>
             <input
               placeholder="channel name"
@@ -258,7 +272,7 @@ export function Sidebar({
         ))}
 
         <div className="join-box">
-          {activeGuild && (
+          {activeGuild && mayInvite && (
             <>
               <div className="invite-limits">
                 <input

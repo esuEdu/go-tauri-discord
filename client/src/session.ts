@@ -1,14 +1,22 @@
 import { api } from "./api";
 import { gateway } from "./gateway";
-import type { Message, PresenceUpdate, Ready } from "./types/events.gen";
+import type { GuildPermissions, Message, PresenceUpdate, Ready } from "./types/events.gen";
 
 export type SessionState = {
   names: Record<string, string>;
   online: Record<string, boolean>;
   unread: Record<string, boolean>;
+  guildAllows: Record<string, number>;
+  channelAllows: Record<string, number>;
 };
 
-export const emptySession: SessionState = { names: {}, online: {}, unread: {} };
+export const emptySession: SessionState = {
+  names: {},
+  online: {},
+  unread: {},
+  guildAllows: {},
+  channelAllows: {},
+};
 
 class SessionStore {
   private names: Record<string, string> = {};
@@ -16,12 +24,18 @@ class SessionStore {
   private newest: Record<string, string> = {};
   private seen: Record<string, string> = {};
   private open: string | null = null;
+  private guildAllows: Record<string, number> = {};
+  private channelAllows: Record<string, number> = {};
   private listeners = new Set<(s: SessionState) => void>();
 
   constructor() {
     gateway.on("READY", (payload) => this.absorb(payload as Ready));
     gateway.on("PRESENCE_UPDATE", (payload) => this.presence(payload as PresenceUpdate));
     gateway.on("MESSAGE_CREATE", (payload) => this.arrived(payload as Message));
+    gateway.on("PERMISSIONS_UPDATE", (payload) => {
+      this.absorbAllowed([payload as GuildPermissions]);
+      this.emit();
+    });
   }
 
   onChange(fn: (s: SessionState) => void): () => void {
@@ -46,6 +60,8 @@ class SessionStore {
     this.newest = {};
     this.seen = {};
     this.open = null;
+    this.guildAllows = {};
+    this.channelAllows = {};
     this.emit();
   }
 
@@ -54,7 +70,13 @@ class SessionStore {
     for (const [channelID, newest] of Object.entries(this.newest)) {
       unread[channelID] = (this.seen[channelID] ?? "") < newest;
     }
-    return { names: this.names, online: this.online, unread };
+    return {
+      names: this.names,
+      online: this.online,
+      unread,
+      guildAllows: this.guildAllows,
+      channelAllows: this.channelAllows,
+    };
   }
 
   private emit() {
@@ -81,8 +103,26 @@ class SessionStore {
       if (state.last_read_message_id) this.seen[state.channel_id] = state.last_read_message_id;
     }
 
+    this.guildAllows = {};
+    this.channelAllows = {};
+    this.absorbAllowed(ready.allowed);
+
     if (this.open) this.catchUp(this.open);
     this.emit();
+  }
+
+  private absorbAllowed(allowed: GuildPermissions[]) {
+    const guilds = { ...this.guildAllows };
+    const channels = { ...this.channelAllows };
+
+    for (const guild of allowed) {
+      guilds[guild.guild_id] = guild.permissions;
+      for (const channel of guild.channels) {
+        channels[channel.channel_id] = channel.permissions;
+      }
+    }
+    this.guildAllows = guilds;
+    this.channelAllows = channels;
   }
 
   private presence(update: PresenceUpdate) {
