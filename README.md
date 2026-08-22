@@ -548,6 +548,16 @@ from 1 and that same fix means the person on hotel wifi decides what everyone
 else watches, and only simulcast will do. Nothing has been built on top of this
 yet on purpose — the estimates are the evidence, and there is not enough of it.
 
+The estimator is given an explicit **no-op pacer**, and that one line is the
+difference between an instrument and a throttle. pion's `NewSendSideBWE`
+installs a leaky-bucket pacer unless told otherwise, and `AddStream` returns
+that pacer as the writer for the stream — so every forwarded packet drains
+through a queue metered at the current estimate. Adding a *measurement* would
+therefore have quietly started rationing the media, and when an estimate
+collapses the queue grows without bound: the picture falls further behind every
+second and never catches up, because nothing drops. A share is not paced here.
+It is measured, and the number is written down.
+
 ### Sharing a running instance
 
 The Go server can serve the built UI, so the whole app lives on one port and

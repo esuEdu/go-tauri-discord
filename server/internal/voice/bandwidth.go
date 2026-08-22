@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -18,6 +19,13 @@ const (
 type Estimate struct {
 	UserID uuid.UUID
 	Bits   int
+}
+
+func newEstimator() (cc.BandwidthEstimator, error) {
+	return gcc.NewSendSideBWE(
+		gcc.SendSideBWEInitialBitrate(initialEstimate),
+		gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),
+	)
 }
 
 func (s *SFU) newPeerConnection() (*webrtc.PeerConnection, cc.BandwidthEstimator, error) {
