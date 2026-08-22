@@ -431,6 +431,14 @@ audio element, because Chrome will not pump a remote stream into Web Audio
 unless a media element holds it too; that element is the fallback path when a
 browser refuses to build the graph at all, and there volume stops at 100%.
 
+The same graph answers **who is talking**. An analyser taps each remote stream
+where it arrives, ahead of the gain node, and the client decides locally who is
+loud — nothing is negotiated, nothing is sent, and no server work was needed for
+it. Tapping before the gain matters: someone you have turned down to nothing
+still lights up, because the question is who is speaking rather than what you
+chose to hear. A muted microphone produces silence, so it reads as not speaking
+without being told anything.
+
 A person and **what that person is showing you are two different sounds**, so
 they get two sliders. Someone narrating over a film they are sharing can be
 turned down without silencing the film, and the film can be turned down without

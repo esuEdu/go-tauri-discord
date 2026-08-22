@@ -8,6 +8,7 @@ import {
   noVolumes,
   type ScreenState,
   type VoiceStatus,
+  type Speaking,
   type VolumeTarget,
   type Volumes,
 } from "../voice";
@@ -82,6 +83,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
   const [volumes, setVolumes] = useState<Volumes>(noVolumes);
   const [people, setPeople] = useState<SessionState>(emptySession);
+  const [speaking, setSpeaking] = useState<Speaking>({});
   const [pickerRefused, setPickerRefused] = useState(false);
 
   useEffect(() => session.onChange(setPeople), []);
@@ -94,6 +96,8 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   useEffect(() => voice.onScreenChange(setScreens), []);
 
   useEffect(() => voice.onVolumeChange(setVolumes), []);
+
+  useEffect(() => voice.onSpeakingChange(setSpeaking), []);
 
   useEffect(() => {
     setMembers([]);
@@ -138,7 +142,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
         <div className="voice-members">
           {members.length === 0 && <div className="muted">Nobody is here yet.</div>}
           {members.map((id) => (
-            <div key={id} className="voice-member">
+            <div key={id} className={speaking[id] ? "voice-member speaking" : "voice-member"}>
               <span className={people.online[id] ? "dot ready" : "dot closed"} />
               <span className="voice-name">
                 {id === selfID ? "You" : people.names[id] ?? id.slice(0, 8)}
@@ -201,7 +205,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               </button>
             </>
           ) : (
-            <button onClick={() => void voice.join(channel.id)}>Join voice</button>
+            <button onClick={() => void voice.join(channel.id, selfID)}>Join voice</button>
           )}
         </div>
 

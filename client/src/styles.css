@@ -494,6 +494,14 @@ button.link.danger {
   gap: 8px;
 }
 
+.voice-member .dot {
+  transition: box-shadow 0.1s ease;
+}
+
+.voice-member.speaking .dot {
+  box-shadow: 0 0 0 3px rgb(59 165 93 / 0.45);
+}
+
 .voice-name {
   flex: 1;
   min-width: 0;

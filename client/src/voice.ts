@@ -158,6 +158,19 @@ type Output = {
   target: VolumeTarget;
 };
 
+export type Speaking = Record<string, boolean>;
+
+const SPEAKING_LEVEL = 0.02;
+const SPEAKING_HOLD = 250;
+const METER_INTERVAL = 100;
+
+type Meter = {
+  origin: AudioNode;
+  analyser: AnalyserNode;
+  samples: Uint8Array<ArrayBuffer>;
+  loudUntil: number;
+};
+
 class VoiceClient {
   private pc: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
@@ -165,6 +178,10 @@ class VoiceClient {
   private outputs = new Map<string, Output>();
   private volumes = storedVolumes();
   private volumeListeners = new Set<(v: Volumes) => void>();
+  private meters = new Map<string, Meter>();
+  private meterTimer: ReturnType<typeof setInterval> | null = null;
+  private speaking: Speaking = {};
+  private speakingListeners = new Set<(s: Speaking) => void>();
   private unsubscribe: Array<() => void> = [];
 
   private status: VoiceStatus = "idle";
@@ -262,6 +279,70 @@ class VoiceClient {
     output.audio.volume = Math.min(1, level);
   }
 
+  onSpeakingChange(fn: (s: Speaking) => void): () => void {
+    this.speakingListeners.add(fn);
+    fn(this.speaking);
+    return () => this.speakingListeners.delete(fn);
+  }
+
+  private watchLevel(userID: string, context: AudioContext, origin: AudioNode) {
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    origin.connect(analyser);
+
+    this.meters.set(userID, {
+      origin,
+      analyser,
+      samples: new Uint8Array(analyser.fftSize),
+      loudUntil: 0,
+    });
+
+    if (this.meterTimer === null) {
+      this.meterTimer = setInterval(() => this.measure(), METER_INTERVAL);
+    }
+  }
+
+  private forgetLevel(userID: string) {
+    const meter = this.meters.get(userID);
+    if (!meter) return;
+
+    meter.origin.disconnect(meter.analyser);
+    this.meters.delete(userID);
+    if (this.speaking[userID]) {
+      this.speaking = { ...this.speaking, [userID]: false };
+      for (const fn of this.speakingListeners) fn(this.speaking);
+    }
+  }
+
+  private measure() {
+    const now = Date.now();
+    const next = { ...this.speaking };
+    let changed = false;
+
+    for (const [userID, meter] of this.meters) {
+      meter.analyser.getByteTimeDomainData(meter.samples);
+
+      let sum = 0;
+      for (const sample of meter.samples) {
+        const offset = (sample - 128) / 128;
+        sum += offset * offset;
+      }
+      if (Math.sqrt(sum / meter.samples.length) >= SPEAKING_LEVEL) {
+        meter.loudUntil = now + SPEAKING_HOLD;
+      }
+
+      const loud = now < meter.loudUntil;
+      if (next[userID] !== loud) {
+        next[userID] = loud;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+    this.speaking = next;
+    for (const fn of this.speakingListeners) fn(next);
+  }
+
   private context(): AudioContext | null {
     if (!this.mixer) {
       try {
@@ -286,7 +367,7 @@ class VoiceClient {
     return !track.enabled;
   }
 
-  async join(channelID: string) {
+  async join(channelID: string, selfID: string) {
     await this.leave();
 
     this.channelID = channelID;
@@ -300,6 +381,15 @@ class VoiceClient {
       this.channelID = null;
       this.setStatus("failed");
       return;
+    }
+
+    const mixer = this.context();
+    if (mixer) {
+      try {
+        this.watchLevel(selfID, mixer, mixer.createMediaStreamSource(this.microphone));
+      } catch {
+        this.forgetLevel(selfID);
+      }
     }
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -539,6 +629,9 @@ class VoiceClient {
         output.node = node;
         output.gain = gain;
         audio.muted = true;
+        if (output.target === "voice" && output.userID) {
+          this.watchLevel(output.userID, context, node);
+        }
       } catch {
         output.node = null;
       }
@@ -556,6 +649,7 @@ class VoiceClient {
     const output = this.outputs.get(id);
     if (!output) return;
     if (output.target === "screen") queueMicrotask(() => this.emitScreens());
+    if (output.target === "voice" && output.userID) this.forgetLevel(output.userID);
 
     output.node?.disconnect();
     output.gain?.disconnect();
@@ -572,6 +666,13 @@ class VoiceClient {
     this.unsubscribe = [];
 
     for (const id of [...this.outputs.keys()]) this.dropOutput(id);
+
+    if (this.meterTimer !== null) clearInterval(this.meterTimer);
+    this.meterTimer = null;
+    this.meters.clear();
+    this.speaking = {};
+    for (const fn of this.speakingListeners) fn(this.speaking);
+
     void this.mixer?.close().catch(() => undefined);
     this.mixer = null;
 
