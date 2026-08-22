@@ -1,4 +1,5 @@
 import { gateway } from "./gateway";
+import { screenPublisher, type PublishReport } from "./simulcast";
 import {
   EventVoiceScreenUpdate,
   OpVoiceAnswer,
@@ -116,6 +117,7 @@ export type ScreenState = {
   remote: RemoteScreen[];
   audible: string[];
   dropped: string[];
+  layers: PublishReport | null;
   quality: ScreenQualityID;
 };
 
@@ -200,6 +202,7 @@ class VoiceClient {
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private dropped = new Set<string>();
+  private layers: PublishReport | null = null;
   private screenListeners = new Set<(s: ScreenState) => void>();
 
   onStatusChange(fn: (s: VoiceStatus, channelID: string | null) => void): () => void {
@@ -232,6 +235,7 @@ class VoiceClient {
       remote,
       audible: this.audibleShares(),
       dropped: [...this.dropped],
+      layers: this.layers,
       quality: this.quality.id,
     };
   }
@@ -522,6 +526,15 @@ class VoiceClient {
     this.applyScreen();
     this.announceScreen(true);
     this.emitScreens();
+
+    void screenPublisher
+      .publish(track, stream)
+      .then((report) => {
+        this.layers = report;
+        this.emitScreens();
+      })
+      .catch(() => undefined);
+
     return true;
   }
 
@@ -530,6 +543,8 @@ class VoiceClient {
 
     this.display.getTracks().forEach((t) => t.stop());
     this.display = null;
+    this.layers = null;
+    void screenPublisher.stop();
     this.applyScreen();
     this.announceScreen(false);
     this.emitScreens();

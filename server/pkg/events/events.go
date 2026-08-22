@@ -25,6 +25,9 @@ const (
 	OpVoiceScreen    Opcode = 12
 	OpVoiceMute      Opcode = 13
 	OpVoiceWatch     Opcode = 14
+	OpScreenPublish  Opcode = 15
+	OpScreenAnswer   Opcode = 16
+	OpScreenIce      Opcode = 17
 )
 
 type EventType string
@@ -198,6 +201,10 @@ type VoiceStateUpdate struct {
 	UserID    uuid.UUID  `json:"user_id"`
 	SelfMute  bool       `json:"self_mute"`
 	SelfDeaf  bool       `json:"self_deaf"`
+}
+
+type ScreenPublish struct {
+	SDP string `json:"sdp"`
 }
 
 type VoiceWatchRequest struct {

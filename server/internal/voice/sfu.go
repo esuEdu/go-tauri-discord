@@ -34,8 +34,12 @@ type SFU struct {
 
 	birth    sync.Mutex
 	arriving cc.BandwidthEstimator
-	stop     chan struct{}
-	stopOnce sync.Once
+
+	publishMu       sync.Mutex
+	publishers      map[uuid.UUID]*publisher
+	publishSignaler PublishSignaler
+	stop            chan struct{}
+	stopOnce        sync.Once
 }
 
 type room struct {
@@ -121,11 +125,12 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 	}
 
 	s := &SFU{
-		config:   webrtc.Configuration{ICEServers: servers},
-		signaler: signaler,
-		rooms:    make(map[uuid.UUID]*room),
-		homes:    make(map[uuid.UUID]uuid.UUID),
-		stop:     make(chan struct{}),
+		config:     webrtc.Configuration{ICEServers: servers},
+		signaler:   signaler,
+		rooms:      make(map[uuid.UUID]*room),
+		homes:      make(map[uuid.UUID]uuid.UUID),
+		publishers: make(map[uuid.UUID]*publisher),
+		stop:       make(chan struct{}),
 	}
 
 	mediaEngine := &webrtc.MediaEngine{}
