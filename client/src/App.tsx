@@ -4,6 +4,7 @@ import { gateway, type ConnectionState } from "./gateway";
 import { Chat } from "./components/Chat";
 import { DeleteAccount } from "./components/DeleteAccount";
 import { Login } from "./components/Login";
+import { MemberList } from "./components/MemberList";
 import { Sidebar } from "./components/Sidebar";
 import { Voice } from "./components/Voice";
 import { emptySession, session, type SessionState } from "./session";
@@ -175,6 +176,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <MemberList guild={activeGuild} selfID={user.id} />
 
       {inviteError && <div className="error banner">{inviteError}</div>}
 
