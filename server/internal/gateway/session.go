@@ -111,6 +111,16 @@ func (s *session) drainQueued() {
 	}
 }
 
+func (s *session) stopExpiry() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.expiry != nil {
+		s.expiry.Stop()
+		s.expiry = nil
+	}
+}
+
 func (s *session) kill() {
 	s.closeOnce.Do(func() { close(s.dead) })
 }

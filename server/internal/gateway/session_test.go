@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/google/uuid"
@@ -128,5 +129,24 @@ func TestDrainQueuedEmptiesTheBuffer(t *testing.T) {
 
 	if frames, ok := s.replayAfter(0); !ok || len(frames) != 10 {
 		t.Errorf("drain damaged the replay buffer: got %d frames, ok=%v", len(frames), ok)
+	}
+}
+
+func TestStoppingAnExpiryLeavesNothingToFireLater(t *testing.T) {
+	s := &session{}
+
+	s.mu.Lock()
+	s.expiry = time.AfterFunc(time.Hour, func() {
+		t.Error("a resume timer fired after the session was stopped; on shutdown it reaches " +
+			"for a database that has already been closed")
+	})
+	s.mu.Unlock()
+
+	s.stopExpiry()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.expiry != nil {
+		t.Error("the timer was stopped but not forgotten, so a second stop would touch a dead one")
 	}
 }
