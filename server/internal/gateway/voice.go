@@ -182,6 +182,19 @@ func (g *Gateway) handleVoiceMute(sess *session, raw json.RawMessage) {
 	})
 }
 
+func (g *Gateway) handleVoiceWatch(sess *session, raw json.RawMessage) {
+	if g.voice == nil {
+		return
+	}
+	var payload events.VoiceWatchRequest
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return
+	}
+	if err := g.voice.SetWatching(sess.userID, payload.UserID, payload.Watching); err != nil {
+		slog.Error("voice watch", "user_id", sess.userID, "error", err)
+	}
+}
+
 func (g *Gateway) handleVoiceScreen(sess *session, raw json.RawMessage) {
 	if g.voice == nil {
 		return

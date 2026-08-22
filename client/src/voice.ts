@@ -7,10 +7,12 @@ import {
   OpVoiceOffer,
   OpVoiceScreen,
   OpVoiceState,
+  OpVoiceWatch,
   type ICECandidate,
   type SessionDescription,
   type VoiceMuteRequest,
   type VoiceScreenRequest,
+  type VoiceWatchRequest,
   type VoiceScreenUpdate,
 } from "./types/events.gen";
 
@@ -113,6 +115,7 @@ export type ScreenState = {
   local: MediaStream | null;
   remote: RemoteScreen[];
   audible: string[];
+  dropped: string[];
   quality: ScreenQualityID;
 };
 
@@ -196,6 +199,7 @@ class VoiceClient {
   private screenAudioMid: string | null = null;
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
+  private dropped = new Set<string>();
   private screenListeners = new Set<(s: ScreenState) => void>();
 
   onStatusChange(fn: (s: VoiceStatus, channelID: string | null) => void): () => void {
@@ -227,8 +231,22 @@ class VoiceClient {
       local: this.display,
       remote,
       audible: this.audibleShares(),
+      dropped: [...this.dropped],
       quality: this.quality.id,
     };
+  }
+
+  watchScreen(userID: string, watching: boolean) {
+    if (watching) {
+      this.dropped.delete(userID);
+    } else {
+      this.dropped.add(userID);
+    }
+    gateway.sendRaw({
+      op: OpVoiceWatch,
+      d: { user_id: userID, watching } satisfies VoiceWatchRequest,
+    });
+    this.emitScreens();
   }
 
   private audibleShares(): string[] {
@@ -687,6 +705,7 @@ class VoiceClient {
     this.screenAudioMid = null;
     this.videoStreams.clear();
     this.owners.clear();
+    this.dropped.clear();
 
     this.microphone?.getTracks().forEach((t) => t.stop());
     this.microphone = null;

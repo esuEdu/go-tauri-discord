@@ -227,3 +227,83 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 			"the two would disagree and nothing would correct it until they toggled")
 	}
 }
+
+func TestDroppingAShareOnlyDropsThatPersonsScreen(t *testing.T) {
+	sharer, other := uuid.New(), uuid.New()
+	p := &peer{ignored: map[uuid.UUID]bool{sharer: true}}
+
+	cases := []struct {
+		track string
+		want  bool
+		why   string
+	}{
+		{TrackName(SourceScreen, sharer, 1), false, "the screen that was dropped is still sent"},
+		{TrackName(SourceScreen, other, 2), true, "dropping one screen took another with it"},
+		{TrackName(SourceMicrophone, sharer, 3), true,
+			"dropping a screen silenced the person sharing it, so closing a tile leaves you unable to hear them"},
+		{TrackName(SourceScreenAudio, sharer, 4), true,
+			"dropping a screen took its sound too; the sound is cheap and has a volume control of its own"},
+		{"something-else", true, "a track this package did not name was withheld"},
+	}
+
+	for _, c := range cases {
+		if got := p.wants(c.track); got != c.want {
+			t.Errorf("wants(%q) = %v, want %v: %s", c.track, got, c.want, c.why)
+		}
+	}
+}
+
+func TestAViewerWhoDroppedNothingWantsEverything(t *testing.T) {
+	p := &peer{ignored: map[uuid.UUID]bool{}}
+
+	if !p.wants(TrackName(SourceScreen, uuid.New(), 1)) {
+		t.Error("a viewer who dropped nothing was refused a screen")
+	}
+}
+
+func TestWatchingSomebodyWhileNotInACallFails(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	if err := sfu.SetWatching(uuid.New(), uuid.New(), false); err != ErrNotConnected {
+		t.Errorf("SetWatching error = %v, want %v", err, ErrNotConnected)
+	}
+}
+
+func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if err := sfu.SetWatching(viewer, sharer, false); err != nil {
+		t.Fatalf("stop watching: %v", err)
+	}
+
+	sfu.mu.Lock()
+	dropped := sfu.rooms[channelID].peers[viewer].ignored[sharer]
+	sfu.mu.Unlock()
+	if !dropped {
+		t.Fatal("a dropped share was not recorded, so the next renegotiation sends it again")
+	}
+
+	if err := sfu.SetWatching(viewer, sharer, true); err != nil {
+		t.Fatalf("resume watching: %v", err)
+	}
+
+	sfu.mu.Lock()
+	stillDropped := sfu.rooms[channelID].peers[viewer].ignored[sharer]
+	sfu.mu.Unlock()
+	if stillDropped {
+		t.Error("resuming left the share dropped")
+	}
+}

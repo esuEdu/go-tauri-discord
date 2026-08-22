@@ -57,6 +57,7 @@ type peer struct {
 	screenAsk        func()
 	estimate         cc.BandwidthEstimator
 	muted            bool
+	ignored          map[uuid.UUID]bool
 	redo             bool
 
 	mu         sync.Mutex
@@ -172,7 +173,10 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		return err
 	}
 
-	p := &peer{userID: userID, pc: pc, owned: make(map[string]bool), estimate: estimator}
+	p := &peer{
+		userID: userID, pc: pc, owned: make(map[string]bool),
+		estimate: estimator, ignored: make(map[uuid.UUID]bool),
+	}
 
 	if mayStream {
 		screen, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
@@ -472,6 +476,61 @@ func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 	return nil
 }
 
+func (p *peer) wants(trackID string) bool {
+	if len(p.ignored) == 0 {
+		return true
+	}
+	source, owner, ok := ParseTrackName(trackID)
+	if !ok || source != SourceScreen {
+		return true
+	}
+	return !p.ignored[owner]
+}
+
+func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool) error {
+	s.mu.Lock()
+
+	channelID, ok := s.homes[viewerID]
+	if !ok {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	p := r.peers[viewerID]
+	if p == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+
+	if watching {
+		delete(p.ignored, sharerID)
+	} else {
+		p.ignored[sharerID] = true
+	}
+
+	asks := make([]func(), 0, 1)
+	if watching {
+		for id, ask := range r.keyframes {
+			if source, owner, ok := ParseTrackName(id); ok && source == SourceScreen && owner == sharerID {
+				asks = append(asks, ask)
+			}
+		}
+	}
+
+	p.redo = true
+	s.signalLocked(r)
+	s.mu.Unlock()
+
+	for _, ask := range asks {
+		go ask()
+	}
+	return nil
+}
+
 func (p *peer) sharedTracks() []*webrtc.TrackLocalStaticRTP {
 	out := make([]*webrtc.TrackLocalStaticRTP, 0, 2)
 	if p.screenTrack != nil {
@@ -649,7 +708,8 @@ func (s *SFU) syncLocked(r *room) bool {
 			if track == nil {
 				continue
 			}
-			if _, live := r.tracks[track.ID()]; !live {
+			_, live := r.tracks[track.ID()]
+			if !live || !p.wants(track.ID()) {
 				if err := p.pc.RemoveTrack(sender); err != nil {
 					return false
 				}
@@ -660,7 +720,7 @@ func (s *SFU) syncLocked(r *room) bool {
 		}
 
 		for id, track := range r.tracks {
-			if sent[id] || p.owned[id] {
+			if sent[id] || p.owned[id] || !p.wants(id) {
 				continue
 			}
 			transceiver, err := p.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
