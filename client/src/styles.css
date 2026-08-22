@@ -504,6 +504,43 @@ button.link.danger {
   margin-bottom: 8px;
 }
 
+.invite-limits {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.invite-limits input {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.invite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.invite-row code {
+  flex: none;
+}
+
+.invite-row span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .error.banner {
   grid-area: main;
   align-self: start;

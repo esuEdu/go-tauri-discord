@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Channel, Guild } from "../types/events.gen";
+import type { Invite } from "../api";
 
 interface Props {
   guilds: Guild[];
@@ -46,6 +47,10 @@ export function Sidebar({
   const [code, setCode] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [maxUses, setMaxUses] = useState("");
+  const [expiresIn, setExpiresIn] = useState("");
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [managing, setManaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function createGuild(e: React.FormEvent) {
@@ -75,11 +80,47 @@ export function Sidebar({
     }
   }
 
+  const loadInvites = useCallback(async () => {
+    if (!activeGuild) return;
+    try {
+      setInvites(await api.invites(activeGuild.id));
+    } catch {
+      setInvites([]);
+    }
+  }, [activeGuild]);
+
+  useEffect(() => {
+    setManaging(false);
+    setInvites([]);
+    setInviteLink(null);
+  }, [activeGuild]);
+
+  useEffect(() => {
+    if (managing) void loadInvites();
+  }, [managing, loadInvites]);
+
+  async function revoke(code: string) {
+    setError(null);
+    try {
+      await api.revokeInvite(code);
+      await loadInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not revoke");
+    }
+  }
+
   async function makeInvite() {
     if (!activeGuild) return;
     setError(null);
     try {
-      const invite = await api.createInvite(activeGuild.id);
+      const uses = Number(maxUses);
+      const hours = Number(expiresIn);
+      const invite = await api.createInvite(
+        activeGuild.id,
+        uses > 0 ? uses : undefined,
+        hours > 0 ? hours : undefined,
+      );
+      if (managing) void loadInvites();
       const link = `${location.origin}/?invite=${invite.code}`;
       setInviteLink(link);
       try {
@@ -152,11 +193,54 @@ export function Sidebar({
         <div className="join-box">
           {activeGuild && (
             <>
+              <div className="invite-limits">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="uses"
+                  aria-label="Maximum uses, blank for unlimited"
+                  value={maxUses}
+                  onChange={(e) => setMaxUses(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="hours"
+                  aria-label="Expires after, blank for never"
+                  value={expiresIn}
+                  onChange={(e) => setExpiresIn(e.target.value)}
+                />
+              </div>
               <button className="invite-button" onClick={() => void makeInvite()}>
                 {copied ? "Link copied" : "Invite a friend"}
               </button>
               {inviteLink && (
                 <input className="invite-link" readOnly value={inviteLink} onFocus={(e) => e.target.select()} />
+              )}
+
+              <button className="link" onClick={() => setManaging(!managing)}>
+                {managing ? "Hide invites" : "Manage invites"}
+              </button>
+
+              {managing && (
+                <div className="invite-list">
+                  {invites.length === 0 && <div className="muted">No invites yet.</div>}
+                  {invites.map((invite) => (
+                    <div key={invite.code} className="invite-row">
+                      <code>{invite.code}</code>
+                      <span className="muted">
+                        {invite.uses}
+                        {invite.max_uses ? `/${invite.max_uses}` : ""} used
+                        {invite.expires_at
+                          ? `, until ${new Date(invite.expires_at).toLocaleDateString()}`
+                          : ""}
+                      </span>
+                      <button className="link danger" onClick={() => void revoke(invite.code)}>
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
