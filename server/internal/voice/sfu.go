@@ -39,6 +39,7 @@ type SFU struct {
 
 	publishMu       sync.Mutex
 	publishers      map[uuid.UUID]*publisher
+	early           map[uuid.UUID][]webrtc.ICECandidateInit
 	publishSignaler PublishSignaler
 	stop            chan struct{}
 	stopOnce        sync.Once
@@ -138,6 +139,7 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 		rooms:      make(map[uuid.UUID]*room),
 		homes:      make(map[uuid.UUID]uuid.UUID),
 		publishers: make(map[uuid.UUID]*publisher),
+		early:      make(map[uuid.UUID][]webrtc.ICECandidateInit),
 		stop:       make(chan struct{}),
 	}
 
@@ -219,7 +221,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		switch state {
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-			s.Leave(userID)
+			s.leave(userID, p)
 		}
 	})
 
@@ -309,20 +311,29 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 }
 
 func (s *SFU) Leave(userID uuid.UUID) {
+	s.leave(userID, nil)
+}
+
+func (s *SFU) leave(userID uuid.UUID, only *peer) {
 	s.mu.Lock()
 	channelID, ok := s.homes[userID]
 	if !ok {
 		s.mu.Unlock()
 		return
 	}
-	delete(s.homes, userID)
 
 	r := s.rooms[channelID]
 	if r == nil {
+		delete(s.homes, userID)
 		s.mu.Unlock()
 		return
 	}
 	p := r.peers[userID]
+	if only != nil && p != only {
+		s.mu.Unlock()
+		return
+	}
+	delete(s.homes, userID)
 	delete(r.peers, userID)
 	delete(r.screens, userID)
 
@@ -342,6 +353,7 @@ func (s *SFU) Leave(userID uuid.UUID) {
 	if p != nil {
 		p.pc.Close()
 	}
+	s.StopPublishing(userID)
 }
 
 func (s *SFU) Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error {
@@ -655,6 +667,19 @@ func (s *SFU) Close() {
 	for _, p := range peers {
 		p.pc.Close()
 	}
+
+	s.publishMu.Lock()
+	publishers := make([]*publisher, 0, len(s.publishers))
+	for _, p := range s.publishers {
+		publishers = append(publishers, p)
+	}
+	s.publishers = make(map[uuid.UUID]*publisher)
+	s.early = make(map[uuid.UUID][]webrtc.ICECandidateInit)
+	s.publishMu.Unlock()
+
+	for _, p := range publishers {
+		p.pc.Close()
+	}
 }
 
 func (s *SFU) roomFor(userID uuid.UUID) (*room, *peer) {
@@ -766,6 +791,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			continue
 		}
 		if p.pc.SignalingState() != webrtc.SignalingStateStable {
+			p.redo = true
 			return false
 		}
 

@@ -34,6 +34,7 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 	signaler := s.publishSignaler
 	if existing := s.publishers[userID]; existing != nil {
 		delete(s.publishers, userID)
+		delete(s.early, userID)
 		existing.pc.Close()
 	}
 	s.publishMu.Unlock()
@@ -55,6 +56,8 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 
 	s.publishMu.Lock()
 	s.publishers[userID] = p
+	p.pending = append(p.pending, s.early[userID]...)
+	delete(s.early, userID)
 	s.publishMu.Unlock()
 
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
@@ -126,11 +129,12 @@ func (p *publisher) drainCandidates() error {
 func (s *SFU) PublishCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error {
 	s.publishMu.Lock()
 	p := s.publishers[userID]
-	s.publishMu.Unlock()
-
 	if p == nil {
-		return ErrNotConnected
+		s.early[userID] = append(s.early[userID], candidate)
+		s.publishMu.Unlock()
+		return nil
 	}
+	s.publishMu.Unlock()
 
 	p.mu.Lock()
 	if !p.ready {
@@ -158,6 +162,7 @@ func (s *SFU) StopPublishing(userID uuid.UUID) {
 	s.publishMu.Lock()
 	p := s.publishers[userID]
 	delete(s.publishers, userID)
+	delete(s.early, userID)
 	s.publishMu.Unlock()
 
 	if p != nil {

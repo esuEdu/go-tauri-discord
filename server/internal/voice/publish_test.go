@@ -103,3 +103,35 @@ func TestLayersOfSomebodyNotPublishingAreNothing(t *testing.T) {
 		t.Errorf("PublishedLayers of a stranger = %v, want nil", got)
 	}
 }
+
+func publishOneScreen(t *testing.T, sfu *SFU, userID uuid.UUID) {
+	t.Helper()
+
+	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatalf("client peer connection: %v", err)
+	}
+	t.Cleanup(func() { client.Close() })
+
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "screen", "share")
+	if err != nil {
+		t.Fatalf("create track: %v", err)
+	}
+	if _, err := client.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionSendonly,
+	}); err != nil {
+		t.Fatalf("add transceiver: %v", err)
+	}
+
+	offer, err := client.CreateOffer(nil)
+	if err != nil {
+		t.Fatalf("create offer: %v", err)
+	}
+	if err := client.SetLocalDescription(offer); err != nil {
+		t.Fatalf("set local: %v", err)
+	}
+	if err := sfu.PublishScreen(userID, offer); err != nil {
+		t.Fatalf("publish screen: %v", err)
+	}
+}

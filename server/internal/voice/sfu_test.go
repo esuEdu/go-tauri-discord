@@ -366,3 +366,143 @@ func TestJoiningOffersOnlyAMicrophone(t *testing.T) {
 		t.Errorf("offer carried %d audio sections, want 1 for the microphone", got)
 	}
 }
+
+func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	first := sfu.peerFor(userID)
+	if first == nil {
+		t.Fatal("joining left nobody in the room")
+	}
+
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("rejoin: %v", err)
+	}
+	second := sfu.peerFor(userID)
+	if second == nil || second == first {
+		t.Fatal("rejoining did not replace the peer, so this proves nothing")
+	}
+
+	sfu.leave(userID, first)
+
+	if got := sfu.peerFor(userID); got != second {
+		t.Error("the closing of an old connection evicted the member who had already rejoined on a " +
+			"new one; pion fires that close asynchronously, so the eviction lands whenever it lands " +
+			"and the member is simply gone from a call they are sitting in")
+	}
+}
+
+func TestLeavingTakesTheScreenConnectionWithIt(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	signals := &recordingPublishSignaler{answers: make(chan webrtc.SessionDescription, 1)}
+	sfu.AttachPublishSignaler(signals)
+
+	userID := uuid.New()
+	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	publishOneScreen(t, sfu, userID)
+
+	sfu.publishMu.Lock()
+	published := sfu.publishers[userID]
+	sfu.publishMu.Unlock()
+	if published == nil {
+		t.Fatal("publishing recorded no connection, so this proves nothing")
+	}
+
+	sfu.Leave(userID)
+
+	sfu.publishMu.Lock()
+	left := sfu.publishers[userID]
+	sfu.publishMu.Unlock()
+	if left != nil {
+		t.Error("leaving the call left the screen connection open and forgotten; nothing else ever " +
+			"closes it, so every share ever started outlives its call and holds its ICE and DTLS open")
+	}
+	if state := published.pc.ConnectionState(); state != webrtc.PeerConnectionStateClosed {
+		t.Errorf("the abandoned screen connection is %s, want closed", state)
+	}
+}
+
+func TestATrackThatArrivesMidNegotiationIsStillOffered(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, viewer := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	first := signaler.offerFor(t, viewer).sdp
+	if got := audioSections(first.SDP); got != 1 {
+		t.Fatalf("the opening offer has %d audio sections, want 1", got)
+	}
+
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
+		TrackName(SourceScreenAudio, uuid.New(), 1), "share")
+	if err != nil {
+		t.Fatalf("create track: %v", err)
+	}
+
+	sfu.mu.Lock()
+	r := sfu.rooms[channelID]
+	r.tracks[track.ID()] = track
+	sfu.signalLocked(r)
+	sfu.mu.Unlock()
+
+	answerOffer(t, sfu, viewer, first)
+
+	sfu.mu.Lock()
+	sfu.signalLocked(r)
+	sfu.mu.Unlock()
+
+	latest := signaler.offerFor(t, viewer).sdp
+	if got := audioSections(latest.SDP); got != 2 {
+		t.Errorf("the viewer was offered %d audio sections, want 2; a track that appeared while "+
+			"the viewer was still answering an earlier offer was attached to their connection and "+
+			"then never offered, because the retry sees it among the senders and concludes there "+
+			"is nothing left to do. Screen sound arrives one renegotiation after screen video, "+
+			"which is exactly when this happens", got)
+	}
+}
+
+func answerOffer(t *testing.T, sfu *SFU, userID uuid.UUID, offer webrtc.SessionDescription) {
+	t.Helper()
+
+	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatalf("client peer connection: %v", err)
+	}
+	t.Cleanup(func() { client.Close() })
+
+	if err := client.SetRemoteDescription(offer); err != nil {
+		t.Fatalf("set remote: %v", err)
+	}
+	answer, err := client.CreateAnswer(nil)
+	if err != nil {
+		t.Fatalf("create answer: %v", err)
+	}
+	if err := client.SetLocalDescription(answer); err != nil {
+		t.Fatalf("set local: %v", err)
+	}
+	if err := sfu.Answer(userID, answer); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+}
