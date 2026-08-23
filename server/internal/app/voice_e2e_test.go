@@ -27,6 +27,7 @@ type voiceClient struct {
 	arrived chan struct{}
 
 	tracksMu sync.Mutex
+	taken    map[*webrtc.TrackRemote]bool
 	tracks   []*webrtc.TrackRemote
 	done     chan struct{}
 
@@ -247,6 +248,23 @@ func (c *voiceClient) received() []*webrtc.TrackRemote {
 	return append([]*webrtc.TrackRemote(nil), c.tracks...)
 }
 
+func (c *voiceClient) take(match func(*webrtc.TrackRemote) bool) *webrtc.TrackRemote {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
+
+	if c.taken == nil {
+		c.taken = make(map[*webrtc.TrackRemote]bool)
+	}
+	for _, track := range c.tracks {
+		if c.taken[track] || !match(track) {
+			continue
+		}
+		c.taken[track] = true
+		return track
+	}
+	return nil
+}
+
 func (c *voiceClient) describeReceived() string {
 	names := make([]string, 0)
 	for _, track := range c.received() {
@@ -265,10 +283,8 @@ func (c *voiceClient) awaitAny(
 
 	deadline := time.After(timeout)
 	for {
-		for _, track := range c.received() {
-			if match(track) {
-				return track
-			}
+		if track := c.take(match); track != nil {
+			return track
 		}
 
 		select {
