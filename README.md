@@ -346,6 +346,51 @@ deleted or assigned — only its permissions can change, which is how the guild'
 baseline is set. Channel overwrites additionally refuse to carry Administrator,
 refuse to allow and deny the same bit, and refuse bits that do not exist.
 
+#### Kicking and banning
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `DELETE` | `/api/v1/guilds/{guild}/members/{user}` | `KickMembers` |
+| `GET` | `/api/v1/guilds/{guild}/bans` | `BanMembers` |
+| `PUT` `DELETE` | `/api/v1/guilds/{guild}/bans/{user}` | `BanMembers` |
+
+The position rule above is exactly the check moderation needs, so both reuse it:
+you may only remove somebody strictly below your own highest role. The owner is
+exempt from it and can never be removed by anybody; you cannot remove yourself,
+which is a separate feature — leaving — that does not exist yet.
+
+Removing somebody is three things at once, and only the first is a database
+write:
+
+1. The `guild_members` row goes. `member_roles` is keyed on it with
+   `ON DELETE CASCADE`, so their roles go with it. That matters: a kicked
+   administrator who comes back on a fresh invite comes back with nothing.
+2. The gateway unsubscribes their live sessions from the guild's topics and
+   drops them out of any voice channel *in that guild*. Without this a kicked
+   member keeps receiving every message on the socket they already had, which is
+   the part a database delete alone does not fix.
+3. `GUILD_MEMBER_REMOVE` goes to the guild so everyone's member list updates, and
+   `GUILD_REMOVE` goes to the person removed, on their own user topic, after they
+   have been cut off.
+
+**Messages are not touched.** They stay where they are, still attributed to
+whoever wrote them. Account deletion reassigns messages to "Deleted User" because
+the account is gone; a kick or a ban is about access, and rewriting a
+conversation to hide who said what would make the history a worse record than it
+was.
+
+A ban is a row in `guild_bans` — who, by whom, an optional reason of up to 500
+characters, when — checked on invite redemption. Somebody can be banned before
+they ever join, which is why the endpoint does not require them to be a member.
+Unban is a `DELETE`, and 404s when there was no ban, so lifting one twice is
+visibly not the same as lifting one.
+
+**A ban here is weak, and should be described as weak.** It is by user id, and
+nothing verifies an email address, so a banned person can register a new account
+in seconds and use a fresh invite. Anything stronger needs an identity worth
+banning — verified email at the least — which is a different feature than this
+one.
+
 #### When a change takes effect
 
 Nothing is cached, so **HTTP is immediate**: the request after a revocation is
@@ -361,7 +406,8 @@ the same resolution that builds `READY`. `MESSAGE_CREATE`, `MESSAGE_UPDATE`,
 `MESSAGE_DELETE`, `TYPING_START`, `VOICE_STATE_UPDATE` and
 `VOICE_SCREEN_UPDATE` carry a channel id and are dropped per session; events
 that belong to the guild rather than a channel — `PRESENCE_UPDATE`,
-`GUILD_CREATE`, `CHANNEL_CREATE` — are never filtered.
+`GUILD_CREATE`, `CHANNEL_CREATE`, `GUILD_MEMBER_ADD`, `GUILD_MEMBER_REMOVE` —
+are never filtered.
 
 The set is *hidden* channels, not visible ones, because the default has to be
 open: a channel created a moment ago is in nobody's set and must still be
