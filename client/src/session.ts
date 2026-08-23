@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { gateway } from "./gateway";
-import type { GuildPermissions, Member, Message, PresenceUpdate, Ready } from "./types/events.gen";
+import type { GuildPermissions, Member, Message, PresenceUpdate, Ready, VoiceStateUpdate } from "./types/events.gen";
 
 export type SessionState = {
   names: Record<string, string>;
@@ -9,6 +9,8 @@ export type SessionState = {
   guildAllows: Record<string, number>;
   channelAllows: Record<string, number>;
   membersByGuild: Record<string, string[]>;
+  inVoice: Record<string, string[]>;
+  mutedInVoice: Record<string, boolean>;
 };
 
 export const emptySession: SessionState = {
@@ -18,6 +20,8 @@ export const emptySession: SessionState = {
   guildAllows: {},
   channelAllows: {},
   membersByGuild: {},
+  inVoice: {},
+  mutedInVoice: {},
 };
 
 class SessionStore {
@@ -29,6 +33,8 @@ class SessionStore {
   private guildAllows: Record<string, number> = {};
   private channelAllows: Record<string, number> = {};
   private membersByGuild: Record<string, string[]> = {};
+  private inVoice: Record<string, string[]> = {};
+  private mutedInVoice: Record<string, boolean> = {};
   private listeners = new Set<(s: SessionState) => void>();
 
   constructor() {
@@ -39,6 +45,10 @@ class SessionStore {
       const member = payload as Member;
       this.names = { ...this.names, [member.user.id]: member.user.username };
       this.remember(member.guild_id, member.user.id);
+      this.emit();
+    });
+    gateway.on("VOICE_STATE_UPDATE", (payload) => {
+      this.voiceMoved(payload as VoiceStateUpdate);
       this.emit();
     });
     gateway.on("PERMISSIONS_UPDATE", (payload) => {
@@ -72,6 +82,8 @@ class SessionStore {
     this.guildAllows = {};
     this.channelAllows = {};
     this.membersByGuild = {};
+    this.inVoice = {};
+    this.mutedInVoice = {};
     this.emit();
   }
 
@@ -87,6 +99,8 @@ class SessionStore {
       guildAllows: this.guildAllows,
       channelAllows: this.channelAllows,
       membersByGuild: this.membersByGuild,
+      inVoice: this.inVoice,
+      mutedInVoice: this.mutedInVoice,
     };
   }
 
@@ -98,6 +112,8 @@ class SessionStore {
   private absorb(ready: Ready) {
     this.names = { [ready.user.id]: ready.user.username };
     this.membersByGuild = {};
+    this.inVoice = {};
+    this.mutedInVoice = {};
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
       this.remember(member.guild_id, member.user.id);
@@ -122,6 +138,23 @@ class SessionStore {
 
     if (this.open) this.catchUp(this.open);
     this.emit();
+  }
+
+  private voiceMoved(state: VoiceStateUpdate) {
+    const next: Record<string, string[]> = {};
+    for (const [channelID, people] of Object.entries(this.inVoice)) {
+      const without = people.filter((id) => id !== state.user_id);
+      if (without.length > 0) next[channelID] = without;
+    }
+
+    if (state.channel_id) {
+      next[state.channel_id] = [...(next[state.channel_id] ?? []), state.user_id];
+    }
+    this.inVoice = next;
+    this.mutedInVoice = {
+      ...this.mutedInVoice,
+      [state.user_id]: Boolean(state.channel_id) && state.self_mute,
+    };
   }
 
   private remember(guildID: string, userID: string) {
