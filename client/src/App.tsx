@@ -9,7 +9,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Voice } from "./components/Voice";
 import { emptySession, session, type SessionState } from "./session";
 import { serverIsPinned, serverURL } from "./server";
-import type { Channel, Guild, User } from "./types/events.gen";
+import type { Channel, Guild, GuildRemoval, User } from "./types/events.gen";
 
 function pendingInviteCode(): string | null {
   return new URLSearchParams(location.search).get("invite");
@@ -19,6 +19,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [invite, setInvite] = useState<string | null>(pendingInviteCode);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [removedFrom, setRemovedFrom] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>("closed");
 
@@ -103,6 +104,21 @@ export default function App() {
   }, [user, loadGuilds]);
 
   useEffect(() => {
+    if (!user) return;
+    return gateway.on("GUILD_REMOVE", (payload) => {
+      const gone = payload as GuildRemoval;
+      setGuilds((prev) => {
+        const left = prev.filter((g) => g.id !== gone.guild_id);
+        setActiveGuild((current) =>
+          current?.id === gone.guild_id ? (left[0] ?? null) : current,
+        );
+        return left;
+      });
+      setRemovedFrom(gone.banned ? "You were banned from that server." : "You were removed from that server.");
+    });
+  }, [user]);
+
+  useEffect(() => {
     if (!activeGuild) {
       setChannels([]);
       setActiveChannel(null);
@@ -138,6 +154,7 @@ export default function App() {
     setChannels([]);
     setActiveGuild(null);
     setActiveChannel(null);
+    setRemovedFrom(null);
   }
 
   async function logout() {
@@ -180,6 +197,15 @@ export default function App() {
       <MemberList guild={activeGuild} selfID={user.id} />
 
       {inviteError && <div className="error banner">{inviteError}</div>}
+
+      {removedFrom && (
+        <div className="error banner">
+          {removedFrom}
+          <button className="link" onClick={() => setRemovedFrom(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <footer className="statusbar">
         <span className={`dot ${connection}`} />

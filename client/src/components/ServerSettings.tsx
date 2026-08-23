@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type GuildMember } from "../api";
-import { ADMINISTRATOR, PERMISSIONS, has, summarise, withBit } from "../permissions";
+import { api, type Ban, type GuildMember } from "../api";
+import { ADMINISTRATOR, BAN_MEMBERS, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
+import { emptySession, session, type SessionState } from "../session";
 import type { Channel, Guild, Overwrite, Role } from "../types/events.gen";
 
-type Tab = "roles" | "members" | "channels";
+type Tab = "roles" | "members" | "channels" | "bans";
 
 type OverwriteState = "allow" | "deny" | "inherit";
 
@@ -33,6 +34,13 @@ export function ServerSettings({ guild, channels, onClose }: {
 
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [overwrites, setOverwrites] = useState<Overwrite[]>([]);
+
+  const [bans, setBans] = useState<Ban[]>([]);
+  const [people, setPeople] = useState<SessionState>(emptySession);
+
+  useEffect(() => session.onChange(setPeople), []);
+
+  const mayBan = allows(people.guildAllows[guild.id], BAN_MEMBERS);
 
   const complain = (err: unknown, fallback: string) =>
     setError(err instanceof Error ? err.message : fallback);
@@ -71,6 +79,19 @@ export function ServerSettings({ guild, channels, onClose }: {
       .then(setOverwrites)
       .catch((err) => complain(err, "could not load overwrites"));
   }, [selectedChannel]);
+
+  const loadBans = useCallback(async () => {
+    try {
+      setBans(await api.bans(guild.id));
+    } catch (err) {
+      complain(err, "could not load the bans");
+    }
+  }, [guild.id]);
+
+  useEffect(() => {
+    if (tab !== "bans") return;
+    void loadBans();
+  }, [tab, loadBans]);
 
   const role = roles.find((r) => r.id === selectedRole) ?? null;
 
@@ -153,6 +174,17 @@ export function ServerSettings({ guild, channels, onClose }: {
     }
   }
 
+  async function liftBan(userID: string) {
+    setError(null);
+    try {
+      await api.unban(guild.id, userID);
+      setBans((prev) => prev.filter((b) => b.user_id !== userID));
+    } catch (err) {
+      complain(err, "could not lift the ban");
+      await loadBans();
+    }
+  }
+
   async function setOverwrite(roleID: string, bit: number, next: OverwriteState) {
     if (!selectedChannel) return;
     setError(null);
@@ -192,6 +224,11 @@ export function ServerSettings({ guild, channels, onClose }: {
           <button className={tab === "channels" ? "link active" : "link"} onClick={() => setTab("channels")}>
             Channel access
           </button>
+          {mayBan && (
+            <button className={tab === "bans" ? "link active" : "link"} onClick={() => setTab("bans")}>
+              Bans
+            </button>
+          )}
           <span className="spacer" />
           <button className="secondary" onClick={onClose}>
             Done
@@ -318,6 +355,27 @@ export function ServerSettings({ guild, channels, onClose }: {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === "bans" && (
+          <div className="settings-detail settings-single">
+            {bans.length === 0 && <div className="muted">Nobody is banned from this server.</div>}
+            {bans.map((b) => (
+              <div key={b.user_id} className="ban">
+                <div className="ban-who">
+                  <span className="channel-name">{b.username}</span>
+                  <span className="muted">
+                    {new Date(b.created_at).toLocaleDateString()}
+                    {b.banned_by && ` — by ${session.nameOf(b.banned_by)}`}
+                  </span>
+                </div>
+                <span className="muted ban-reason">{b.reason ?? "No reason given."}</span>
+                <button className="link" onClick={() => void liftBan(b.user_id)}>
+                  Lift
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

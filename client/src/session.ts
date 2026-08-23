@@ -1,6 +1,14 @@
 import { api } from "./api";
 import { gateway } from "./gateway";
-import type { GuildPermissions, Member, Message, PresenceUpdate, Ready, VoiceStateUpdate } from "./types/events.gen";
+import type {
+  GuildPermissions,
+  GuildRemoval,
+  Member,
+  Message,
+  PresenceUpdate,
+  Ready,
+  VoiceStateUpdate,
+} from "./types/events.gen";
 
 export type SessionState = {
   names: Record<string, string>;
@@ -45,6 +53,15 @@ class SessionStore {
       const member = payload as Member;
       this.names = { ...this.names, [member.user.id]: member.user.username };
       this.remember(member.guild_id, member.user.id);
+      this.emit();
+    });
+    gateway.on("GUILD_MEMBER_REMOVE", (payload) => {
+      const gone = payload as GuildRemoval;
+      this.forgetMember(gone.guild_id, gone.user_id);
+      this.emit();
+    });
+    gateway.on("GUILD_REMOVE", (payload) => {
+      this.forgetGuild((payload as GuildRemoval).guild_id);
       this.emit();
     });
     gateway.on("VOICE_STATE_UPDATE", (payload) => {
@@ -161,6 +178,22 @@ class SessionStore {
     const here = this.membersByGuild[guildID] ?? [];
     if (here.includes(userID)) return;
     this.membersByGuild = { ...this.membersByGuild, [guildID]: [...here, userID] };
+  }
+
+  private forgetMember(guildID: string, userID: string) {
+    const here = this.membersByGuild[guildID];
+    if (!here || !here.includes(userID)) return;
+    this.membersByGuild = {
+      ...this.membersByGuild,
+      [guildID]: here.filter((id) => id !== userID),
+    };
+  }
+
+  private forgetGuild(guildID: string) {
+    const { [guildID]: _members, ...restMembers } = this.membersByGuild;
+    const { [guildID]: _allowed, ...restAllows } = this.guildAllows;
+    this.membersByGuild = restMembers;
+    this.guildAllows = restAllows;
   }
 
   private absorbAllowed(allowed: GuildPermissions[]) {

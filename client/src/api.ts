@@ -26,6 +26,15 @@ export interface GuildMember {
   avatar_key: string | null;
 }
 
+export interface Ban {
+  guild_id: string;
+  user_id: string;
+  username: string;
+  banned_by: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
 export interface AuthResponse {
   user: User;
   tokens: TokenPair;
@@ -241,6 +250,24 @@ export class Api {
 
   members(guildID: string): Promise<GuildMember[]> {
     return this.request<GuildMember[]>("GET", `/api/v1/guilds/${guildID}/members`);
+  }
+
+  kick(guildID: string, userID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/members/${userID}`);
+  }
+
+  ban(guildID: string, userID: string, reason?: string): Promise<Ban> {
+    return this.request<Ban>("PUT", `/api/v1/guilds/${guildID}/bans/${userID}`, {
+      reason: reason?.trim() || null,
+    });
+  }
+
+  unban(guildID: string, userID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/bans/${userID}`);
+  }
+
+  bans(guildID: string): Promise<Ban[]> {
+    return this.request<Ban[]>("GET", `/api/v1/guilds/${guildID}/bans`);
   }
 
   memberRoles(guildID: string, userID: string): Promise<Role[]> {
