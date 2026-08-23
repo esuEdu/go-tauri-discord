@@ -3,8 +3,9 @@
 package app_test
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,12 +20,15 @@ import (
 )
 
 type voiceClient struct {
-	t      *testing.T
-	sock   *socket
-	pc     *webrtc.PeerConnection
-	track  *webrtc.TrackLocalStaticSample
-	remote chan *webrtc.TrackRemote
-	done   chan struct{}
+	t       *testing.T
+	sock    *socket
+	pc      *webrtc.PeerConnection
+	track   *webrtc.TrackLocalStaticSample
+	arrived chan struct{}
+
+	tracksMu sync.Mutex
+	tracks   []*webrtc.TrackRemote
+	done     chan struct{}
 
 	keyframes chan struct{}
 
@@ -80,14 +84,18 @@ func newVoiceClient(t *testing.T, h *harness) *voiceClient {
 		sock:      h.dial(),
 		pc:        pc,
 		track:     track,
-		remote:    make(chan *webrtc.TrackRemote, 4),
+		arrived:   make(chan struct{}, 1),
 		keyframes: make(chan struct{}, 4),
 		done:      make(chan struct{}),
 	}
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		c.tracksMu.Lock()
+		c.tracks = append(c.tracks, remote)
+		c.tracksMu.Unlock()
+
 		select {
-		case c.remote <- remote:
+		case c.arrived <- struct{}{}:
 		default:
 		}
 	})
@@ -233,39 +241,60 @@ func (c *voiceClient) drainKeyframes() {
 	}
 }
 
-func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
+func (c *voiceClient) received() []*webrtc.TrackRemote {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
+	return append([]*webrtc.TrackRemote(nil), c.tracks...)
+}
+
+func (c *voiceClient) describeReceived() string {
+	names := make([]string, 0)
+	for _, track := range c.received() {
+		names = append(names, fmt.Sprintf("%s (%s)", track.StreamID(), track.Kind()))
+	}
+	if len(names) == 0 {
+		return "nothing at all"
+	}
+	return strings.Join(names, ", ")
+}
+
+func (c *voiceClient) awaitAny(
+	timeout time.Duration, what string, match func(*webrtc.TrackRemote) bool,
+) *webrtc.TrackRemote {
 	c.t.Helper()
 
 	deadline := time.After(timeout)
 	for {
-		select {
-		case remote := <-c.remote:
-			if remote.Kind() == webrtc.RTPCodecTypeVideo {
-				return remote
+		for _, track := range c.received() {
+			if match(track) {
+				return track
 			}
+		}
+
+		select {
+		case <-c.arrived:
 		case <-deadline:
-			c.t.Fatal("no screen track arrived through the SFU")
+			c.t.Fatalf("no %s arrived through the SFU. What did arrive: %s",
+				what, c.describeReceived())
 			return nil
 		}
 	}
 }
 
+func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
+	c.t.Helper()
+	return c.awaitAny(timeout, "screen track", func(track *webrtc.TrackRemote) bool {
+		return track.Kind() == webrtc.RTPCodecTypeVideo
+	})
+}
+
 func (c *voiceClient) awaitTrack(source voice.Source, owner uuid.UUID, timeout time.Duration) *webrtc.TrackRemote {
 	c.t.Helper()
-
-	deadline := time.After(timeout)
-	for {
-		select {
-		case remote := <-c.remote:
-			got, from, ok := voice.ParseTrackName(remote.StreamID())
-			if ok && got == source && from == owner {
-				return remote
-			}
-		case <-deadline:
-			c.t.Fatalf("no %s track owned by %s arrived through the SFU", source, owner)
-			return nil
-		}
-	}
+	return c.awaitAny(timeout, fmt.Sprintf("%s track owned by %s", source, owner),
+		func(track *webrtc.TrackRemote) bool {
+			got, from, ok := voice.ParseTrackName(track.StreamID())
+			return ok && got == source && from == owner
+		})
 }
 
 func (c *voiceClient) askKeyframe(remote *webrtc.TrackRemote) {
@@ -540,28 +569,17 @@ func TestVoiceMediaFlowsBetweenTwoMembers(t *testing.T) {
 	bob.join(voiceChannel)
 	bob.streamSilence()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	remote := bob.awaitTrack(voice.SourceMicrophone, aliceID, 20*time.Second)
+	if remote.Kind() != webrtc.RTPCodecTypeAudio {
+		t.Fatalf("bob received a %s track, want audio", remote.Kind())
+	}
 
-	select {
-	case remote := <-bob.remote:
-		if remote.Kind() != webrtc.RTPCodecTypeAudio {
-			t.Fatalf("bob received a %s track, want audio", remote.Kind())
-		}
-		source, owner, ok := voice.ParseTrackName(remote.StreamID())
-		if !ok || source != voice.SourceMicrophone || owner != aliceID {
-			t.Fatalf("forwarded stream %q does not name alice (%s) as the speaker",
-				remote.StreamID(), aliceID)
-		}
-		buf := make([]byte, 1500)
-		if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := remote.Read(buf); err != nil {
-			t.Fatalf("no RTP arrived on the forwarded track: %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal("bob never received alice's audio track through the SFU")
+	buf := make([]byte, 1500)
+	if err := remote.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := remote.Read(buf); err != nil {
+		t.Fatalf("no RTP arrived on the forwarded track: %v", err)
 	}
 }
 

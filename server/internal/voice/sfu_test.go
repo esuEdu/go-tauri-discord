@@ -366,3 +366,73 @@ func TestJoiningOffersOnlyAMicrophone(t *testing.T) {
 		t.Errorf("offer carried %d audio sections, want 1 for the microphone", got)
 	}
 }
+
+func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	first := sfu.peerFor(userID)
+	if first == nil {
+		t.Fatal("joining left nobody in the room")
+	}
+
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("rejoin: %v", err)
+	}
+	second := sfu.peerFor(userID)
+	if second == nil || second == first {
+		t.Fatal("rejoining did not replace the peer, so this proves nothing")
+	}
+
+	sfu.leave(userID, first)
+
+	if got := sfu.peerFor(userID); got != second {
+		t.Error("the closing of an old connection evicted the member who had already rejoined on a " +
+			"new one; pion fires that close asynchronously, so the eviction lands whenever it lands " +
+			"and the member is simply gone from a call they are sitting in")
+	}
+}
+
+func TestLeavingTakesTheScreenConnectionWithIt(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil)
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	signals := &recordingPublishSignaler{answers: make(chan webrtc.SessionDescription, 1)}
+	sfu.AttachPublishSignaler(signals)
+
+	userID := uuid.New()
+	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	publishOneScreen(t, sfu, userID)
+
+	sfu.publishMu.Lock()
+	published := sfu.publishers[userID]
+	sfu.publishMu.Unlock()
+	if published == nil {
+		t.Fatal("publishing recorded no connection, so this proves nothing")
+	}
+
+	sfu.Leave(userID)
+
+	sfu.publishMu.Lock()
+	left := sfu.publishers[userID]
+	sfu.publishMu.Unlock()
+	if left != nil {
+		t.Error("leaving the call left the screen connection open and forgotten; nothing else ever " +
+			"closes it, so every share ever started outlives its call and holds its ICE and DTLS open")
+	}
+	if state := published.pc.ConnectionState(); state != webrtc.PeerConnectionStateClosed {
+		t.Errorf("the abandoned screen connection is %s, want closed", state)
+	}
+}

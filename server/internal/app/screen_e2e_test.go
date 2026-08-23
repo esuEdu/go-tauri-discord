@@ -13,6 +13,18 @@ import (
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
+func awaitShareAnnounced(t *testing.T, s *socket, sharer uuid.UUID) {
+	t.Helper()
+	for range 10 {
+		var update events.VoiceScreenUpdate
+		decode(t, s.readEvent(events.EventVoiceScreenUpdate).D, &update)
+		if update.UserID == sharer && update.Active {
+			return
+		}
+	}
+	t.Fatalf("the server never announced a share by %s, so nothing was ever going to arrive", sharer)
+}
+
 func readScreen(t *testing.T, remote *webrtc.TrackRemote) {
 	t.Helper()
 
