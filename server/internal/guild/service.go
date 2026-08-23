@@ -209,7 +209,7 @@ func (s *Service) ResolveAccess(ctx context.Context, userID, guildID uuid.UUID) 
 	return out, nil
 }
 
-func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, name, kind string, position int32) (dbgen.Channel, error) {
+func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, name, kind string, position int32, parentID *uuid.UUID) (dbgen.Channel, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return dbgen.Channel{}, domain.Invalid("channel name is required")
@@ -226,9 +226,23 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 		return dbgen.Channel{}, domain.Forbidden("missing ManageChannels permission")
 	}
 
+	if parentID != nil {
+		if kind == domain.ChannelCategory {
+			return dbgen.Channel{}, domain.Invalid("a category cannot sit inside another")
+		}
+		parent, err := s.repo.GetChannel(ctx, *parentID)
+		if err != nil {
+			return dbgen.Channel{}, domain.Invalid("no such category")
+		}
+		if parent.GuildID != guildID || parent.Kind != domain.ChannelCategory {
+			return dbgen.Channel{}, domain.Invalid("that is not a category in this server")
+		}
+	}
+
 	ch, err := s.repo.CreateChannel(ctx, dbgen.CreateChannelParams{
 		ID:       uuid.Must(uuid.NewV7()),
 		GuildID:  guildID,
+		ParentID: parentID,
 		Kind:     kind,
 		Name:     name,
 		Position: position,
