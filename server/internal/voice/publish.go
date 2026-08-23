@@ -17,8 +17,10 @@ type publisher struct {
 	pc     *webrtc.PeerConnection
 	userID uuid.UUID
 
-	mu     sync.Mutex
-	layers map[string]bool
+	mu      sync.Mutex
+	layers  map[string]bool
+	pending []webrtc.ICECandidateInit
+	ready   bool
 }
 
 func (s *SFU) AttachPublishSignaler(signaler PublishSignaler) {
@@ -40,12 +42,20 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 		return ErrNotConnected
 	}
 
+	if _, owner := s.roomFor(userID); owner == nil || !owner.mayStream {
+		return ErrNotAllowed
+	}
+
 	pc, err := s.api.NewPeerConnection(s.config)
 	if err != nil {
 		return err
 	}
 
 	p := &publisher{pc: pc, userID: userID, layers: make(map[string]bool)}
+
+	s.publishMu.Lock()
+	s.publishers[userID] = p
+	s.publishMu.Unlock()
 
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -73,7 +83,7 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 				"user_id", userID, "in_room", r != nil, "has_peer", owner != nil)
 			return
 		}
-		s.forwardLayer(r, owner, remote, source, rid)
+		s.forwardLayer(r, owner, pc, remote, source, rid)
 	})
 
 	if err := pc.SetRemoteDescription(offer); err != nil {
@@ -90,11 +100,26 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 		return err
 	}
 
-	s.publishMu.Lock()
-	s.publishers[userID] = p
-	s.publishMu.Unlock()
+	if err := p.drainCandidates(); err != nil {
+		slog.Warn("voice: screen candidate", "user_id", userID, "error", err)
+	}
 
 	signaler.ScreenAnswer(userID, answer)
+	return nil
+}
+
+func (p *publisher) drainCandidates() error {
+	p.mu.Lock()
+	pending := p.pending
+	p.pending = nil
+	p.ready = true
+	p.mu.Unlock()
+
+	for _, candidate := range pending {
+		if err := p.pc.AddICECandidate(candidate); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -106,6 +131,15 @@ func (s *SFU) PublishCandidate(userID uuid.UUID, candidate webrtc.ICECandidateIn
 	if p == nil {
 		return ErrNotConnected
 	}
+
+	p.mu.Lock()
+	if !p.ready {
+		p.pending = append(p.pending, candidate)
+		p.mu.Unlock()
+		return nil
+	}
+	p.mu.Unlock()
+
 	return p.pc.AddICECandidate(candidate)
 }
 

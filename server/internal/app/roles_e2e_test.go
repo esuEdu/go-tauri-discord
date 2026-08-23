@@ -692,3 +692,51 @@ func TestJoiningAServerIsAnnouncedToWhoIsAlreadyThere(t *testing.T) {
 		t.Error("member add carried no username, so a list can only show an id until a reload")
 	}
 }
+
+func TestAChannelCanBePutInsideACategory(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Grouped")
+
+	var category events.Channel
+	owner.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels",
+		http.StatusCreated, map[string]any{"name": "Voice Rooms", "kind": "category"}, &category)
+
+	var inside events.Channel
+	owner.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels",
+		http.StatusCreated, map[string]any{
+			"name": "lounge", "kind": "text", "parent_id": category.ID,
+		}, &inside)
+
+	if inside.ParentID == nil || *inside.ParentID != category.ID {
+		t.Fatalf("channel parent = %v, want %s; without this a category can be made and can "+
+			"never hold anything, which is what it is for", inside.ParentID, category.ID)
+	}
+}
+
+func TestACategoryCannotSitInsideAnother(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("No Nesting")
+
+	var outer events.Channel
+	owner.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels",
+		http.StatusCreated, map[string]any{"name": "Outer", "kind": "category"}, &outer)
+
+	owner.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels",
+		http.StatusBadRequest, map[string]any{
+			"name": "Inner", "kind": "category", "parent_id": outer.ID,
+		}, nil)
+}
+
+func TestAChannelCannotJoinSomethingThatIsNotACategory(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Not A Category")
+	text, _ := owner.textAndVoice(guild.ID)
+
+	owner.mustDo(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels",
+		http.StatusBadRequest, map[string]any{
+			"name": "nested", "kind": "text", "parent_id": text,
+		}, nil)
+}

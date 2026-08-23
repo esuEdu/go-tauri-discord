@@ -12,12 +12,12 @@ import {
   type Volumes,
 } from "../voice";
 import { emptySession, session, type SessionState } from "../session";
+import { STREAM, allows } from "../permissions";
 import type { Channel } from "../types/events.gen";
 
 const emptyScreens: ScreenState = {
   sharing: false,
   sound: false,
-  canShare: false,
   local: null,
   remote: [],
   audible: [],
@@ -115,6 +115,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const here = activeChannel === channel.id;
   const members = people.inVoice[channel.id] ?? [];
   const mutes = people.mutedInVoice;
+  const mayShare = allows(people.channelAllows[channel.id], STREAM);
 
   const share = async () => {
     setPickerRefused(false);
@@ -227,11 +228,11 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
                   {screens.sound ? "Stop sharing (with sound)" : "Stop sharing"}
                 </button>
               ) : (
-                <button disabled={!screens.canShare} onClick={() => void share()}>
+                <button disabled={!mayShare} onClick={() => void share()}>
                   Share screen
                 </button>
               )}
-              {screens.canShare && (
+              {mayShare && (
                 <select
                   className="quality"
                   aria-label="Screen share quality"
@@ -261,7 +262,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
           </div>
         )}
 
-        {here && !screens.canShare && status === "connected" && (
+        {here && !mayShare && status === "connected" && (
           <div className="muted">You do not have permission to share a screen here.</div>
         )}
 

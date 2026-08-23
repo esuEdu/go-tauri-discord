@@ -153,8 +153,6 @@ export interface VoiceStateRequest {
 export interface SessionDescription {
   type: string;
   sdp: string;
-  screen_mid?: string;
-  screen_audio_mid?: string;
 }
 export interface ICECandidate {
   candidate: string;

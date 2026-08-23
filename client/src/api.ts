@@ -202,11 +202,13 @@ export class Api {
     name: string,
     kind: "text" | "voice" | "category",
     position: number,
+    parentID?: string,
   ): Promise<Channel> {
     return this.request<Channel>("POST", `/api/v1/guilds/${guildID}/channels`, {
       name,
       kind,
       position,
+      parent_id: parentID ?? null,
     });
   }
 

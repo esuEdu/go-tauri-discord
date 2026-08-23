@@ -42,6 +42,7 @@ export const VIEW_CHANNEL = 1 << 0;
 export const SEND_MESSAGES = 1 << 1;
 export const MANAGE_CHANNELS = 1 << 3;
 export const MANAGE_ROLES = 1 << 4;
+export const STREAM = 1 << 9;
 export const CREATE_INVITE = 1 << 11;
 
 export function allows(held: number | undefined, bit: number): boolean {

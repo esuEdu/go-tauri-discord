@@ -4,16 +4,22 @@ import type { ICECandidate, ScreenPublish } from "./types/events.gen";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
-export const LAYERS: RTCRtpEncodingParameters[] = [
-  { rid: "full", maxBitrate: 1_200_000 },
-  { rid: "half", maxBitrate: 300_000, scaleResolutionDownBy: 2 },
-];
+function layersFor(ceiling: number): RTCRtpEncodingParameters[] {
+  return [
+    { rid: "full", maxBitrate: ceiling },
+    { rid: "half", maxBitrate: Math.round(ceiling / 4), scaleResolutionDownBy: 2 },
+  ];
+}
 
 class ScreenPublisher {
   private pc: RTCPeerConnection | null = null;
   private unsubscribe: Array<() => void> = [];
 
-  async publish(stream: MediaStream): Promise<void> {
+  async publish(
+    stream: MediaStream,
+    ceiling: number,
+    degradation: RTCDegradationPreference,
+  ): Promise<void> {
     await this.stop();
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -24,7 +30,7 @@ class ScreenPublisher {
       pc.addTransceiver(video, {
         direction: "sendonly",
         streams: [stream],
-        sendEncodings: LAYERS,
+        sendEncodings: layersFor(ceiling),
       });
     }
 
@@ -62,10 +68,28 @@ class ScreenPublisher {
       }),
     );
 
+    await this.retune(ceiling, degradation);
+
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     gateway.sendRaw({ op: OpScreenPublish, d: { sdp: offer.sdp ?? "" } satisfies ScreenPublish });
 
+  }
+
+  async retune(ceiling: number, degradation: RTCDegradationPreference) {
+    const sender = this.pc?.getTransceivers()[0]?.sender;
+    if (!sender) return;
+
+    const parameters = sender.getParameters();
+    if (!parameters.encodings?.length) return;
+
+    parameters.degradationPreference = degradation;
+    const wanted = layersFor(ceiling);
+    for (const encoding of parameters.encodings) {
+      const match = wanted.find((l) => l.rid === encoding.rid) ?? wanted[0];
+      encoding.maxBitrate = match.maxBitrate;
+    }
+    await sender.setParameters(parameters).catch(() => undefined);
   }
 
   async stop() {
