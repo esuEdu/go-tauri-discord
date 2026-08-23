@@ -34,6 +34,8 @@ export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
+export const EventGuildMemberRemove: EventType = "GUILD_MEMBER_REMOVE";
+export const EventGuildRemove: EventType = "GUILD_REMOVE";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
 export const EventVoiceScreenUpdate: EventType = "VOICE_SCREEN_UPDATE";
 export interface Frame {
@@ -77,6 +79,11 @@ export interface Channel {
 export interface Member {
   guild_id: string;
   user: User;
+}
+export interface GuildRemoval {
+  guild_id: string;
+  user_id: string;
+  banned: boolean;
 }
 export interface ChannelPermission {
   channel_id: string;
