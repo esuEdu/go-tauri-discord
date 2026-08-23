@@ -46,6 +46,14 @@ type Guild struct {
 	CreatedAt time.Time
 }
 
+type GuildBan struct {
+	GuildID   uuid.UUID
+	UserID    uuid.UUID
+	BannedBy  *uuid.UUID
+	Reason    *string
+	CreatedAt time.Time
+}
+
 type GuildMember struct {
 	GuildID  uuid.UUID
 	UserID   uuid.UUID
