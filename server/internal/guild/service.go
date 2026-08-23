@@ -25,6 +25,7 @@ type Repository interface {
 	ListChannels(ctx context.Context, guildID uuid.UUID) ([]dbgen.Channel, error)
 	AddGuildMember(ctx context.Context, arg dbgen.AddGuildMemberParams) (dbgen.GuildMember, error)
 	GetGuildMember(ctx context.Context, arg dbgen.GetGuildMemberParams) (dbgen.GuildMember, error)
+	RemoveGuildMember(ctx context.Context, arg dbgen.RemoveGuildMemberParams) error
 	ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]dbgen.ListGuildMembersRow, error)
 	ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID, error)
 	ListGuildOverwrites(ctx context.Context, guildID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
@@ -40,6 +41,9 @@ type Repository interface {
 	UpsertChannelOverwrite(ctx context.Context, arg dbgen.UpsertChannelOverwriteParams) error
 	DeleteChannelOverwrite(ctx context.Context, arg dbgen.DeleteChannelOverwriteParams) error
 	ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
+	GetGuildBan(ctx context.Context, arg dbgen.GetGuildBanParams) (dbgen.GuildBan, error)
+	ListGuildBans(ctx context.Context, guildID uuid.UUID) ([]dbgen.ListGuildBansRow, error)
+	DeleteGuildBan(ctx context.Context, arg dbgen.DeleteGuildBanParams) (int64, error)
 }
 
 type TxRunner interface {
