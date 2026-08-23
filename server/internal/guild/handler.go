@@ -21,6 +21,7 @@ type Handler struct {
 
 type Rooms interface {
 	JoinedGuild(userID, guildID uuid.UUID)
+	LeftGuild(userID, guildID uuid.UUID)
 }
 
 func NewHandler(svc *Service, pub *bus.Publisher, rooms Rooms) *Handler {
@@ -33,6 +34,15 @@ func (h *Handler) joined(userID, guildID uuid.UUID) {
 	}
 }
 
+func (h *Handler) removed(r *http.Request, guildID, userID uuid.UUID, banned bool) {
+	if h.rooms != nil {
+		h.rooms.LeftGuild(userID, guildID)
+	}
+	departure := events.GuildRemoval{GuildID: guildID, UserID: userID, Banned: banned}
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildMemberRemove, departure)
+	h.pub.ToUser(r.Context(), userID, events.EventGuildRemove, departure)
+}
+
 func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/guilds", h.create)
 	mux.HandleFunc("GET /api/v1/guilds", h.list)
@@ -41,6 +51,10 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/invites/{code}", h.redeemInvite)
 	mux.HandleFunc("DELETE /api/v1/invites/{code}", h.revokeInvite)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members", h.members)
+	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}", h.kick)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/bans", h.listBans)
+	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/bans/{userID}", h.ban)
+	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/bans/{userID}", h.unban)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/channels", h.listChannels)
 	mux.HandleFunc("POST /api/v1/guilds/{guildID}/channels", h.createChannel)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/roles", h.listRoles)
@@ -180,6 +194,72 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) kick(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.Kick(r.Context(), auth.MustUserID(r.Context()), guildID, memberID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.removed(r, guildID, memberID, false)
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) ban(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Reason *string `json:"reason"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	ban, err := h.svc.Ban(r.Context(), auth.MustUserID(r.Context()), guildID, memberID, in.Reason)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.removed(r, guildID, memberID, true)
+	httpx.JSON(w, http.StatusCreated, ban)
+}
+
+func (h *Handler) unban(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.Unban(r.Context(), auth.MustUserID(r.Context()), guildID, memberID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) listBans(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	bans, err := h.svc.ListBans(r.Context(), auth.MustUserID(r.Context()), guildID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, bans)
 }
 
 func (h *Handler) listChannels(w http.ResponseWriter, r *http.Request) {

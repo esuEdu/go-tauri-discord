@@ -93,6 +93,37 @@ func (g *Gateway) JoinedGuild(userID, guildID uuid.UUID) {
 	}
 }
 
+func (g *Gateway) LeftGuild(userID, guildID uuid.UUID) {
+	g.leaveVoiceIn(userID, guildID)
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for s := range g.byUser[userID] {
+		g.unsubscribeLocked(pubsub.TopicGuild(guildID), s)
+		g.unsubscribeLocked(pubsub.TopicGuildControl(guildID), s)
+	}
+}
+
+func (g *Gateway) leaveVoiceIn(userID, guildID uuid.UUID) {
+	if g.voice == nil {
+		return
+	}
+	channelID, connected := g.voice.ChannelOf(userID)
+	if !connected {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	channel, err := g.guilds.Channel(ctx, channelID)
+	if err != nil || channel.GuildID != guildID {
+		return
+	}
+	g.leaveVoice(userID)
+}
+
 func (g *Gateway) AttachVoice(engine VoiceEngine) {
 	g.voice = engine
 }

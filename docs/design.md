@@ -280,6 +280,24 @@ default role does not carry, so for most members the control is simply absent.
 uses and by expiry, both blank by default. Existing invites can be listed and
 revoked, which is its own small state: none yet · several · one being revoked.
 
+**Removing somebody** — a kick or a ban, both reached from the member list and
+offered only to people who hold the matching permission, on people they outrank.
+Neither is offered on yourself or on the owner, who cannot be removed at all. A
+kick lets them return with a new invite; a ban does not, until it is lifted. Both
+take effect at once: the app they are using loses the server as they are looking
+at it, and drops them out of any call. What either of them wrote stays where it
+is, still shown as theirs — worth saying in the dialog, because people assume a
+ban erases the argument that caused it.
+
+A ban carries an optional reason of up to 500 characters and remembers who set
+it. **Bans are listed and lifted** in server settings, behind Ban members — the
+list is its own small state: nobody banned · several · one being lifted. Without
+it a ban is permanent by accident.
+
+The honest limit, worth stating where somebody bans: a ban is by account, and
+nothing here verifies an email address. Somebody determined can register again in
+seconds and use a fresh invite.
+
 **Deleting an account** — needs the password, and must state plainly that
 messages stay behind under "Deleted User", that owned servers pass to another
 member, and that every device is signed out. It cannot be undone.
@@ -309,8 +327,6 @@ member, and that every device is signed out. It cannot be undone.
 Built and working on the server, with no interface at all. Any of these is
 available to design without new server work:
 
-- **Kicking and banning.** Both are permissions the server enforces, and neither
-  has anything behind it — not even a request the app could make.
 - **Overwrites aimed at one person** rather than a role. The server accepts
   either; the settings dialog only offers roles.
 - **Who is in a voice channel, before you join it.** The server names people in a

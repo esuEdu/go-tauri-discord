@@ -146,6 +146,14 @@ func (s *Service) RedeemInvite(ctx context.Context, userID uuid.UUID, code strin
 		return dbgen.Guild{}, domain.Internal(err)
 	}
 
+	banned, err := s.Banned(ctx, invite.GuildID, userID)
+	if err != nil {
+		return dbgen.Guild{}, err
+	}
+	if banned {
+		return dbgen.Guild{}, domain.Forbidden("you are banned from this server")
+	}
+
 	if _, err := s.repo.GetGuildMember(ctx, dbgen.GetGuildMemberParams{
 		GuildID: invite.GuildID, UserID: userID,
 	}); err == nil {
