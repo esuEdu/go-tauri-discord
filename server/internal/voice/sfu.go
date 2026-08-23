@@ -791,6 +791,7 @@ func (s *SFU) syncLocked(r *room) bool {
 			continue
 		}
 		if p.pc.SignalingState() != webrtc.SignalingStateStable {
+			p.redo = true
 			return false
 		}
 
