@@ -244,6 +244,20 @@ while already connected was subscribed to nothing for that guild: no messages,
 no new channels, no voice states, no permission re-resolution. The server was
 behaving correctly and the app looked dead, until a reload.
 
+Subscribing is not the same as being told. A guild joined afterwards still
+arrived as a bare **GUILD_CREATE**: the session heard everything published from
+then on and knew nothing of what already existed, because `READY` is the only
+event that ever seeds a roster or a permission set. The member list read *1
+members*, and the composer read *You cannot post in this channel* for a channel
+the server would have accepted the message in. Creating a server had the same
+hole, and there it was worse — the owner could not post in the `general` their
+own request had just made. Joining now resolves permissions the way a role
+change does and sends **PERMISSIONS_UPDATE** to the sessions that just joined,
+which also hands them the hidden-channel set they were otherwise missing. The
+roster stays a fetch, since no event carries one: the client asks for the
+members of a guild it has no roster for, and `GET /guilds/{id}/members` reports
+`online` per member so that list does not arrive with everyone shown as away.
+
 Fanout is routed **per topic, not per session**: one broker subscription and
 one forwarding goroutine exist per active topic regardless of how many
 sessions listen. A client that falls more than 256 frames behind is

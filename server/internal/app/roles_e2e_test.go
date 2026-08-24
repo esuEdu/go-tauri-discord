@@ -49,6 +49,20 @@ func (h *harness) inviteMember(guildID uuid.UUID) *harness {
 	return member
 }
 
+type memberView struct {
+	UserID   uuid.UUID `json:"user_id"`
+	Username string    `json:"username"`
+	Online   bool      `json:"online"`
+}
+
+func (h *harness) listMembers(guildID uuid.UUID) []memberView {
+	h.t.Helper()
+	var out []memberView
+	h.mustDo(http.MethodGet, "/api/v1/guilds/"+guildID.String()+"/members",
+		http.StatusOK, nil, &out)
+	return out
+}
+
 func memberRolesPath(guildID, memberID, roleID uuid.UUID) string {
 	return "/api/v1/guilds/" + guildID.String() + "/members/" + memberID.String() +
 		"/roles/" + roleID.String()
@@ -581,6 +595,81 @@ func TestJoiningAGuildWhileConnectedStartsDeliveringIt(t *testing.T) {
 
 	if got := sock.nextMessage(); got.Content != "anybody there" {
 		t.Fatalf("message = %q, want the one sent after they joined", got.Content)
+	}
+}
+
+func TestJoiningAGuildWhileConnectedSaysWhatMayBeDoneInIt(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Told On Arrival")
+	text, _ := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+
+	sock := friend.dial()
+	sock.identify(friend.token)
+
+	friend.mustDo(http.MethodPost, "/api/v1/invites/"+invite.Code, http.StatusOK, nil, nil)
+
+	var update events.GuildPermissions
+	decode(t, sock.readEvent(events.EventPermissionsUpdate).D, &update)
+	if update.GuildID != guild.ID {
+		t.Fatalf("PERMISSIONS_UPDATE carried guild %s, want %s", update.GuildID, guild.ID)
+	}
+
+	perms := allowedIn(t, []events.GuildPermissions{update}, guild.ID, text)
+	if !perms.Has(domain.PermSendMessages) {
+		t.Error("a member who just joined is not told they may post, so the client will not let them")
+	}
+}
+
+func TestCreatingAGuildWhileConnectedSaysWhatMayBeDoneInIt(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+
+	sock := owner.dial()
+	sock.identify(owner.token)
+
+	guild := owner.createGuild("Mine From Scratch")
+	text, _ := owner.textAndVoice(guild.ID)
+
+	var update events.GuildPermissions
+	decode(t, sock.readEvent(events.EventPermissionsUpdate).D, &update)
+	if update.GuildID != guild.ID {
+		t.Fatalf("PERMISSIONS_UPDATE carried guild %s, want %s", update.GuildID, guild.ID)
+	}
+
+	perms := allowedIn(t, []events.GuildPermissions{update}, guild.ID, text)
+	if !perms.Has(domain.PermSendMessages) {
+		t.Error("the owner of a brand new guild is not told they may post in its own channel")
+	}
+}
+
+func TestTheMemberListSaysWhoIsOnline(t *testing.T) {
+	owner := newHarness(t)
+	ownerID, _ := owner.registerUser()
+	guild := owner.createGuild("Who Is Here")
+	member := owner.inviteMember(guild.ID)
+	memberID, _ := memberIdentity(t, member)
+
+	sock := owner.dial()
+	sock.identify(owner.token)
+
+	members := member.listMembers(guild.ID)
+	if len(members) != 2 {
+		t.Fatalf("guild has %d members, want 2", len(members))
+	}
+
+	online := make(map[uuid.UUID]bool, len(members))
+	for _, m := range members {
+		online[m.UserID] = m.Online
+	}
+	if !online[ownerID] {
+		t.Error("the connected owner is reported offline, so a fresh roster shows everyone away")
+	}
+	if online[memberID] {
+		t.Error("a member with no socket is reported online")
 	}
 }
 

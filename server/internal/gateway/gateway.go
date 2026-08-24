@@ -82,15 +82,30 @@ func New(authSvc *auth.Service, guilds *guild.Service, reads ReadStates, broker 
 
 func (g *Gateway) JoinedGuild(userID, guildID uuid.UUID) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
-
 	if g.closed {
+		g.mu.Unlock()
 		return
 	}
+	joining := make([]*session, 0, len(g.byUser[userID]))
 	for s := range g.byUser[userID] {
 		g.subscribeLocked(pubsub.TopicGuild(guildID), s)
 		g.subscribeLocked(pubsub.TopicGuildControl(guildID), s)
+		joining = append(joining, s)
 	}
+	g.mu.Unlock()
+
+	g.sendAccess(joining, guildID)
+}
+
+func (g *Gateway) Online(userIDs []uuid.UUID) map[uuid.UUID]bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	online := make(map[uuid.UUID]bool, len(userIDs))
+	for _, id := range userIDs {
+		online[id] = len(g.byUser[id]) > 0
+	}
+	return online
 }
 
 func (g *Gateway) LeftGuild(userID, guildID uuid.UUID) {
@@ -298,6 +313,14 @@ func (g *Gateway) refreshVisibility(topic string, guildID uuid.UUID) {
 		}
 	}
 	g.mu.RUnlock()
+
+	g.sendAccess(sessions, guildID)
+}
+
+func (g *Gateway) sendAccess(sessions []*session, guildID uuid.UUID) {
+	if len(sessions) == 0 {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

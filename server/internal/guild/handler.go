@@ -22,6 +22,7 @@ type Handler struct {
 type Rooms interface {
 	JoinedGuild(userID, guildID uuid.UUID)
 	LeftGuild(userID, guildID uuid.UUID)
+	Online(userIDs []uuid.UUID) map[uuid.UUID]bool
 }
 
 func NewHandler(svc *Service, pub *bus.Publisher, rooms Rooms) *Handler {
@@ -32,6 +33,13 @@ func (h *Handler) joined(userID, guildID uuid.UUID) {
 	if h.rooms != nil {
 		h.rooms.JoinedGuild(userID, guildID)
 	}
+}
+
+func (h *Handler) online(userIDs []uuid.UUID) map[uuid.UUID]bool {
+	if h.rooms == nil {
+		return nil
+	}
+	return h.rooms.Online(userIDs)
 }
 
 func (h *Handler) removed(r *http.Request, guildID, userID uuid.UUID, banned bool) {
@@ -183,7 +191,14 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		Username  string  `json:"username"`
 		Nickname  *string `json:"nickname"`
 		AvatarKey *string `json:"avatar_key"`
+		Online    bool    `json:"online"`
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, m := range rows {
+		ids[i] = m.UserID
+	}
+	online := h.online(ids)
+
 	out := make([]member, len(rows))
 	for i, m := range rows {
 		out[i] = member{
@@ -191,6 +206,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 			Username:  m.Username,
 			Nickname:  m.Nickname,
 			AvatarKey: m.AvatarKey,
+			Online:    online[m.UserID],
 		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
