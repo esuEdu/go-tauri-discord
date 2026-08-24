@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { ServerSettings } from "./ServerSettings";
 import { emptySession, session, type SessionState } from "../session";
-import { CREATE_INVITE, MANAGE_CHANNELS, MANAGE_ROLES, allows } from "../permissions";
+import { BAN_MEMBERS, CREATE_INVITE, MANAGE_CHANNELS, MANAGE_ROLES, allows } from "../permissions";
 import type { Channel, Guild } from "../types/events.gen";
 import type { Invite } from "../api";
 
@@ -54,6 +54,7 @@ export function Sidebar({
   const guildAllows = activeGuild ? people.guildAllows[activeGuild.id] : undefined;
   const mayManageChannels = allows(guildAllows, MANAGE_CHANNELS);
   const mayManageRoles = allows(guildAllows, MANAGE_ROLES);
+  const mayBan = allows(guildAllows, BAN_MEMBERS);
   const mayInvite = allows(guildAllows, CREATE_INVITE);
 
   const [creating, setCreating] = useState(false);
@@ -216,7 +217,7 @@ export function Sidebar({
           <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
           {activeGuild && (
             <>
-              {mayManageRoles && (
+              {(mayManageRoles || mayBan) && (
                 <button
                   className="link add-channel"
                   title="Server settings"
