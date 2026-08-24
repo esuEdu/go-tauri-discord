@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Ban, type GuildMember } from "../api";
-import { ADMINISTRATOR, BAN_MEMBERS, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
+import { ADMINISTRATOR, BAN_MEMBERS, MANAGE_ROLES, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
 import { emptySession, session, type SessionState } from "../session";
 import type { Channel, Guild, Overwrite, Role } from "../types/events.gen";
 
 type Tab = "roles" | "members" | "channels" | "bans";
+
+const TAB_NAMES: Record<Tab, string> = {
+  roles: "Roles",
+  members: "Members",
+  channels: "Channel access",
+  bans: "Bans",
+};
 
 type OverwriteState = "allow" | "deny" | "inherit";
 
@@ -20,7 +27,7 @@ export function ServerSettings({ guild, channels, onClose }: {
   channels: Channel[];
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("roles");
+  const [chosen, setChosen] = useState<Tab | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [members, setMembers] = useState<GuildMember[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +47,16 @@ export function ServerSettings({ guild, channels, onClose }: {
 
   useEffect(() => session.onChange(setPeople), []);
 
-  const mayBan = allows(people.guildAllows[guild.id], BAN_MEMBERS);
+  const held = people.guildAllows[guild.id];
+  const mayManageRoles = allows(held, MANAGE_ROLES);
+  const mayBan = allows(held, BAN_MEMBERS);
+
+  const offered: Tab[] = [
+    ...(mayManageRoles ? (["roles", "members", "channels"] as Tab[]) : []),
+    ...(mayBan ? (["bans"] as Tab[]) : []),
+  ];
+  const tab = chosen && offered.includes(chosen) ? chosen : (offered[0] ?? null);
+  const setTab = setChosen;
 
   const complain = (err: unknown, fallback: string) =>
     setError(err instanceof Error ? err.message : fallback);
@@ -56,8 +72,9 @@ export function ServerSettings({ guild, channels, onClose }: {
   }, [guild.id]);
 
   useEffect(() => {
+    if (!mayManageRoles) return;
     void loadRoles();
-  }, [loadRoles]);
+  }, [loadRoles, mayManageRoles]);
 
   useEffect(() => {
     if (tab !== "members") return;
@@ -215,20 +232,15 @@ export function ServerSettings({ guild, channels, onClose }: {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="settings-tabs">
-          <button className={tab === "roles" ? "link active" : "link"} onClick={() => setTab("roles")}>
-            Roles
-          </button>
-          <button className={tab === "members" ? "link active" : "link"} onClick={() => setTab("members")}>
-            Members
-          </button>
-          <button className={tab === "channels" ? "link active" : "link"} onClick={() => setTab("channels")}>
-            Channel access
-          </button>
-          {mayBan && (
-            <button className={tab === "bans" ? "link active" : "link"} onClick={() => setTab("bans")}>
-              Bans
+          {offered.map((name) => (
+            <button
+              key={name}
+              className={tab === name ? "link active" : "link"}
+              onClick={() => setTab(name)}
+            >
+              {TAB_NAMES[name]}
             </button>
-          )}
+          ))}
           <span className="spacer" />
           <button className="secondary" onClick={onClose}>
             Done

@@ -34,8 +34,7 @@ export function MemberList({ guild, selfID }: { guild: Guild | null; selfID: str
     return (
       <div key={id} className={away ? "member away" : "member"}>
         <button
-          className="member-name"
-          disabled={!removable(id)}
+          className={removable(id) ? "member-name" : "member-name plain"}
           aria-expanded={removable(id) ? open : undefined}
           onClick={() => setSelected(open ? null : id)}
         >
