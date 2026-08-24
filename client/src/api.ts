@@ -24,6 +24,7 @@ export interface GuildMember {
   username: string;
   nickname: string | null;
   avatar_key: string | null;
+  online: boolean;
 }
 
 export interface Ban {

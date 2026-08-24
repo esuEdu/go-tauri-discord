@@ -1,6 +1,7 @@
 import { api } from "./api";
 import { gateway } from "./gateway";
 import type {
+  Guild,
   GuildPermissions,
   GuildRemoval,
   Member,
@@ -54,6 +55,9 @@ class SessionStore {
       this.names = { ...this.names, [member.user.id]: member.user.username };
       this.remember(member.guild_id, member.user.id);
       this.emit();
+    });
+    gateway.on("GUILD_CREATE", (payload) => {
+      void this.roster((payload as Guild).id);
     });
     gateway.on("GUILD_MEMBER_REMOVE", (payload) => {
       const gone = payload as GuildRemoval;
@@ -178,6 +182,24 @@ class SessionStore {
     const here = this.membersByGuild[guildID] ?? [];
     if (here.includes(userID)) return;
     this.membersByGuild = { ...this.membersByGuild, [guildID]: [...here, userID] };
+  }
+
+  private async roster(guildID: string) {
+    if (this.membersByGuild[guildID]) return;
+
+    const members = await api.members(guildID).catch(() => null);
+    if (!members) return;
+
+    const names = { ...this.names };
+    const online = { ...this.online };
+    for (const member of members) {
+      names[member.user_id] = member.username;
+      online[member.user_id] = member.online;
+      this.remember(guildID, member.user_id);
+    }
+    this.names = names;
+    this.online = online;
+    this.emit();
   }
 
   private forgetMember(guildID: string, userID: string) {
