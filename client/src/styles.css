@@ -380,10 +380,11 @@ button.link.danger {
 .app {
   display: grid;
   grid-template-columns: 68px 220px 1fr 180px;
-  grid-template-rows: 1fr 32px;
+  grid-template-rows: auto 1fr 32px;
   grid-template-areas:
-    "guilds channels main members"
-    "status status status status";
+    "banners banners banners banners"
+    "guilds  channels main    members"
+    "status  status   status  status";
   height: 100vh;
 }
 
@@ -561,9 +562,8 @@ button.link.danger {
   text-align: left;
 }
 
-.member-name:disabled {
+.member-name.plain {
   cursor: default;
-  opacity: 1;
 }
 
 .member-actions {
@@ -776,10 +776,19 @@ button.link.danger {
   white-space: nowrap;
 }
 
-.error.banner {
-  grid-area: main;
-  align-self: start;
-  margin: 12px;
+.banners {
+  grid-area: banners;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.banners .error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
 }
 
 .voice-panel {

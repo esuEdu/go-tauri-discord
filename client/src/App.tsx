@@ -100,7 +100,10 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    return gateway.on("GUILD_CREATE", () => void loadGuilds());
+    return gateway.on("GUILD_CREATE", () => {
+      setRemovedFrom(null);
+      void loadGuilds();
+    });
   }, [user, loadGuilds]);
 
   useEffect(() => {
@@ -196,14 +199,17 @@ export default function App() {
 
       <MemberList guild={activeGuild} selfID={user.id} />
 
-      {inviteError && <div className="error banner">{inviteError}</div>}
-
-      {removedFrom && (
-        <div className="error banner">
-          {removedFrom}
-          <button className="link" onClick={() => setRemovedFrom(null)}>
-            Dismiss
-          </button>
+      {(inviteError || removedFrom) && (
+        <div className="banners">
+          {inviteError && <div className="error">{inviteError}</div>}
+          {removedFrom && (
+            <div className="error">
+              {removedFrom}
+              <button className="link" onClick={() => setRemovedFrom(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
       )}
 
