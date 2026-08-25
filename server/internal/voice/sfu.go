@@ -12,6 +12,8 @@ import (
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
+
+	"github.com/esuEdu/go-tauri-discord/internal/ice"
 )
 
 var ErrNotConnected = errors.New("voice: peer is not connected")
@@ -27,7 +29,7 @@ type Signaler interface {
 
 type SFU struct {
 	api      *webrtc.API
-	config   webrtc.Configuration
+	ice      *ice.Minter
 	signaler Signaler
 
 	mu    sync.Mutex
@@ -125,16 +127,9 @@ func relayKeyframeRequests(sender *webrtc.RTPSender, ask func()) {
 	}
 }
 
-func New(signaler Signaler, iceServers []string) (*SFU, error) {
-	servers := make([]webrtc.ICEServer, 0, len(iceServers))
-	for _, url := range iceServers {
-		if url != "" {
-			servers = append(servers, webrtc.ICEServer{URLs: []string{url}})
-		}
-	}
-
+func New(signaler Signaler, minter *ice.Minter) (*SFU, error) {
 	s := &SFU{
-		config:     webrtc.Configuration{ICEServers: servers},
+		ice:        minter,
 		signaler:   signaler,
 		rooms:      make(map[uuid.UUID]*room),
 		homes:      make(map[uuid.UUID]uuid.UUID),
@@ -173,6 +168,19 @@ func New(signaler Signaler, iceServers []string) (*SFU, error) {
 
 	go s.sampleBandwidth()
 	return s, nil
+}
+
+func (s *SFU) iceConfig() webrtc.Configuration {
+	relays := s.ice.For("sfu")
+	servers := make([]webrtc.ICEServer, 0, len(relays))
+	for _, r := range relays {
+		servers = append(servers, webrtc.ICEServer{
+			URLs:       []string{r.URL},
+			Username:   r.Username,
+			Credential: r.Credential,
+		})
+	}
+	return webrtc.Configuration{ICEServers: servers}
 }
 
 func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {

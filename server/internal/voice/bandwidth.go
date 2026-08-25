@@ -33,7 +33,7 @@ func (s *SFU) newPeerConnection() (*webrtc.PeerConnection, cc.BandwidthEstimator
 	defer s.birth.Unlock()
 
 	s.arriving = nil
-	pc, err := s.api.NewPeerConnection(s.config)
+	pc, err := s.api.NewPeerConnection(s.iceConfig())
 	estimator := s.arriving
 	s.arriving = nil
 

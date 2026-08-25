@@ -138,6 +138,12 @@ export interface Ready {
   read_states: ReadState[];
   allowed: GuildPermissions[];
   online: string[];
+  ice_servers: ICEServer[];
+}
+export interface ICEServer {
+  urls: string[];
+  username?: string;
+  credential?: string;
 }
 export interface MessageDelete {
   id: string;

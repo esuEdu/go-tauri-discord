@@ -11,6 +11,7 @@ import (
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
+	"github.com/esuEdu/go-tauri-discord/internal/ice"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 
@@ -26,6 +27,7 @@ type Gateway struct {
 	maxSessions int
 	voice       VoiceEngine
 	reads       ReadStates
+	ice         *ice.Minter
 
 	mu       sync.RWMutex
 	sessions map[string]*session
@@ -141,6 +143,23 @@ func (g *Gateway) leaveVoiceIn(userID, guildID uuid.UUID) {
 
 func (g *Gateway) AttachVoice(engine VoiceEngine) {
 	g.voice = engine
+}
+
+func (g *Gateway) AttachICE(minter *ice.Minter) {
+	g.ice = minter
+}
+
+func (g *Gateway) iceServersFor(userID uuid.UUID) []events.ICEServer {
+	relays := g.ice.For(userID.String())
+	servers := make([]events.ICEServer, 0, len(relays))
+	for _, r := range relays {
+		servers = append(servers, events.ICEServer{
+			URLs:       []string{r.URL},
+			Username:   r.Username,
+			Credential: r.Credential,
+		})
+	}
+	return servers
 }
 
 func (g *Gateway) sessionsFor(userID uuid.UUID) int {

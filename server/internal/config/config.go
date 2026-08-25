@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/esuEdu/go-tauri-discord/internal/ice"
 )
 
 type Config struct {
@@ -26,7 +28,9 @@ type Config struct {
 	LoginPerMinute    int
 	MessagesPerMinute int
 
-	ICEServers    []string
+	ICEServers    []ice.Server
+	TURNSecret    string
+	TURNTTL       time.Duration
 	VoiceDisabled bool
 
 	HeartbeatInterval time.Duration
@@ -51,11 +55,18 @@ func Load() (Config, error) {
 		RegisterPerHour:    envInt("REGISTER_PER_HOUR", 10),
 		LoginPerMinute:     envInt("LOGIN_PER_MINUTE", 20),
 		MessagesPerMinute:  envInt("MESSAGES_PER_MINUTE", 60),
-		ICEServers:         strings.Split(env("ICE_SERVERS", "stun:stun.l.google.com:19302"), ","),
+		TURNSecret:         env("TURN_SECRET", ""),
+		TURNTTL:            envDuration("TURN_TTL", 12*time.Hour),
 		VoiceDisabled:      env("VOICE_DISABLED", "") == "true",
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}
+
+	servers, err := ice.ParseServers(env("ICE_SERVERS", "stun:stun.l.google.com:19302"))
+	if err != nil {
+		return Config{}, fmt.Errorf("ICE_SERVERS: %w", err)
+	}
+	c.ICEServers = servers
 
 	secret := env("JWT_SECRET", "")
 	if secret == "" {
