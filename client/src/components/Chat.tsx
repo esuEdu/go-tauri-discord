@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { Reactions } from "./Reactions";
+import { ReplyQuote } from "./ReplyQuote";
 import { api } from "../api";
 import { gateway } from "../gateway";
 import { emptySession, session, type SessionState } from "../session";
@@ -48,6 +49,8 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [editDraft, setEditDraft] = useState("");
   const [typists, setTypists] = useState<string[]>([]);
   const [people, setPeople] = useState<SessionState>(emptySession);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
 
   const maySend = allows(people.channelAllows[channel.id], SEND_MESSAGES);
   const mayReact = allows(people.channelAllows[channel.id], ADD_REACTIONS);
@@ -123,7 +126,26 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     const offDelete = gateway.on("MESSAGE_DELETE", (payload) => {
       const { id, channel_id } = payload as { id: string; channel_id: string };
       if (channel_id !== channel.id) return;
-      setMessages((prev) => prev.filter((m) => m.id !== id));
+      setReplyingTo((prev) => (prev?.id === id ? null : prev));
+      setMessages((prev) =>
+        prev
+          .filter((m) => m.id !== id)
+          .map((m) =>
+            m.reply_to && m.reply_to.message_id === id
+              ? {
+                  ...m,
+                  reply_to: {
+                    ...m.reply_to,
+                    deleted: true,
+                    content: "",
+                    author: undefined,
+                    truncated: false,
+                    has_attachments: false,
+                  },
+                }
+              : m,
+          ),
+      );
     });
 
     const offTyping = gateway.on("TYPING_START", (payload) => {
@@ -150,6 +172,8 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   useEffect(() => {
     setTypists([]);
     setEditing(null);
+    setReplyingTo(null);
+    setHighlighted(null);
   }, [channel.id]);
 
   useEffect(() => {
@@ -205,21 +229,35 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     }
   }
 
+  function jumpTo(messageID: string) {
+    const target = document.getElementById(`message-${messageID}`);
+    if (!target) {
+      setError("That message is further back than what is loaded.");
+      return;
+    }
+    pinnedToBottom.current = false;
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    setHighlighted(messageID);
+    setTimeout(() => setHighlighted((at) => (at === messageID ? null : at)), 1600);
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = draft.trim();
     const files = staged;
     if (!content && files.length === 0) return;
 
+    const answering = replyingTo;
     setDraft("");
     setStaged([]);
+    setReplyingTo(null);
     announcedTyping.current = 0;
     pinnedToBottom.current = true;
     try {
       const sent =
         files.length > 0
-          ? await api.sendMessageWithFiles(channel.id, content, files)
-          : await api.sendMessage(channel.id, content);
+          ? await api.sendMessageWithFiles(channel.id, content, files, answering?.id)
+          : await api.sendMessage(channel.id, content, answering?.id);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id) ? prev : [...prev, sent],
       );
@@ -227,6 +265,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       setError(err instanceof Error ? err.message : "could not send");
       setDraft(content);
       setStaged(files);
+      setReplyingTo(answering);
     }
   }
 
@@ -250,9 +289,13 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
 
         {messages.map((m, i) => {
           const prev = messages[i - 1];
-          const grouped = prev && prev.author.id === m.author.id;
+          const grouped = prev && prev.author.id === m.author.id && !m.reply_to;
+          const classes = ["message"];
+          if (grouped) classes.push("grouped");
+          if (highlighted === m.id) classes.push("highlighted");
           return (
-            <div key={m.id} className={grouped ? "message grouped" : "message"}>
+            <div key={m.id} id={`message-${m.id}`} className={classes.join(" ")}>
+              {m.reply_to && <ReplyQuote reply={m.reply_to} onJump={jumpTo} />}
               {!grouped && (
                 <div className="message-head">
                   <Avatar name={m.author.username} imageKey={m.author.avatar_key} />
@@ -287,6 +330,15 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
                   {m.content}
                   {m.edited_at && <span className="muted"> (edited)</span>}
                   <Attachments attachments={m.attachments} />
+                  {maySend && (
+                    <button
+                      className="link reply"
+                      title="Reply"
+                      onClick={() => setReplyingTo(m)}
+                    >
+                      ↩
+                    </button>
+                  )}
                   {m.author.id === selfID && (
                     <>
                       <button
@@ -322,6 +374,22 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
         <div className="muted typing">
           {typists.map((id) => session.nameOf(id)).join(", ")}
           {typists.length === 1 ? " is typing…" : " are typing…"}
+        </div>
+      )}
+
+      {replyingTo && (
+        <div className="replying">
+          <span className="muted">Replying to</span>
+          <strong>{replyingTo.author.username}</strong>
+          <span className="muted replying-content">{replyingTo.content}</span>
+          <button
+            type="button"
+            className="link"
+            aria-label="Stop replying"
+            onClick={() => setReplyingTo(null)}
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -365,11 +433,18 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
         />
         <input
           placeholder={
-            maySend ? `Message #${channel.name}` : "You cannot post in this channel"
+            !maySend
+              ? "You cannot post in this channel"
+              : replyingTo
+                ? `Reply to ${replyingTo.author.username}`
+                : `Message #${channel.name}`
           }
           value={draft}
           disabled={!maySend}
           onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setReplyingTo(null);
+          }}
         />
         <button type="submit" disabled={!maySend || (!draft.trim() && staged.length === 0)}>
           Send

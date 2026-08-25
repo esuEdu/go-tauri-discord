@@ -1033,6 +1033,89 @@ button.link.danger {
   font-weight: 500;
 }
 
+.reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0 0 2px;
+  margin: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: left;
+  overflow: hidden;
+}
+
+button.reply-quote {
+  cursor: pointer;
+}
+
+.reply-mark {
+  flex: none;
+  width: 22px;
+  height: 9px;
+  margin-left: 8px;
+  border-left: 2px solid var(--border);
+  border-top: 2px solid var(--border);
+  border-top-left-radius: 6px;
+  align-self: flex-end;
+}
+
+.avatar.reply {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
+
+.reply-author {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.reply-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-clip {
+  white-space: nowrap;
+}
+
+.message .reply {
+  visibility: hidden;
+  padding: 0 6px;
+}
+
+.message:hover .reply {
+  visibility: visible;
+}
+
+.message.highlighted {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  transition: background 400ms ease-out;
+}
+
+.replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 0;
+  font-size: 13px;
+}
+
+.replying-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .reactions {
   display: flex;
   flex-wrap: wrap;
