@@ -335,6 +335,7 @@ func scopedChannel(raw []byte) (uuid.UUID, bool) {
 	}
 	switch frame.T {
 	case events.EventMessageCreate, events.EventMessageUpdate, events.EventMessageDelete,
+		events.EventReactionAdd, events.EventReactionRemove,
 		events.EventTypingStart, events.EventVoiceStateUpdate, events.EventVoiceScreenUpdate:
 		if frame.D.ChannelID == nil {
 			return uuid.Nil, false
