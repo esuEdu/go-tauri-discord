@@ -12,6 +12,7 @@ import (
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
+	"github.com/esuEdu/go-tauri-discord/internal/storage"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
@@ -22,6 +23,9 @@ type Repository interface {
 	UpdateMessageContent(ctx context.Context, arg dbgen.UpdateMessageContentParams) (dbgen.Message, error)
 	SoftDeleteMessage(ctx context.Context, id uuid.UUID) error
 	ListAttachmentsForMessages(ctx context.Context, messageIDs []uuid.UUID) ([]dbgen.Attachment, error)
+	CreateAttachment(ctx context.Context, arg dbgen.CreateAttachmentParams) (dbgen.Attachment, error)
+	GetAttachment(ctx context.Context, id uuid.UUID) (dbgen.Attachment, error)
+	DeleteAttachmentsForMessage(ctx context.Context, messageID uuid.UUID) ([]dbgen.Attachment, error)
 	UpsertReadState(ctx context.Context, arg dbgen.UpsertReadStateParams) error
 	ListReadStates(ctx context.Context, userID uuid.UUID) ([]dbgen.ReadState, error)
 	ListLatestMessageIDs(ctx context.Context, channelIDs []uuid.UUID) ([]dbgen.ListLatestMessageIDsRow, error)
@@ -33,9 +37,11 @@ type Authorizer interface {
 }
 
 type Service struct {
-	repo  Repository
-	authz Authorizer
-	pub   *bus.Publisher
+	repo   Repository
+	authz  Authorizer
+	pub    *bus.Publisher
+	store  storage.Store
+	signer Signer
 }
 
 func NewService(repo Repository, authz Authorizer, pub *bus.Publisher) *Service {
@@ -48,10 +54,16 @@ const (
 	MaxPageSize     = 100
 )
 
-func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, content string) (events.Message, error) {
+func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, content string, uploads ...Upload) (events.Message, error) {
 	content = strings.TrimSpace(content)
-	if content == "" {
+	if content == "" && len(uploads) == 0 {
 		return events.Message{}, domain.Invalid("message content is required")
+	}
+	if len(uploads) > MaxAttachments {
+		return events.Message{}, domain.Invalid("a message carries at most %d files", MaxAttachments)
+	}
+	if len(uploads) > 0 && s.store == nil {
+		return events.Message{}, domain.Invalid("this server has file uploads turned off")
 	}
 	if utf8.RuneCountInString(content) > MaxContentLen {
 		return events.Message{}, domain.Invalid("message exceeds %d characters", MaxContentLen)
@@ -73,6 +85,11 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		return events.Message{}, domain.Internal(err)
 	}
 
+	stored, err := s.storeUploads(ctx, uploads)
+	if err != nil {
+		return events.Message{}, err
+	}
+
 	row, err := s.repo.CreateMessage(ctx, dbgen.CreateMessageParams{
 		ID:        uuid.Must(uuid.NewV7()),
 		ChannelID: channelID,
@@ -80,7 +97,20 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		Content:   content,
 	})
 	if err != nil {
+		s.discard(ctx, stored)
 		return events.Message{}, domain.Internal(err)
+	}
+
+	attached := make([]events.Attachment, 0, len(stored))
+	for _, params := range stored {
+		params.MessageID = row.ID
+		saved, err := s.repo.CreateAttachment(ctx, params)
+		if err != nil {
+			s.discard(ctx, stored)
+			_ = s.repo.SoftDeleteMessage(ctx, row.ID)
+			return events.Message{}, domain.Internal(err)
+		}
+		attached = append(attached, s.publicAttachment(saved))
 	}
 
 	msg := events.Message{
@@ -90,7 +120,7 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		Content:     row.Content,
 		CreatedAt:   row.CreatedAt,
 		EditedAt:    row.EditedAt,
-		Attachments: []events.Attachment{},
+		Attachments: attached,
 	}
 
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageCreate, msg)
@@ -157,13 +187,7 @@ func (s *Service) attachAttachments(ctx context.Context, msgs []events.Message, 
 
 	byMessage := make(map[uuid.UUID][]events.Attachment, len(rows))
 	for _, a := range rows {
-		byMessage[a.MessageID] = append(byMessage[a.MessageID], events.Attachment{
-			ID:          a.ID,
-			Filename:    a.Filename,
-			SizeBytes:   a.SizeBytes,
-			ContentType: a.ContentType,
-			URL:         "/api/v1/attachments/" + a.ID.String(),
-		})
+		byMessage[a.MessageID] = append(byMessage[a.MessageID], s.publicAttachment(a))
 	}
 	for i := range msgs {
 		if got, ok := byMessage[msgs[i].ID]; ok {
@@ -245,6 +269,9 @@ func (s *Service) Delete(ctx context.Context, userID, messageID uuid.UUID) error
 
 	if err := s.repo.SoftDeleteMessage(ctx, messageID); err != nil {
 		return domain.Internal(err)
+	}
+	if s.store != nil {
+		s.sweep(ctx, messageID)
 	}
 
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageDelete, events.MessageDelete{

@@ -90,7 +90,11 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 		slog.Error("files disabled: could not open storage",
 			"storage", cfg.StorageKind, "error", err)
 	} else {
+		signer := files.NewSigner(cfg.JWTSecret, cfg.AttachmentURLTTL)
+		messageSvc.AttachFiles(store, signer)
+
 		fileHandler := files.NewHandler(store, authSvc, guildSvc)
+		fileHandler.AttachMessages(messageSvc, signer)
 		fileHandler.Routes(protected)
 		fileHandler.PublicRoutes(mux)
 	}

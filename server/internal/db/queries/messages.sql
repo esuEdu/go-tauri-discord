@@ -56,3 +56,9 @@ FROM messages
 WHERE channel_id = ANY (@channel_ids::uuid[])
   AND deleted_at IS NULL
 ORDER BY channel_id, id DESC;
+
+-- name: GetAttachment :one
+SELECT * FROM attachments WHERE id = @id;
+
+-- name: DeleteAttachmentsForMessage :many
+DELETE FROM attachments WHERE message_id = @message_id RETURNING *;

@@ -1,7 +1,9 @@
 package message
 
 import (
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -64,6 +66,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		h.createWithFiles(w, r, channelID)
+		return
+	}
+
 	var in struct {
 		Content string `json:"content"`
 	}
@@ -73,6 +80,57 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg, err := h.svc.Create(r.Context(), auth.MustUserID(r.Context()), channelID, in.Content)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, msg)
+}
+
+func (h *Handler) createWithFiles(w http.ResponseWriter, r *http.Request, channelID uuid.UUID) {
+	const slack = 1 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, MaxAttachments*MaxAttachmentBytes+slack)
+
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		httpx.Error(w, r, domain.Invalid("could not read the upload: %v", err))
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+
+	headers := r.MultipartForm.File["files"]
+	if len(headers) > MaxAttachments {
+		httpx.Error(w, r, domain.Invalid("a message carries at most %d files", MaxAttachments))
+		return
+	}
+
+	opened := make([]io.Closer, 0, len(headers))
+	defer func() {
+		for _, f := range opened {
+			f.Close()
+		}
+	}()
+
+	uploads := make([]Upload, 0, len(headers))
+	for _, header := range headers {
+		file, err := header.Open()
+		if err != nil {
+			httpx.Error(w, r, domain.Invalid("could not read %q", header.Filename))
+			return
+		}
+		opened = append(opened, file)
+		uploads = append(uploads, Upload{
+			Filename:    header.Filename,
+			ContentType: header.Header.Get("Content-Type"),
+			Body:        file,
+		})
+	}
+
+	msg, err := h.svc.Create(r.Context(), auth.MustUserID(r.Context()),
+		channelID, r.FormValue("content"), uploads...)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
