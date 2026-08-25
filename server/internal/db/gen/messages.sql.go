@@ -49,16 +49,17 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 }
 
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO messages (id, channel_id, author_id, content)
-VALUES ($1, $2, $3, $4)
-RETURNING id, channel_id, author_id, content, created_at, edited_at, deleted_at
+INSERT INTO messages (id, channel_id, author_id, content, reply_to_message_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, channel_id, author_id, content, created_at, edited_at, deleted_at, reply_to_message_id
 `
 
 type CreateMessageParams struct {
-	ID        uuid.UUID
-	ChannelID uuid.UUID
-	AuthorID  uuid.UUID
-	Content   string
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
+	AuthorID         uuid.UUID
+	Content          string
+	ReplyToMessageID *uuid.UUID
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
@@ -67,6 +68,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		arg.ChannelID,
 		arg.AuthorID,
 		arg.Content,
+		arg.ReplyToMessageID,
 	)
 	var i Message
 	err := row.Scan(
@@ -77,6 +79,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.ReplyToMessageID,
 	)
 	return i, err
 }
@@ -131,7 +134,7 @@ func (q *Queries) GetAttachment(ctx context.Context, id uuid.UUID) (Attachment, 
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT id, channel_id, author_id, content, created_at, edited_at, deleted_at FROM messages WHERE id = $1 AND deleted_at IS NULL
+SELECT id, channel_id, author_id, content, created_at, edited_at, deleted_at, reply_to_message_id FROM messages WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error) {
@@ -145,6 +148,7 @@ func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error)
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.ReplyToMessageID,
 	)
 	return i, err
 }
@@ -217,7 +221,7 @@ func (q *Queries) ListLatestMessageIDs(ctx context.Context, channelIds []uuid.UU
 
 const listMessages = `-- name: ListMessages :many
 SELECT
-    m.id, m.channel_id, m.author_id, m.content, m.created_at, m.edited_at, m.deleted_at,
+    m.id, m.channel_id, m.author_id, m.content, m.created_at, m.edited_at, m.deleted_at, m.reply_to_message_id,
     u.username   AS author_username,
     u.avatar_key AS author_avatar_key
 FROM messages m
@@ -236,15 +240,16 @@ type ListMessagesParams struct {
 }
 
 type ListMessagesRow struct {
-	ID              uuid.UUID
-	ChannelID       uuid.UUID
-	AuthorID        uuid.UUID
-	Content         string
-	CreatedAt       time.Time
-	EditedAt        *time.Time
-	DeletedAt       *time.Time
-	AuthorUsername  string
-	AuthorAvatarKey *string
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
+	AuthorID         uuid.UUID
+	Content          string
+	CreatedAt        time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
+	ReplyToMessageID *uuid.UUID
+	AuthorUsername   string
+	AuthorAvatarKey  *string
 }
 
 func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
@@ -264,6 +269,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 			&i.CreatedAt,
 			&i.EditedAt,
 			&i.DeletedAt,
+			&i.ReplyToMessageID,
 			&i.AuthorUsername,
 			&i.AuthorAvatarKey,
 		); err != nil {
@@ -320,7 +326,7 @@ const updateMessageContent = `-- name: UpdateMessageContent :one
 UPDATE messages
 SET content = $1, edited_at = now()
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, channel_id, author_id, content, created_at, edited_at, deleted_at
+RETURNING id, channel_id, author_id, content, created_at, edited_at, deleted_at, reply_to_message_id
 `
 
 type UpdateMessageContentParams struct {
@@ -339,6 +345,7 @@ func (q *Queries) UpdateMessageContent(ctx context.Context, arg UpdateMessageCon
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.ReplyToMessageID,
 	)
 	return i, err
 }

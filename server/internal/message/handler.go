@@ -76,18 +76,35 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		Content string `json:"content"`
+		ReplyTo string `json:"reply_to"`
 	}
 	if err := httpx.Decode(w, r, &in); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
+	replyTo, err := optionalUUID(in.ReplyTo)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
 
-	msg, err := h.svc.Create(r.Context(), auth.MustUserID(r.Context()), channelID, in.Content)
+	msg, err := h.svc.Create(r.Context(), auth.MustUserID(r.Context()), channelID, in.Content, replyTo)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, msg)
+}
+
+func optionalUUID(raw string) (*uuid.UUID, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil, domain.Invalid("reply_to must be a uuid")
+	}
+	return &id, nil
 }
 
 func (h *Handler) createWithFiles(w http.ResponseWriter, r *http.Request, channelID uuid.UUID) {
@@ -132,8 +149,14 @@ func (h *Handler) createWithFiles(w http.ResponseWriter, r *http.Request, channe
 		})
 	}
 
+	replyTo, err := optionalUUID(r.FormValue("reply_to"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
 	msg, err := h.svc.Create(r.Context(), auth.MustUserID(r.Context()),
-		channelID, r.FormValue("content"), uploads...)
+		channelID, r.FormValue("content"), replyTo, uploads...)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

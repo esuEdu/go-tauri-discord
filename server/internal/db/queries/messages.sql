@@ -1,6 +1,6 @@
 -- name: CreateMessage :one
-INSERT INTO messages (id, channel_id, author_id, content)
-VALUES (@id, @channel_id, @author_id, @content)
+INSERT INTO messages (id, channel_id, author_id, content, reply_to_message_id)
+VALUES (@id, @channel_id, @author_id, @content, sqlc.narg('reply_to_message_id'))
 RETURNING *;
 
 -- name: GetMessage :one
