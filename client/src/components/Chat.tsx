@@ -1,13 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
+import { Reactions } from "./Reactions";
 import { api } from "../api";
 import { gateway } from "../gateway";
 import { emptySession, session, type SessionState } from "../session";
-import { SEND_MESSAGES, allows } from "../permissions";
-import type { Channel, Message, TypingStart } from "../types/events.gen";
+import { ADD_REACTIONS, SEND_MESSAGES, allows } from "../permissions";
+import type {
+  Channel,
+  Message,
+  MessageReaction,
+  Reaction,
+  TypingStart,
+} from "../types/events.gen";
 
 const MAX_FILES = 10;
+
+function withReaction(on: Reaction[], emoji: string, mine: boolean): Reaction[] {
+  if (on.some((r) => r.emoji === emoji)) {
+    return on.map((r) =>
+      r.emoji === emoji ? { ...r, count: r.count + 1, mine: r.mine || mine } : r,
+    );
+  }
+  return [...on, { emoji, count: 1, mine }];
+}
+
+function withoutReaction(on: Reaction[], emoji: string, mine: boolean): Reaction[] {
+  return on
+    .map((r) =>
+      r.emoji === emoji ? { ...r, count: r.count - 1, mine: r.mine && !mine } : r,
+    )
+    .filter((r) => r.count > 0);
+}
 
 const PAGE_SIZE = 50;
 const TYPING_EVERY = 5000;
@@ -26,6 +50,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [people, setPeople] = useState<SessionState>(emptySession);
 
   const maySend = allows(people.channelAllows[channel.id], SEND_MESSAGES);
+  const mayReact = allows(people.channelAllows[channel.id], ADD_REACTIONS);
 
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -66,7 +91,33 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     const offUpdate = gateway.on("MESSAGE_UPDATE", (payload) => {
       const msg = payload as Message;
       if (msg.channel_id !== channel.id) return;
-      setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...msg, reactions: m.reactions } : m)),
+      );
+    });
+
+    const offReact = gateway.on("MESSAGE_REACTION_ADD", (payload) => {
+      const hit = payload as MessageReaction;
+      if (hit.channel_id !== channel.id) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === hit.message_id
+            ? { ...m, reactions: withReaction(m.reactions, hit.emoji, hit.user_id === selfID) }
+            : m,
+        ),
+      );
+    });
+
+    const offUnreact = gateway.on("MESSAGE_REACTION_REMOVE", (payload) => {
+      const hit = payload as MessageReaction;
+      if (hit.channel_id !== channel.id) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === hit.message_id
+            ? { ...m, reactions: withoutReaction(m.reactions, hit.emoji, hit.user_id === selfID) }
+            : m,
+        ),
+      );
     });
 
     const offDelete = gateway.on("MESSAGE_DELETE", (payload) => {
@@ -88,6 +139,8 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       offCreate();
       offUpdate();
       offDelete();
+      offReact();
+      offUnreact();
       offTyping();
     };
   }, [channel.id, selfID]);
@@ -257,6 +310,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
                   )}
                 </div>
               )}
+              <Reactions messageID={m.id} reactions={m.reactions} mayReact={mayReact} />
             </div>
           );
         })}
