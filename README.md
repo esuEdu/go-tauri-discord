@@ -238,6 +238,17 @@ seconds, keeping a 256-frame replay buffer, so a brief network drop is
 recovered with **RESUME** rather than a full refetch. Clients must ignore any
 frame whose `s` is not greater than the last one processed.
 
+A session waiting out that window **gives up its seat to a fresh IDENTIFY**.
+It used to count against `MAX_SESSIONS_PER_USER` like a live connection, and
+those two rules fed each other: each reconnect left a ghost holding a slot,
+five quick reconnects filled the account's allowance with ghosts, and every
+retry after that was refused in milliseconds — which triggered another retry.
+The client locked itself out for 90 seconds and showed "connecting…" the whole
+time. Now only genuinely live connections can exhaust the limit, and evicting
+a detached session to admit a real one costs nothing that mattered: a session
+evicted this way answers any late RESUME with invalid-session, which sends
+that client through a fresh IDENTIFY exactly as if the window had expired.
+
 A session subscribes to its guilds when it identifies, **and to any guild it
 joins afterwards**. Without the second half a member who accepted an invite
 while already connected was subscribed to nothing for that guild: no messages,
