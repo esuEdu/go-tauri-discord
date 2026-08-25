@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Avatar } from "./Avatar";
 import { api } from "../api";
 import { ServerSettings } from "./ServerSettings";
 import { emptySession, session, type SessionState } from "../session";
@@ -192,7 +193,7 @@ export function Sidebar({
             title={g.name}
             onClick={() => onSelectGuild(g)}
           >
-            {g.name.slice(0, 2).toUpperCase()}
+            <Avatar name={g.name} imageKey={g.icon_key} className="guild-image" />
           </button>
         ))}
         <button className="guild add" title="New server" onClick={() => setCreating(!creating)}>

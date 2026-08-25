@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BAN_MEMBERS, KICK_MEMBERS, allows } from "../permissions";
 import { emptySession, session, type SessionState } from "../session";
 import type { Guild } from "../types/events.gen";
+import { Avatar } from "./Avatar";
 import { RemoveMember } from "./RemoveMember";
 
 function byName(a: string, b: string): number {
@@ -38,6 +39,7 @@ export function MemberList({ guild, selfID }: { guild: Guild | null; selfID: str
           aria-expanded={removable(id) ? open : undefined}
           onClick={() => setSelected(open ? null : id)}
         >
+          <Avatar name={session.nameOf(id)} imageKey={people.avatars[id]} />
           <span className={away ? "dot closed" : "dot ready"} />
           <span className="channel-name">
             {session.nameOf(id)}

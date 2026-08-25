@@ -46,6 +46,7 @@ export const KICK_MEMBERS = 1 << 5;
 export const BAN_MEMBERS = 1 << 6;
 export const STREAM = 1 << 9;
 export const CREATE_INVITE = 1 << 11;
+export const MANAGE_GUILD = 1 << 12;
 
 export function allows(held: number | undefined, bit: number): boolean {
   if (held === undefined) return false;

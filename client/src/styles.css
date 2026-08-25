@@ -941,3 +941,63 @@ button.link.danger {
   gap: 8px;
   font-size: 12px;
 }
+
+.avatar {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-raised);
+}
+
+.avatar.lettered {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.avatar.large {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  font-size: 18px;
+}
+
+.guild-image {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}
+
+.guild-image.lettered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.pick-image {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pick-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-head .avatar {
+  margin-right: 2px;
+}
