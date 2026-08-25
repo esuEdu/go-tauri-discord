@@ -162,10 +162,32 @@ func (g *Gateway) iceServersFor(userID uuid.UUID) []events.ICEServer {
 	return servers
 }
 
-func (g *Gateway) sessionsFor(userID uuid.UUID) int {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return len(g.byUser[userID])
+func (g *Gateway) admit(userID uuid.UUID) bool {
+	for {
+		g.mu.RLock()
+		count := len(g.byUser[userID])
+		var idle *session
+		if count >= g.maxSessions {
+			for s := range g.byUser[userID] {
+				s.mu.Lock()
+				detached := !s.connected
+				s.mu.Unlock()
+				if detached {
+					idle = s
+					break
+				}
+			}
+		}
+		g.mu.RUnlock()
+
+		if count < g.maxSessions {
+			return true
+		}
+		if idle == nil {
+			return false
+		}
+		g.unregister(idle)
+	}
 }
 
 func (g *Gateway) register(s *session, guildIDs []uuid.UUID) {

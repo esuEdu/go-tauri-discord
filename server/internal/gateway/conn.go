@@ -80,7 +80,7 @@ func (g *Gateway) handshake(ctx context.Context, conn *websocket.Conn) (*session
 			return nil, errors.New("authentication failed")
 		}
 
-		if g.sessionsFor(user.ID) >= g.maxSessions {
+		if !g.admit(user.ID) {
 			return nil, errors.New("too many concurrent sessions for this account")
 		}
 
