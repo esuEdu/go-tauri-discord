@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/esuEdu/go-tauri-discord/internal/ice"
+	"github.com/esuEdu/go-tauri-discord/internal/storage"
 )
 
 type Config struct {
@@ -27,6 +28,10 @@ type Config struct {
 	RegisterPerHour   int
 	LoginPerMinute    int
 	MessagesPerMinute int
+
+	StorageKind string
+	StorageDir  string
+	S3          storage.S3Config
 
 	ICEServers    []ice.Server
 	TURNSecret    string
@@ -55,6 +60,16 @@ func Load() (Config, error) {
 		RegisterPerHour:    envInt("REGISTER_PER_HOUR", 10),
 		LoginPerMinute:     envInt("LOGIN_PER_MINUTE", 20),
 		MessagesPerMinute:  envInt("MESSAGES_PER_MINUTE", 60),
+		StorageKind:        env("STORAGE", "disk"),
+		StorageDir:         env("STORAGE_DIR", "./data/files"),
+		S3: storage.S3Config{
+			Endpoint:  env("S3_ENDPOINT", "localhost:9000"),
+			Bucket:    env("S3_BUCKET", "vocalis"),
+			AccessKey: env("S3_ACCESS_KEY", ""),
+			Secret:    env("S3_SECRET_KEY", ""),
+			Region:    env("S3_REGION", "us-east-1"),
+			UseSSL:    env("S3_USE_SSL", "") == "true",
+		},
 		TURNSecret:         env("TURN_SECRET", ""),
 		TURNTTL:            envDuration("TURN_TTL", 12*time.Hour),
 		VoiceDisabled:      env("VOICE_DISABLED", "") == "true",

@@ -731,6 +731,30 @@ func (q *Queries) ResolveGuildAccess(ctx context.Context, arg ResolveGuildAccess
 	return i, err
 }
 
+const setGuildIcon = `-- name: SetGuildIcon :one
+UPDATE guilds SET icon_key = $1
+WHERE id = $2
+RETURNING id, name, owner_id, icon_key, created_at
+`
+
+type SetGuildIconParams struct {
+	IconKey *string
+	ID      uuid.UUID
+}
+
+func (q *Queries) SetGuildIcon(ctx context.Context, arg SetGuildIconParams) (Guild, error) {
+	row := q.db.QueryRow(ctx, setGuildIcon, arg.IconKey, arg.ID)
+	var i Guild
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.IconKey,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const transferGuildOwnership = `-- name: TransferGuildOwnership :exec
 UPDATE guilds SET owner_id = $1 WHERE id = $2
 `

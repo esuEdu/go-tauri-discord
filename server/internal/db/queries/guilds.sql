@@ -182,3 +182,8 @@ WHERE g.id = @guild_id;
 SELECT o.* FROM channel_overwrites o
 JOIN channels c ON c.id = o.channel_id
 WHERE c.guild_id = @guild_id;
+
+-- name: SetGuildIcon :one
+UPDATE guilds SET icon_key = @icon_key
+WHERE id = @id
+RETURNING *;
