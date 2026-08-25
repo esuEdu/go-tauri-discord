@@ -350,6 +350,34 @@ export class Api {
     );
   }
 
+  async sendMessageWithFiles(
+    channelID: string,
+    content: string,
+    files: File[],
+  ): Promise<Message> {
+    const form = new FormData();
+    if (content) form.append("content", content);
+    for (const file of files) form.append("files", file, file.name);
+
+    const headers: Record<string, string> = {};
+    if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
+
+    const res = await fetch(`${apiBase()}/api/v1/channels/${channelID}/messages`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const parsed = await res.json();
+        if (parsed?.error) message = parsed.error;
+      } catch {}
+      throw new ApiError(res.status, message);
+    }
+    return (await res.json()) as Message;
+  }
+
   sendMessage(channelID: string, content: string): Promise<Message> {
     return this.request<Message>("POST", `/api/v1/channels/${channelID}/messages`, {
       content,
