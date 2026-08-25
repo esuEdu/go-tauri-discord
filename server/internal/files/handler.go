@@ -6,11 +6,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
+	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/media"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
@@ -27,14 +30,25 @@ type Guilds interface {
 	Icon(ctx context.Context, guildID uuid.UUID) (*string, error)
 }
 
+type Attachments interface {
+	Attachment(ctx context.Context, id uuid.UUID) (storage.Store, dbgen.Attachment, error)
+}
+
 type Handler struct {
-	store  storage.Store
-	people People
-	guilds Guilds
+	store       storage.Store
+	people      People
+	guilds      Guilds
+	attachments Attachments
+	signer      *Signer
 }
 
 func NewHandler(store storage.Store, people People, guilds Guilds) *Handler {
 	return &Handler{store: store, people: people, guilds: guilds}
+}
+
+func (h *Handler) AttachMessages(attachments Attachments, signer *Signer) {
+	h.attachments = attachments
+	h.signer = signer
 }
 
 func (h *Handler) Routes(protected httpx.Router) {
@@ -46,6 +60,59 @@ func (h *Handler) Routes(protected httpx.Router) {
 
 func (h *Handler) PublicRoutes(mux httpx.Router) {
 	mux.HandleFunc("GET /api/v1/files/{key...}", h.serve)
+	mux.HandleFunc("GET /api/v1/attachments/{id}", h.attachment)
+}
+
+func (h *Handler) attachment(w http.ResponseWriter, r *http.Request) {
+	if h.attachments == nil {
+		httpx.Error(w, r, domain.NotFound("attachment"))
+		return
+	}
+
+	id, err := httpx.PathUUID(r, "id")
+	if err != nil {
+		httpx.Error(w, r, domain.NotFound("attachment"))
+		return
+	}
+
+	query := r.URL.Query()
+	if !h.signer.Allows(r.URL.Path, query.Get("exp"), query.Get("sig")) {
+		httpx.Error(w, r, domain.NotFound("attachment"))
+		return
+	}
+
+	store, row, err := h.attachments.Attachment(r.Context(), id)
+	if err != nil || store == nil {
+		httpx.Error(w, r, domain.NotFound("attachment"))
+		return
+	}
+
+	body, err := store.Open(r.Context(), row.StorageKey)
+	if err != nil {
+		httpx.Error(w, r, domain.NotFound("attachment"))
+		return
+	}
+	defer body.Close()
+
+	w.Header().Set("Content-Type", row.ContentType)
+	w.Header().Set("Content-Length", strconv.FormatInt(row.SizeBytes, 10))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Content-Disposition", disposition(row.ContentType, row.Filename))
+
+	if _, err := io.Copy(w, body); err != nil {
+		slog.WarnContext(r.Context(), "serving an attachment stopped early",
+			"attachment_id", id, "error", err)
+	}
+}
+
+func disposition(contentType, filename string) string {
+	kind := "attachment"
+	if _, inline := storage.ExtensionFor(contentType); inline {
+		kind = "inline"
+	}
+	return mime.FormatMediaType(kind, map[string]string{"filename": filename})
 }
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
