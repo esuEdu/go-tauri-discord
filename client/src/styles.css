@@ -1049,3 +1049,10 @@ button.link.danger {
   background: var(--bg-raised);
   font-size: 12px;
 }
+
+.avatar.footer {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  font-size: 9px;
+}

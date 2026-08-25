@@ -9,6 +9,7 @@ export function PickImage({
   onChosen,
   upload,
   remove,
+  className = "avatar large",
 }: {
   name: string;
   imageKey: string | null | undefined;
@@ -16,6 +17,7 @@ export function PickImage({
   onChosen: (key: string | null) => void;
   upload: (file: File) => Promise<string>;
   remove: () => Promise<void>;
+  className?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +52,7 @@ export function PickImage({
 
   return (
     <div className="pick-image">
-      <Avatar name={name} imageKey={imageKey} className="avatar large" />
+      <Avatar name={name} imageKey={imageKey} className={className} />
 
       <div className="pick-image-actions">
         <button className="link" disabled={busy} onClick={() => input.current?.click()}>
@@ -90,6 +92,7 @@ export function AvatarPicker({
       name={name}
       imageKey={imageKey}
       label="picture"
+      className="avatar footer"
       onChosen={onChosen}
       upload={async (file) => (await api.setAvatar(file)).avatar_key}
       remove={() => api.clearAvatar()}
