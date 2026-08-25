@@ -1,12 +1,16 @@
 package app
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
 	"github.com/esuEdu/go-tauri-discord/internal/config"
 	"github.com/esuEdu/go-tauri-discord/internal/db"
+	"github.com/esuEdu/go-tauri-discord/internal/files"
 	"github.com/esuEdu/go-tauri-discord/internal/gateway"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
 	"github.com/esuEdu/go-tauri-discord/internal/ice"
@@ -15,6 +19,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/ratelimit"
+	"github.com/esuEdu/go-tauri-discord/internal/storage"
 	"github.com/esuEdu/go-tauri-discord/internal/voice"
 )
 
@@ -81,6 +86,15 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	}
 	handler := httpx.Chain(mux, middleware...)
 
+	if store, err := openStore(cfg); err != nil {
+		slog.Error("files disabled: could not open storage",
+			"storage", cfg.StorageKind, "error", err)
+	} else {
+		fileHandler := files.NewHandler(store, authSvc, guildSvc)
+		fileHandler.Routes(protected)
+		fileHandler.PublicRoutes(mux)
+	}
+
 	minter := ice.NewMinter(cfg.ICEServers, cfg.TURNSecret, cfg.TURNTTL)
 	if stranded := minter.Unusable(); len(stranded) > 0 {
 		slog.Error("TURN servers ignored: no TURN_SECRET set and no credentials given",
@@ -139,4 +153,17 @@ func OriginHosts(origins []string) []string {
 		hosts = append(hosts, host)
 	}
 	return hosts
+}
+
+func openStore(cfg config.Config) (storage.Store, error) {
+	switch cfg.StorageKind {
+	case "s3":
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return storage.NewS3(ctx, cfg.S3)
+	case "disk", "":
+		return storage.NewDisk(cfg.StorageDir)
+	default:
+		return nil, fmt.Errorf("STORAGE must be disk or s3, got %q", cfg.StorageKind)
+	}
 }

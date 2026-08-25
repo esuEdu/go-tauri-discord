@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { Chat } from "./components/Chat";
+import { AvatarPicker } from "./components/PickImage";
 import { DeleteAccount } from "./components/DeleteAccount";
 import { Login } from "./components/Login";
 import { MemberList } from "./components/MemberList";
@@ -228,6 +229,11 @@ export default function App() {
           </span>
         )}
         <span className="spacer" />
+        <AvatarPicker
+          name={user.username}
+          imageKey={user.avatar_key}
+          onChosen={(key) => setUser({ ...user, avatar_key: key ?? undefined })}
+        />
         <span className="muted">{user.username}</span>
         <button className="link" onClick={() => void logout()}>
           Log out

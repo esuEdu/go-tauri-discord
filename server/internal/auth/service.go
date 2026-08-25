@@ -19,6 +19,7 @@ type Repository interface {
 	CreateUser(ctx context.Context, arg dbgen.CreateUserParams) (dbgen.User, error)
 	GetUserByEmail(ctx context.Context, email string) (dbgen.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
+	SetUserAvatar(ctx context.Context, arg dbgen.SetUserAvatarParams) (dbgen.User, error)
 	CreateRefreshToken(ctx context.Context, arg dbgen.CreateRefreshTokenParams) (dbgen.RefreshToken, error)
 	GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (dbgen.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
@@ -252,3 +253,20 @@ func (s *Service) issuePair(ctx context.Context, userID uuid.UUID) (TokenPair, e
 }
 
 var dummyHash = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+
+func (s *Service) Avatar(ctx context.Context, userID uuid.UUID) (*string, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, domain.NotFound("user")
+	}
+	return user.AvatarKey, nil
+}
+
+func (s *Service) SetAvatar(ctx context.Context, userID uuid.UUID, key *string) error {
+	if _, err := s.repo.SetUserAvatar(ctx, dbgen.SetUserAvatarParams{
+		ID: userID, AvatarKey: key,
+	}); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}

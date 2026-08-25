@@ -39,3 +39,8 @@ UPDATE messages SET author_id = @new_author_id WHERE author_id = @author_id;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = @id;
+
+-- name: SetUserAvatar :one
+UPDATE users SET avatar_key = @avatar_key, updated_at = now()
+WHERE id = @id
+RETURNING *;

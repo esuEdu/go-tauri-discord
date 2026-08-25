@@ -63,6 +63,8 @@ func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 		RefreshTokenTTL:    24 * time.Hour,
 		HeartbeatInterval:  30 * time.Second,
 		CORSOrigins:        []string{"*"},
+		StorageKind:        "disk",
+		StorageDir:         t.TempDir(),
 	}
 
 	for _, fn := range tweak {

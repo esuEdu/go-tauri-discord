@@ -219,3 +219,29 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID)
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
 	return err
 }
+
+const setUserAvatar = `-- name: SetUserAvatar :one
+UPDATE users SET avatar_key = $1, updated_at = now()
+WHERE id = $2
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at
+`
+
+type SetUserAvatarParams struct {
+	AvatarKey *string
+	ID        uuid.UUID
+}
+
+func (q *Queries) SetUserAvatar(ctx context.Context, arg SetUserAvatarParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserAvatar, arg.AvatarKey, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.AvatarKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Ban, type GuildMember } from "../api";
-import { ADMINISTRATOR, BAN_MEMBERS, MANAGE_ROLES, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
+import { ADMINISTRATOR, BAN_MEMBERS, MANAGE_GUILD, MANAGE_ROLES, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
 import { emptySession, session, type SessionState } from "../session";
+import { PickImage } from "./PickImage";
 import type { Channel, Guild, Overwrite, Role } from "../types/events.gen";
 
 type Tab = "roles" | "members" | "channels" | "bans";
@@ -28,6 +29,7 @@ export function ServerSettings({ guild, channels, onClose }: {
   onClose: () => void;
 }) {
   const [chosen, setChosen] = useState<Tab | null>(null);
+  const [icon, setIcon] = useState<string | null>(guild.icon_key ?? null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [members, setMembers] = useState<GuildMember[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export function ServerSettings({ guild, channels, onClose }: {
   const held = people.guildAllows[guild.id];
   const mayManageRoles = allows(held, MANAGE_ROLES);
   const mayBan = allows(held, BAN_MEMBERS);
+  const mayManageGuild = allows(held, MANAGE_GUILD);
 
   const offered: Tab[] = [
     ...(mayManageRoles ? (["roles", "members", "channels"] as Tab[]) : []),
@@ -231,6 +234,17 @@ export function ServerSettings({ guild, channels, onClose }: {
         aria-label={`${guild.name} settings`}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {mayManageGuild && (
+          <PickImage
+            name={guild.name}
+            imageKey={icon}
+            label="server icon"
+            onChosen={setIcon}
+            upload={async (file) => (await api.setGuildIcon(guild.id, file)).icon_key}
+            remove={() => api.clearGuildIcon(guild.id)}
+          />
+        )}
+
         <div className="settings-tabs">
           {offered.map((name) => (
             <button

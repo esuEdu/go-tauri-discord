@@ -13,6 +13,7 @@ import type {
 
 export type SessionState = {
   names: Record<string, string>;
+  avatars: Record<string, string | null>;
   online: Record<string, boolean>;
   unread: Record<string, boolean>;
   guildAllows: Record<string, number>;
@@ -24,6 +25,7 @@ export type SessionState = {
 
 export const emptySession: SessionState = {
   names: {},
+  avatars: {},
   online: {},
   unread: {},
   guildAllows: {},
@@ -35,6 +37,7 @@ export const emptySession: SessionState = {
 
 class SessionStore {
   private names: Record<string, string> = {};
+  private avatars: Record<string, string | null> = {};
   private online: Record<string, boolean> = {};
   private newest: Record<string, string> = {};
   private seen: Record<string, string> = {};
@@ -53,6 +56,7 @@ class SessionStore {
     gateway.on("GUILD_MEMBER_ADD", (payload) => {
       const member = payload as Member;
       this.names = { ...this.names, [member.user.id]: member.user.username };
+      this.avatars = { ...this.avatars, [member.user.id]: member.user.avatar_key ?? null };
       this.remember(member.guild_id, member.user.id);
       this.emit();
     });
@@ -96,6 +100,7 @@ class SessionStore {
 
   forget() {
     this.names = {};
+    this.avatars = {};
     this.online = {};
     this.newest = {};
     this.seen = {};
@@ -115,6 +120,7 @@ class SessionStore {
     }
     return {
       names: this.names,
+      avatars: this.avatars,
       online: this.online,
       unread,
       guildAllows: this.guildAllows,
@@ -132,11 +138,13 @@ class SessionStore {
 
   private absorb(ready: Ready) {
     this.names = { [ready.user.id]: ready.user.username };
+    this.avatars = { [ready.user.id]: ready.user.avatar_key ?? null };
     this.membersByGuild = {};
     this.inVoice = {};
     this.mutedInVoice = {};
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
+      this.avatars[member.user.id] = member.user.avatar_key ?? null;
       this.remember(member.guild_id, member.user.id);
     }
 
@@ -191,13 +199,16 @@ class SessionStore {
     if (!members) return;
 
     const names = { ...this.names };
+    const avatars = { ...this.avatars };
     const online = { ...this.online };
     for (const member of members) {
       names[member.user_id] = member.username;
+      avatars[member.user_id] = member.avatar_key ?? null;
       online[member.user_id] = member.online;
       this.remember(guildID, member.user_id);
     }
     this.names = names;
+    this.avatars = avatars;
     this.online = online;
     this.emit();
   }

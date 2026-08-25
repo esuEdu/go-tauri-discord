@@ -249,6 +249,38 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/roles/${roleID}`);
   }
 
+  private async upload<T>(path: string, file: File): Promise<T> {
+    const headers: Record<string, string> = { "Content-Type": file.type };
+    if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
+
+    const res = await fetch(apiBase() + path, { method: "PUT", headers, body: file });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const parsed = await res.json();
+        if (parsed?.error) message = parsed.error;
+      } catch {}
+      throw new ApiError(res.status, message);
+    }
+    return (await res.json()) as T;
+  }
+
+  setAvatar(file: File): Promise<{ avatar_key: string }> {
+    return this.upload<{ avatar_key: string }>("/api/v1/users/@me/avatar", file);
+  }
+
+  clearAvatar(): Promise<void> {
+    return this.request<void>("DELETE", "/api/v1/users/@me/avatar");
+  }
+
+  setGuildIcon(guildID: string, file: File): Promise<{ icon_key: string }> {
+    return this.upload<{ icon_key: string }>(`/api/v1/guilds/${guildID}/icon`, file);
+  }
+
+  clearGuildIcon(guildID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
+  }
+
   members(guildID: string): Promise<GuildMember[]> {
     return this.request<GuildMember[]>("GET", `/api/v1/guilds/${guildID}/members`);
   }

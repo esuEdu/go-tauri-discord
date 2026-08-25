@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Avatar } from "./Avatar";
 import { api } from "../api";
 import { gateway } from "../gateway";
 import { emptySession, session, type SessionState } from "../session";
@@ -190,6 +191,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
             <div key={m.id} className={grouped ? "message grouped" : "message"}>
               {!grouped && (
                 <div className="message-head">
+                  <Avatar name={m.author.username} imageKey={m.author.avatar_key} />
                   <span className="author">{m.author.username}</span>
                   <span className="muted timestamp">
                     {new Date(m.created_at).toLocaleTimeString([], {

@@ -19,6 +19,7 @@ type Repository interface {
 	CreateGuild(ctx context.Context, arg dbgen.CreateGuildParams) (dbgen.Guild, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 	GetGuild(ctx context.Context, id uuid.UUID) (dbgen.Guild, error)
+	SetGuildIcon(ctx context.Context, arg dbgen.SetGuildIconParams) (dbgen.Guild, error)
 	ListGuildsForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Guild, error)
 	CreateChannel(ctx context.Context, arg dbgen.CreateChannelParams) (dbgen.Channel, error)
 	GetChannel(ctx context.Context, id uuid.UUID) (dbgen.Channel, error)
@@ -442,4 +443,29 @@ func PublicChannel(c dbgen.Channel) events.Channel {
 		ID: c.ID, GuildID: c.GuildID, ParentID: c.ParentID,
 		Kind: c.Kind, Name: c.Name, Topic: c.Topic, Position: c.Position,
 	}
+}
+
+func (s *Service) Icon(ctx context.Context, guildID uuid.UUID) (*string, error) {
+	guild, err := s.repo.GetGuild(ctx, guildID)
+	if err != nil {
+		return nil, domain.NotFound("guild")
+	}
+	return guild.IconKey, nil
+}
+
+func (s *Service) SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) error {
+	perms, err := s.PermissionsInGuild(ctx, actorID, guildID)
+	if err != nil {
+		return err
+	}
+	if !perms.Has(domain.PermManageGuild) {
+		return domain.Forbidden("missing ManageGuild permission")
+	}
+
+	if _, err := s.repo.SetGuildIcon(ctx, dbgen.SetGuildIconParams{
+		ID: guildID, IconKey: key,
+	}); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
 }
