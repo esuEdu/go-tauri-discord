@@ -89,6 +89,13 @@ type Message struct {
 	DeletedAt *time.Time
 }
 
+type MessageReaction struct {
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+	Emoji     string
+	CreatedAt time.Time
+}
+
 type ReadState struct {
 	UserID            uuid.UUID
 	ChannelID         uuid.UUID

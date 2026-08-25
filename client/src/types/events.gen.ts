@@ -30,6 +30,8 @@ export const EventChannelCreate: EventType = "CHANNEL_CREATE";
 export const EventMessageCreate: EventType = "MESSAGE_CREATE";
 export const EventMessageUpdate: EventType = "MESSAGE_UPDATE";
 export const EventMessageDelete: EventType = "MESSAGE_DELETE";
+export const EventReactionAdd: EventType = "MESSAGE_REACTION_ADD";
+export const EventReactionRemove: EventType = "MESSAGE_REACTION_REMOVE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
@@ -120,6 +122,11 @@ export interface Attachment {
   content_type: string;
   url: string;
 }
+export interface Reaction {
+  emoji: string;
+  count: number /* int32 */;
+  mine: boolean;
+}
 export interface Message {
   id: string;
   channel_id: string;
@@ -128,6 +135,7 @@ export interface Message {
   created_at: string;
   edited_at?: string;
   attachments: Attachment[];
+  reactions: Reaction[];
 }
 export interface Ready {
   session_id: string;
@@ -148,6 +156,12 @@ export interface ICEServer {
 export interface MessageDelete {
   id: string;
   channel_id: string;
+}
+export interface MessageReaction {
+  message_id: string;
+  channel_id: string;
+  user_id: string;
+  emoji: string;
 }
 export interface TypingStart {
   channel_id: string;

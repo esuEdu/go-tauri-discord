@@ -242,7 +242,19 @@ badge would need new work.
 
 **Messages** — loading · none yet · older ones available to load · failed to
 send · being edited. Messages are plain text, up to 4000 characters, at 60 per
-minute. No images, no files, no emoji picker, no replies, no reactions.
+minute, and may carry up to ten files. No replies, no threads.
+
+**A reaction on a message** — none · several · one of them yours. A reaction is
+a count with a yes/no for whether you are in it, so a chip has two states rather
+than one, and the whole row appears and disappears as people add and take back.
+The names behind a count are fetched only when somebody asks for them, so
+"who reacted" has a moment of not knowing yet.
+
+**Adding a reaction** is currently a fixed row of eight emoji, because a real
+picker — search, categories, skin tones, recently used — is a design problem of
+its own and the server accepts any Unicode emoji, not only those eight. Somebody
+without the Add reactions permission still sees the counts, and can still take
+back one of their own.
 
 **Somebody typing** — one person, several people, nobody. It arrives as a
 moment rather than a state, so it fades on its own after a few seconds rather
@@ -253,7 +265,7 @@ description, no template.
 
 **Managing a server** — roles, who has them, and what each role may do in each
 channel. A role has a name, a position that decides what it outranks, and
-thirteen permissions. Per channel, each permission can be **allowed, denied, or
+fourteen permissions. Per channel, each permission can be **allowed, denied, or
 left to inherit** from the role itself, which is three states rather than two and
 is the hardest thing here to make legible. Deny beats allow. The everyone role
 cannot be renamed, moved or removed, and cannot be taken away from anybody.
@@ -314,6 +326,9 @@ member, and that every device is signed out. It cannot be undone.
 | Channel name | Required |
 | Message | 4000 characters |
 | Messages sent | 60 per minute |
+| Files on a message | 10, of 25 MB each |
+| Kinds of reaction on a message | 20 |
+| Reactions added or taken back | 60 per minute |
 | Sign-in attempts | 20 per minute per account |
 | Accounts created | 10 per hour |
 | Devices signed in at once | 5 |
@@ -341,12 +356,11 @@ available to design without new server work:
 
 These need server work before they can be designed as anything real:
 
-- Avatars and server pictures, and uploading them
-- Attachments — images and files in messages
 - Any notification, in-app or from the operating system
 - A settings screen of any kind, including choosing a microphone
 - Profiles — clicking a name does nothing
-- Search, pins, replies, reactions, threads
+- An emoji picker worth the name, and custom per-server emoji
+- Search, pins, replies, threads
 - Direct messages
 - Recovering a forgotten password
 - Statuses beyond online and offline

@@ -18,15 +18,16 @@ const (
 	PermAdministrator
 	PermCreateInvite
 	PermManageGuild
+	PermAddReactions
 )
 
 const PermAll = PermViewChannel | PermSendMessages | PermManageMessages |
 	PermManageChannels | PermManageRoles | PermKickMembers | PermBanMembers |
 	PermConnect | PermSpeak | PermStream | PermAdministrator |
-	PermCreateInvite | PermManageGuild
+	PermCreateInvite | PermManageGuild | PermAddReactions
 
 const DefaultEveryonePermissions = PermViewChannel | PermSendMessages |
-	PermConnect | PermSpeak | PermStream | PermCreateInvite
+	PermConnect | PermSpeak | PermStream | PermCreateInvite | PermAddReactions
 
 func (p Permission) Has(want Permission) bool {
 	if p&PermAdministrator != 0 {

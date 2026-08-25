@@ -18,6 +18,7 @@ type limits struct {
 	publicOther   *ratelimit.Limiter
 
 	messages    *ratelimit.Limiter
+	reactions   *ratelimit.Limiter
 	typing      *ratelimit.Limiter
 	inviteMint  *ratelimit.Limiter
 	guildCreate *ratelimit.Limiter
@@ -34,6 +35,7 @@ func newLimits(cfg config.Config) *limits {
 		publicOther:   ratelimit.New(ratelimit.PerMinute(120, 60)),
 
 		messages:    ratelimit.New(ratelimit.PerMinute(cfg.MessagesPerMinute, 10)),
+		reactions:   ratelimit.New(ratelimit.PerMinute(cfg.MessagesPerMinute, 20)),
 		typing:      ratelimit.New(ratelimit.PerMinute(12, 3)),
 		inviteMint:  ratelimit.New(ratelimit.PerMinute(10, 5)),
 		guildCreate: ratelimit.New(ratelimit.PerHour(20, 5)),
@@ -44,8 +46,8 @@ func newLimits(cfg config.Config) *limits {
 func (l *limits) stop() {
 	for _, limiter := range []*ratelimit.Limiter{
 		l.register, l.login, l.loginAccount, l.refresh, l.invitePreview,
-		l.publicOther, l.messages, l.typing, l.inviteMint, l.guildCreate,
-		l.authedOther,
+		l.publicOther, l.messages, l.reactions, l.typing, l.inviteMint,
+		l.guildCreate, l.authedOther,
 	} {
 		limiter.Stop()
 	}
@@ -75,6 +77,8 @@ func (l *limits) authedMiddleware() func(http.Handler) http.Handler {
 	return ratelimit.Middleware(key, []ratelimit.Rule{
 		{Match: ratelimit.MethodSuffix(http.MethodPost, "/api/v1/channels/", "/typing"), Limiter: l.typing},
 		{Match: ratelimit.MethodSuffix(http.MethodPost, "/api/v1/channels/", "/messages"), Limiter: l.messages},
+		{Match: ratelimit.MethodContains(http.MethodPut, "/reactions/"), Limiter: l.reactions},
+		{Match: ratelimit.MethodContains(http.MethodDelete, "/reactions/"), Limiter: l.reactions},
 		{Match: ratelimit.MethodSuffix(http.MethodPost, "/api/v1/guilds/", "/invites"), Limiter: l.inviteMint},
 		{Match: ratelimit.Method(http.MethodPost, "/api/v1/guilds"), Limiter: l.guildCreate},
 		{Match: ratelimit.Any("/api/"), Limiter: l.authedOther},

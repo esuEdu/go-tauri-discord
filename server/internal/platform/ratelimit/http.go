@@ -33,6 +33,12 @@ func MethodSuffix(method, prefix, suffix string) func(*http.Request) bool {
 	}
 }
 
+func MethodContains(method, part string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		return r.Method == method && strings.Contains(r.URL.Path, part)
+	}
+}
+
 func Any(prefix string) func(*http.Request) bool {
 	return func(r *http.Request) bool {
 		return strings.HasPrefix(r.URL.Path, prefix)

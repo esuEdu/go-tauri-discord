@@ -39,6 +39,8 @@ const (
 	EventMessageCreate     EventType = "MESSAGE_CREATE"
 	EventMessageUpdate     EventType = "MESSAGE_UPDATE"
 	EventMessageDelete     EventType = "MESSAGE_DELETE"
+	EventReactionAdd       EventType = "MESSAGE_REACTION_ADD"
+	EventReactionRemove    EventType = "MESSAGE_REACTION_REMOVE"
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
@@ -146,6 +148,12 @@ type Attachment struct {
 	URL         string    `json:"url"`
 }
 
+type Reaction struct {
+	Emoji string `json:"emoji"`
+	Count int32  `json:"count"`
+	Mine  bool   `json:"mine"`
+}
+
 type Message struct {
 	ID          uuid.UUID    `json:"id"`
 	ChannelID   uuid.UUID    `json:"channel_id"`
@@ -154,6 +162,7 @@ type Message struct {
 	CreatedAt   time.Time    `json:"created_at"`
 	EditedAt    *time.Time   `json:"edited_at"`
 	Attachments []Attachment `json:"attachments"`
+	Reactions   []Reaction   `json:"reactions"`
 }
 
 type Ready struct {
@@ -177,6 +186,13 @@ type ICEServer struct {
 type MessageDelete struct {
 	ID        uuid.UUID `json:"id"`
 	ChannelID uuid.UUID `json:"channel_id"`
+}
+
+type MessageReaction struct {
+	MessageID uuid.UUID `json:"message_id"`
+	ChannelID uuid.UUID `json:"channel_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Emoji     string    `json:"emoji"`
 }
 
 type TypingStart struct {

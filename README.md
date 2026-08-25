@@ -555,6 +555,55 @@ deletes the old object, so caches never have to be told anything, and a
 half-finished upload is written to a temporary file and renamed, so a dropped
 connection cannot leave a truncated image under a real name.
 
+#### Reactions
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `PUT` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` + `AddReactions` |
+| `DELETE` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` |
+| `GET` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` |
+
+A row per `(message, user, emoji)` and that triple is the primary key, so
+reacting twice with the same emoji is a no-op rather than an error — and,
+because nothing changed, it publishes no event. **Taking a reaction back needs
+only `ViewChannel`**: revoking `AddReactions` stops new ones, but it must not
+trap a reaction somebody left while they still had the permission.
+
+`AddReactions` is bit 13, the first permission added after the initial set. New
+guilds get it in `@everyone`; existing databases get it in the migration, which
+grants it to every role that already had `SendMessages`, so nobody's server
+changes behaviour on upgrade.
+
+**Unicode emoji only.** Custom per-server emoji is a much larger feature —
+upload, storage, a registry, a picker — and it is not this one. What the server
+enforces is not "is this an emoji" but "is this not text": at most 8 runes, no
+letters, no whitespace, no control characters. Flags, skin tones, keycaps and
+ZWJ sequences all pass; `lol` does not.
+
+Two limits, for two different reasons. **A message holds at most 20 distinct
+emoji**, because every one of them is a row in the history payload and 50
+messages of unbounded reactions is a page nobody can load; the cap is on kinds,
+not on people, so any number of members can pile onto the same emoji. The rate
+limiter treats reacting like posting rather than like an ordinary read, because
+each one fans out to every member of the guild exactly as a message does.
+
+**History carries counts, not names.** Each message comes back with
+`{emoji, count, mine}` per emoji — `mine` resolved for the person asking, which
+is why a reaction summary never appears in a broadcast event; a payload sent to
+everybody cannot answer a per-viewer question. The names behind a count are a
+second request, made when somebody hovers, and only for the one emoji they
+hovered.
+
+A reaction does **not** mark a channel unread. Read state is a pointer at the
+last message read, and a reaction is not a message, so this is what falls out of
+the design — but it was also the intended answer: an emoji is meant to be the
+cheap alternative to a reply, and a badge would make it cost the same.
+
+`MESSAGE_REACTION_ADD` and `MESSAGE_REACTION_REMOVE` carry a `channel_id` for
+the same reason message events do: `scopedChannel` in the gateway is what keeps
+a private channel private, and an event without one is fanned out to the whole
+guild.
+
 ### Voice
 
 Voice channels carry audio through a Pion SFU. Each participant holds one peer
@@ -940,6 +989,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] Gateway fanout filtered per channel, so a private channel really is
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
+- [x] Emoji reactions, counted in history and fanned out per channel
 - [x] READY carries read states, members and presence, so a client paints once
 - [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
 - [ ] Attachments and avatars on S3-compatible storage

@@ -26,6 +26,11 @@ type Repository interface {
 	CreateAttachment(ctx context.Context, arg dbgen.CreateAttachmentParams) (dbgen.Attachment, error)
 	GetAttachment(ctx context.Context, id uuid.UUID) (dbgen.Attachment, error)
 	DeleteAttachmentsForMessage(ctx context.Context, messageID uuid.UUID) ([]dbgen.Attachment, error)
+	AddReaction(ctx context.Context, arg dbgen.AddReactionParams) (int64, error)
+	RemoveReaction(ctx context.Context, arg dbgen.RemoveReactionParams) (int64, error)
+	CountReactionKinds(ctx context.Context, messageID uuid.UUID) (int32, error)
+	ListReactionsForMessages(ctx context.Context, arg dbgen.ListReactionsForMessagesParams) ([]dbgen.ListReactionsForMessagesRow, error)
+	ListReactors(ctx context.Context, arg dbgen.ListReactorsParams) ([]dbgen.ListReactorsRow, error)
 	UpsertReadState(ctx context.Context, arg dbgen.UpsertReadStateParams) error
 	ListReadStates(ctx context.Context, userID uuid.UUID) ([]dbgen.ReadState, error)
 	ListLatestMessageIDs(ctx context.Context, channelIDs []uuid.UUID) ([]dbgen.ListLatestMessageIDsRow, error)
@@ -121,6 +126,7 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		CreatedAt:   row.CreatedAt,
 		EditedAt:    row.EditedAt,
 		Attachments: attached,
+		Reactions:   []events.Reaction{},
 	}
 
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageCreate, msg)
@@ -164,10 +170,14 @@ func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, befo
 			CreatedAt:   r.CreatedAt,
 			EditedAt:    r.EditedAt,
 			Attachments: []events.Attachment{},
+			Reactions:   []events.Reaction{},
 		}
 	}
 
 	if err := s.attachAttachments(ctx, out, ids); err != nil {
+		return nil, err
+	}
+	if err := s.attachReactions(ctx, userID, out, ids); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -237,7 +247,7 @@ func (s *Service) Edit(ctx context.Context, userID, messageID uuid.UUID, content
 		return events.Message{}, domain.Internal(err)
 	}
 
-	msg := events.Message{
+	edited := []events.Message{{
 		ID:          row.ID,
 		ChannelID:   row.ChannelID,
 		Author:      events.User{ID: author.ID, Username: author.Username, AvatarKey: author.AvatarKey},
@@ -245,9 +255,14 @@ func (s *Service) Edit(ctx context.Context, userID, messageID uuid.UUID, content
 		CreatedAt:   row.CreatedAt,
 		EditedAt:    row.EditedAt,
 		Attachments: []events.Attachment{},
+		Reactions:   []events.Reaction{},
+	}}
+	if err := s.attachAttachments(ctx, edited, []uuid.UUID{row.ID}); err != nil {
+		return events.Message{}, err
 	}
-	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageUpdate, msg)
-	return msg, nil
+
+	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageUpdate, edited[0])
+	return edited[0], nil
 }
 
 func (s *Service) Delete(ctx context.Context, userID, messageID uuid.UUID) error {

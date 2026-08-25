@@ -41,6 +41,10 @@ export interface AuthResponse {
   tokens: TokenPair;
 }
 
+function reactionPath(messageID: string, emoji: string): string {
+  return `/api/v1/messages/${messageID}/reactions/${encodeURIComponent(emoji)}`;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -394,6 +398,18 @@ export class Api {
 
   deleteMessage(messageID: string): Promise<void> {
     return this.request<void>("DELETE", `/api/v1/messages/${messageID}`);
+  }
+
+  react(messageID: string, emoji: string): Promise<void> {
+    return this.request<void>("PUT", reactionPath(messageID, emoji));
+  }
+
+  unreact(messageID: string, emoji: string): Promise<void> {
+    return this.request<void>("DELETE", reactionPath(messageID, emoji));
+  }
+
+  reactors(messageID: string, emoji: string): Promise<User[]> {
+    return this.request<User[]>("GET", reactionPath(messageID, emoji));
   }
 
   markRead(channelID: string, messageID: string): Promise<void> {

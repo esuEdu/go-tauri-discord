@@ -18,6 +18,7 @@ export const PERMISSIONS: PermissionBit[] = [
   { bit: 1 << 10, name: "Administrator", about: "Everything, including anything added later" },
   { bit: 1 << 11, name: "Create invites", about: "Make links that let people join" },
   { bit: 1 << 12, name: "Manage the server", about: "Rename it and change its settings" },
+  { bit: 1 << 13, name: "Add reactions", about: "Put an emoji on somebody's message" },
 ];
 
 export const ADMINISTRATOR = 1 << 10;
@@ -47,6 +48,7 @@ export const BAN_MEMBERS = 1 << 6;
 export const STREAM = 1 << 9;
 export const CREATE_INVITE = 1 << 11;
 export const MANAGE_GUILD = 1 << 12;
+export const ADD_REACTIONS = 1 << 13;
 
 export function allows(held: number | undefined, bit: number): boolean {
   if (held === undefined) return false;

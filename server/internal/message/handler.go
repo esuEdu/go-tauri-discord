@@ -31,6 +31,9 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/channels/{channelID}/messages", h.create)
 	mux.HandleFunc("PATCH /api/v1/messages/{messageID}", h.edit)
 	mux.HandleFunc("DELETE /api/v1/messages/{messageID}", h.delete)
+	mux.HandleFunc("PUT /api/v1/messages/{messageID}/reactions/{emoji}", h.react)
+	mux.HandleFunc("DELETE /api/v1/messages/{messageID}/reactions/{emoji}", h.unreact)
+	mux.HandleFunc("GET /api/v1/messages/{messageID}/reactions/{emoji}", h.reactors)
 	mux.HandleFunc("POST /api/v1/channels/{channelID}/typing", h.typing)
 	mux.HandleFunc("PUT /api/v1/channels/{channelID}/read", h.markRead)
 }
@@ -171,6 +174,49 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) react(w http.ResponseWriter, r *http.Request) {
+	messageID, err := httpx.PathUUID(r, "messageID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.React(r.Context(), auth.MustUserID(r.Context()),
+		messageID, r.PathValue("emoji")); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) unreact(w http.ResponseWriter, r *http.Request) {
+	messageID, err := httpx.PathUUID(r, "messageID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.svc.Unreact(r.Context(), auth.MustUserID(r.Context()),
+		messageID, r.PathValue("emoji")); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) reactors(w http.ResponseWriter, r *http.Request) {
+	messageID, err := httpx.PathUUID(r, "messageID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	people, err := h.svc.Reactors(r.Context(), auth.MustUserID(r.Context()),
+		messageID, r.PathValue("emoji"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, people)
 }
 
 func (h *Handler) typing(w http.ResponseWriter, r *http.Request) {
