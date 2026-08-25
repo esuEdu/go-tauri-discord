@@ -12,13 +12,14 @@ import (
 )
 
 type Config struct {
-	Env             string
-	HTTPAddr        string
-	DatabaseURL     string
-	JWTSecret       []byte
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
-	CORSOrigins     []string
+	Env              string
+	HTTPAddr         string
+	DatabaseURL      string
+	JWTSecret        []byte
+	PasswordHashCost int
+	AccessTokenTTL   time.Duration
+	RefreshTokenTTL  time.Duration
+	CORSOrigins      []string
 
 	UIDir              string
 	TrustedProxies     []string
