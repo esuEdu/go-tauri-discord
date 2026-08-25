@@ -483,6 +483,37 @@ link carrying an 8-character code; opening it previews the server and joins
 automatically after registration. Invites can be limited by use count and
 expiry, and revoked without removing anyone who already joined.
 
+### Pictures
+
+Uploaded images go through a three-method `Store`, so where the bytes live is a
+deployment choice rather than a code one. **`STORAGE=disk` is the default and
+needs nothing** — it keeps the one-binary, one-database promise, at the cost of
+being single-replica and losing everything if a container runs without a mounted
+volume. `STORAGE=s3` talks to MinIO or anything S3-compatible for deployments
+that have outgrown that; `docker compose --profile storage up` brings MinIO up
+locally.
+
+**Every upload is decoded, cropped square, resized and re-encoded.** The bytes
+that arrive are never the bytes that get served, which matters three times over:
+it is the only real proof the file is an image rather than a script wearing an
+image's content type, it strips metadata — a phone photo carries the GPS
+coordinates of where it was taken — and it bounds what a member list costs to
+load. The result is JPEG unless the image has transparency, in which case PNG,
+because a 256px PNG of a photograph is roughly ten times the bytes of the JPEG
+and a member list renders fifty of them.
+
+Files are served from `GET /api/v1/files/{key}` **without authentication**, on
+unguessable keys. A browser cannot send an `Authorization` header on `<img src>`,
+and avatars are seen by anyone sharing a server with you in any case. Message
+attachments will be different — those can sit in a private channel, and
+`Attachment.URL` exists so they can be handed out as signed, expiring URLs.
+
+Keys are validated before they reach a filesystem, since the serve endpoint
+takes one straight from the URL. Replacing a picture writes a new key and
+deletes the old object, so caches never have to be told anything, and a
+half-finished upload is written to a temporary file and renamed, so a dropped
+connection cannot leave a truncated image under a real name.
+
 ### Voice
 
 Voice channels carry audio through a Pion SFU. Each participant holds one peer
