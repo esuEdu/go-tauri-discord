@@ -508,6 +508,36 @@ and avatars are seen by anyone sharing a server with you in any case. Message
 attachments will be different — those can sit in a private channel, and
 `Attachment.URL` exists so they can be handed out as signed, expiring URLs.
 
+#### Files on messages
+
+A message carries up to **10 files of 25 MB each**, sent as one multipart
+request alongside its text — so a message and its files either both exist or
+neither does. A message may be files with no text.
+
+**Attachments are stored exactly as sent.** Unlike avatars they are not
+re-encoded, because re-encoding a file somebody deliberately shared damages it,
+and most files cannot be re-encoded at all. Two consequences follow, both
+deliberate:
+
+- **Image metadata survives**, so a phone photo carries the coordinates of where
+  it was taken. This matches what Discord does and not what Signal does. If that
+  is the wrong trade for a given deployment, the place to change it is
+  `storeUploads`.
+- Arbitrary content types get served, so they are served defensively:
+  `nosniff`, a `default-src 'none'; sandbox` CSP, and
+  `Content-Disposition: attachment` for anything that is not an image. Nobody
+  gets to host a web page on your domain by uploading one.
+
+Unlike avatars, an attachment can sit in a private channel, so its URL is
+**signed and expires** — HMAC over the path and expiry, 24 hours by default via
+`ATTACHMENT_URL_TTL`. That is what buys a URL an `<img src>` can load without an
+`Authorization` header, without making the file world-readable forever. A TTL of
+zero falls back to the default rather than minting URLs that are already dead.
+
+Deleting a message deletes its files. Uploads are stored before the message row
+exists, so a failure part way through removes what was already written rather
+than leaving objects nothing points at.
+
 Keys are validated before they reach a filesystem, since the serve endpoint
 takes one straight from the URL. Replacing a picture writes a new key and
 deletes the old object, so caches never have to be told anything, and a

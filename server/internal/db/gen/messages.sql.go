@@ -81,6 +81,55 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	return i, err
 }
 
+const deleteAttachmentsForMessage = `-- name: DeleteAttachmentsForMessage :many
+DELETE FROM attachments WHERE message_id = $1 RETURNING id, message_id, storage_key, filename, size_bytes, content_type
+`
+
+func (q *Queries) DeleteAttachmentsForMessage(ctx context.Context, messageID uuid.UUID) ([]Attachment, error) {
+	rows, err := q.db.Query(ctx, deleteAttachmentsForMessage, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Attachment{}
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.MessageID,
+			&i.StorageKey,
+			&i.Filename,
+			&i.SizeBytes,
+			&i.ContentType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAttachment = `-- name: GetAttachment :one
+SELECT id, message_id, storage_key, filename, size_bytes, content_type FROM attachments WHERE id = $1
+`
+
+func (q *Queries) GetAttachment(ctx context.Context, id uuid.UUID) (Attachment, error) {
+	row := q.db.QueryRow(ctx, getAttachment, id)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.MessageID,
+		&i.StorageKey,
+		&i.Filename,
+		&i.SizeBytes,
+		&i.ContentType,
+	)
+	return i, err
+}
+
 const getMessage = `-- name: GetMessage :one
 SELECT id, channel_id, author_id, content, created_at, edited_at, deleted_at FROM messages WHERE id = $1 AND deleted_at IS NULL
 `

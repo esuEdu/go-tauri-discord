@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { api } from "../api";
 import { gateway } from "../gateway";
 import { emptySession, session, type SessionState } from "../session";
 import { SEND_MESSAGES, allows } from "../permissions";
 import type { Channel, Message, TypingStart } from "../types/events.gen";
+
+const MAX_FILES = 10;
 
 const PAGE_SIZE = 50;
 const TYPING_EVERY = 5000;
@@ -15,6 +18,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [draft, setDraft] = useState("");
+  const [staged, setStaged] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -26,6 +30,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const scroller = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
   const announcedTyping = useRef(0);
+  const filePicker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,19 +155,25 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = draft.trim();
-    if (!content) return;
+    const files = staged;
+    if (!content && files.length === 0) return;
 
     setDraft("");
+    setStaged([]);
     announcedTyping.current = 0;
     pinnedToBottom.current = true;
     try {
-      const sent = await api.sendMessage(channel.id, content);
+      const sent =
+        files.length > 0
+          ? await api.sendMessageWithFiles(channel.id, content, files)
+          : await api.sendMessage(channel.id, content);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id) ? prev : [...prev, sent],
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not send");
       setDraft(content);
+      setStaged(files);
     }
   }
 
@@ -222,6 +233,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
                 <div className="message-body">
                   {m.content}
                   {m.edited_at && <span className="muted"> (edited)</span>}
+                  <Attachments attachments={m.attachments} />
                   {m.author.id === selfID && (
                     <>
                       <button
@@ -259,7 +271,44 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
         </div>
       )}
 
+      {staged.length > 0 && (
+        <div className="staged">
+          {staged.map((file, i) => (
+            <span key={`${file.name}-${i}`} className="staged-file">
+              {file.name}
+              <button
+                type="button"
+                className="link"
+                aria-label={`Remove ${file.name}`}
+                onClick={() => setStaged(staged.filter((_, at) => at !== i))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <form className="composer" onSubmit={send}>
+        <button
+          type="button"
+          className="secondary"
+          disabled={!maySend}
+          title="Attach files"
+          onClick={() => filePicker.current?.click()}
+        >
+          +
+        </button>
+        <input
+          ref={filePicker}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            setStaged([...staged, ...Array.from(e.target.files ?? [])].slice(0, MAX_FILES));
+            e.target.value = "";
+          }}
+        />
         <input
           placeholder={
             maySend ? `Message #${channel.name}` : "You cannot post in this channel"
@@ -268,7 +317,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
           disabled={!maySend}
           onChange={(e) => onDraftChange(e.target.value)}
         />
-        <button type="submit" disabled={!maySend || !draft.trim()}>
+        <button type="submit" disabled={!maySend || (!draft.trim() && staged.length === 0)}>
           Send
         </button>
       </form>

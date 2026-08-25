@@ -29,9 +29,10 @@ type Config struct {
 	LoginPerMinute    int
 	MessagesPerMinute int
 
-	StorageKind string
-	StorageDir  string
-	S3          storage.S3Config
+	StorageKind      string
+	AttachmentURLTTL time.Duration
+	StorageDir       string
+	S3               storage.S3Config
 
 	ICEServers    []ice.Server
 	TURNSecret    string
@@ -61,6 +62,7 @@ func Load() (Config, error) {
 		LoginPerMinute:     envInt("LOGIN_PER_MINUTE", 20),
 		MessagesPerMinute:  envInt("MESSAGES_PER_MINUTE", 60),
 		StorageKind:        env("STORAGE", "disk"),
+		AttachmentURLTTL:   envDuration("ATTACHMENT_URL_TTL", 24*time.Hour),
 		StorageDir:         env("STORAGE_DIR", "./data/files"),
 		S3: storage.S3Config{
 			Endpoint:  env("S3_ENDPOINT", "localhost:9000"),

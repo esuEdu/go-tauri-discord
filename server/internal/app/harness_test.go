@@ -65,6 +65,7 @@ func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 		CORSOrigins:        []string{"*"},
 		StorageKind:        "disk",
 		StorageDir:         t.TempDir(),
+		AttachmentURLTTL:   time.Hour,
 	}
 
 	for _, fn := range tweak {
