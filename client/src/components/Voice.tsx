@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { canRelay } from "../ice";
 import {
   voice,
   MAX_VOLUME,
@@ -274,7 +275,12 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
 
         {status === "failed" && (
           <div className="error">
-            Could not connect. Check that the microphone permission was granted.
+            {voice.reasonForFailure() === "network"
+              ? canRelay()
+                ? "Could not reach the voice server. Something on the way blocked the connection."
+                : "Could not reach the voice server. This network needs a TURN relay to get out, " +
+                  "and this server has none configured."
+              : "Could not connect. Check that the microphone permission was granted."}
           </div>
         )}
       </div>

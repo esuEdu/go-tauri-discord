@@ -1,4 +1,5 @@
 import { gateway } from "./gateway";
+import { iceServers } from "./ice";
 import { screenPublisher } from "./simulcast";
 import {
   EventVoiceScreenUpdate,
@@ -18,6 +19,8 @@ import {
 } from "./types/events.gen";
 
 export type VoiceStatus = "idle" | "connecting" | "connected" | "failed";
+
+export type VoiceFailure = "microphone" | "network";
 
 export type RemoteScreen = { userID: string | null; stream: MediaStream };
 
@@ -122,8 +125,6 @@ export type ScreenState = {
   quality: ScreenQualityID;
 };
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
-
 const QUALITY_KEY = "screen_quality";
 const DEFAULT_QUALITY: ScreenQualityID = "smooth";
 const VOLUME_KEY = "voice_volumes";
@@ -193,6 +194,7 @@ class VoiceClient {
   private unsubscribe: Array<() => void> = [];
 
   private status: VoiceStatus = "idle";
+  private failure: VoiceFailure | null = null;
   private channelID: string | null = null;
   private statusListeners = new Set<(s: VoiceStatus, channelID: string | null) => void>();
 
@@ -208,6 +210,10 @@ class VoiceClient {
     this.statusListeners.add(fn);
     fn(this.status, this.channelID);
     return () => this.statusListeners.delete(fn);
+  }
+
+  reasonForFailure(): VoiceFailure | null {
+    return this.failure;
   }
 
   private setStatus(status: VoiceStatus) {
@@ -401,6 +407,7 @@ class VoiceClient {
     await this.leave();
 
     this.channelID = channelID;
+    this.failure = null;
     this.setStatus("connecting");
 
     try {
@@ -409,6 +416,7 @@ class VoiceClient {
       });
     } catch {
       this.channelID = null;
+      this.failure = "microphone";
       this.setStatus("failed");
       return;
     }
@@ -422,7 +430,7 @@ class VoiceClient {
       }
     }
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
     this.pc = pc;
 
     for (const track of this.microphone.getAudioTracks()) {
@@ -447,7 +455,10 @@ class VoiceClient {
     pc.onconnectionstatechange = () => {
       if (pc !== this.pc) return;
       if (pc.connectionState === "connected") this.setStatus("connected");
-      if (pc.connectionState === "failed") this.setStatus("failed");
+      if (pc.connectionState === "failed") {
+        this.failure = "network";
+        this.setStatus("failed");
+      }
     };
 
     this.unsubscribe.push(
