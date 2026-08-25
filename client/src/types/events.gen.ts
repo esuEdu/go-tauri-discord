@@ -127,6 +127,14 @@ export interface Reaction {
   count: number /* int32 */;
   mine: boolean;
 }
+export interface ReplyPreview {
+  message_id: string;
+  author?: User;
+  content: string;
+  truncated: boolean;
+  has_attachments: boolean;
+  deleted: boolean;
+}
 export interface Message {
   id: string;
   channel_id: string;
@@ -136,6 +144,7 @@ export interface Message {
   edited_at?: string;
   attachments: Attachment[];
   reactions: Reaction[];
+  reply_to?: ReplyPreview;
 }
 export interface Ready {
   session_id: string;

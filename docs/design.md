@@ -242,7 +242,19 @@ badge would need new work.
 
 **Messages** — loading · none yet · older ones available to load · failed to
 send · being edited. Messages are plain text, up to 4000 characters, at 60 per
-minute, and may carry up to ten files. No replies, no threads.
+minute, and may carry up to ten files. No threads.
+
+**A message answering another** — the quoted parent sits above it, one level
+only, cut at 120 characters with a mark for a file it carried. Three states, and
+the third is the one to get right: quoted normally · **the parent deleted**,
+which shows "Original message was deleted" and deliberately carries neither the
+text nor who wrote it · the parent too far back to have been loaded, where
+clicking the quote cannot jump anywhere and currently says so as an error.
+
+**Answering something** — the composer grows a bar naming who you are replying
+to, with a way out of it; Escape also cancels. A message that answers something
+is never grouped under the one above it, because the quote needs a name over it
+to make sense.
 
 **A reaction on a message** — none · several · one of them yours. A reaction is
 a count with a yes/no for whether you are in it, so a chip has two states rather
@@ -328,6 +340,7 @@ member, and that every device is signed out. It cannot be undone.
 | Messages sent | 60 per minute |
 | Files on a message | 10, of 25 MB each |
 | Kinds of reaction on a message | 20 |
+| Quoted reply preview | 120 characters, one level |
 | Reactions added or taken back | 60 per minute |
 | Sign-in attempts | 20 per minute per account |
 | Accounts created | 10 per hour |
@@ -360,7 +373,7 @@ These need server work before they can be designed as anything real:
 - A settings screen of any kind, including choosing a microphone
 - Profiles — clicking a name does nothing
 - An emoji picker worth the name, and custom per-server emoji
-- Search, pins, replies, threads
+- Search, pins, threads
 - Direct messages
 - Recovering a forgotten password
 - Statuses beyond online and offline

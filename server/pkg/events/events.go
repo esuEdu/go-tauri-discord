@@ -154,15 +154,25 @@ type Reaction struct {
 	Mine  bool   `json:"mine"`
 }
 
+type ReplyPreview struct {
+	MessageID      uuid.UUID `json:"message_id"`
+	Author         *User     `json:"author"`
+	Content        string    `json:"content"`
+	Truncated      bool      `json:"truncated"`
+	HasAttachments bool      `json:"has_attachments"`
+	Deleted        bool      `json:"deleted"`
+}
+
 type Message struct {
-	ID          uuid.UUID    `json:"id"`
-	ChannelID   uuid.UUID    `json:"channel_id"`
-	Author      User         `json:"author"`
-	Content     string       `json:"content"`
-	CreatedAt   time.Time    `json:"created_at"`
-	EditedAt    *time.Time   `json:"edited_at"`
-	Attachments []Attachment `json:"attachments"`
-	Reactions   []Reaction   `json:"reactions"`
+	ID          uuid.UUID     `json:"id"`
+	ChannelID   uuid.UUID     `json:"channel_id"`
+	Author      User          `json:"author"`
+	Content     string        `json:"content"`
+	CreatedAt   time.Time     `json:"created_at"`
+	EditedAt    *time.Time    `json:"edited_at"`
+	Attachments []Attachment  `json:"attachments"`
+	Reactions   []Reaction    `json:"reactions"`
+	ReplyTo     *ReplyPreview `json:"reply_to"`
 }
 
 type Ready struct {

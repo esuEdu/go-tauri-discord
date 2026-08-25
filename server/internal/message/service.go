@@ -23,6 +23,7 @@ type Repository interface {
 	UpdateMessageContent(ctx context.Context, arg dbgen.UpdateMessageContentParams) (dbgen.Message, error)
 	SoftDeleteMessage(ctx context.Context, id uuid.UUID) error
 	ListAttachmentsForMessages(ctx context.Context, messageIDs []uuid.UUID) ([]dbgen.Attachment, error)
+	ListMessagePreviews(ctx context.Context, arg dbgen.ListMessagePreviewsParams) ([]dbgen.ListMessagePreviewsRow, error)
 	CreateAttachment(ctx context.Context, arg dbgen.CreateAttachmentParams) (dbgen.Attachment, error)
 	GetAttachment(ctx context.Context, id uuid.UUID) (dbgen.Attachment, error)
 	DeleteAttachmentsForMessage(ctx context.Context, messageID uuid.UUID) ([]dbgen.Attachment, error)
@@ -59,7 +60,7 @@ const (
 	MaxPageSize     = 100
 )
 
-func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, content string, uploads ...Upload) (events.Message, error) {
+func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, content string, replyTo *uuid.UUID, uploads ...Upload) (events.Message, error) {
 	content = strings.TrimSpace(content)
 	if content == "" && len(uploads) == 0 {
 		return events.Message{}, domain.Invalid("message content is required")
@@ -85,6 +86,11 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		return events.Message{}, domain.Forbidden("missing SendMessages permission")
 	}
 
+	parent, err := s.parentOf(ctx, replyTo, channelID)
+	if err != nil {
+		return events.Message{}, err
+	}
+
 	author, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return events.Message{}, domain.Internal(err)
@@ -96,10 +102,11 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 	}
 
 	row, err := s.repo.CreateMessage(ctx, dbgen.CreateMessageParams{
-		ID:        uuid.Must(uuid.NewV7()),
-		ChannelID: channelID,
-		AuthorID:  userID,
-		Content:   content,
+		ID:               uuid.Must(uuid.NewV7()),
+		ChannelID:        channelID,
+		AuthorID:         userID,
+		Content:          content,
+		ReplyToMessageID: parent,
 	})
 	if err != nil {
 		s.discard(ctx, stored)
@@ -118,7 +125,7 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		attached = append(attached, s.publicAttachment(saved))
 	}
 
-	msg := events.Message{
+	sent := []events.Message{{
 		ID:          row.ID,
 		ChannelID:   row.ChannelID,
 		Author:      events.User{ID: author.ID, Username: author.Username, AvatarKey: author.AvatarKey},
@@ -127,10 +134,14 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		EditedAt:    row.EditedAt,
 		Attachments: attached,
 		Reactions:   []events.Reaction{},
+		ReplyTo:     replyStub(row.ReplyToMessageID),
+	}}
+	if err := s.attachReplies(ctx, sent, replyTargets(sent)); err != nil {
+		return events.Message{}, err
 	}
 
-	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageCreate, msg)
-	return msg, nil
+	s.pub.ToGuild(ctx, channel.GuildID, events.EventMessageCreate, sent[0])
+	return sent[0], nil
 }
 
 func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, before *uuid.UUID, limit int) ([]events.Message, error) {
@@ -171,6 +182,7 @@ func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, befo
 			EditedAt:    r.EditedAt,
 			Attachments: []events.Attachment{},
 			Reactions:   []events.Reaction{},
+			ReplyTo:     replyStub(r.ReplyToMessageID),
 		}
 	}
 
@@ -178,6 +190,9 @@ func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, befo
 		return nil, err
 	}
 	if err := s.attachReactions(ctx, userID, out, ids); err != nil {
+		return nil, err
+	}
+	if err := s.attachReplies(ctx, out, replyTargets(out)); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -256,8 +271,12 @@ func (s *Service) Edit(ctx context.Context, userID, messageID uuid.UUID, content
 		EditedAt:    row.EditedAt,
 		Attachments: []events.Attachment{},
 		Reactions:   []events.Reaction{},
+		ReplyTo:     replyStub(row.ReplyToMessageID),
 	}}
 	if err := s.attachAttachments(ctx, edited, []uuid.UUID{row.ID}); err != nil {
+		return events.Message{}, err
+	}
+	if err := s.attachReplies(ctx, edited, replyTargets(edited)); err != nil {
 		return events.Message{}, err
 	}
 

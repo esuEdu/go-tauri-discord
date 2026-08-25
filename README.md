@@ -555,6 +555,42 @@ deletes the old object, so caches never have to be told anything, and a
 half-finished upload is written to a temporary file and renamed, so a dropped
 connection cannot leave a truncated image under a real name.
 
+#### Replies
+
+A nullable `reply_to_message_id` on `messages`, set at creation and validated
+to be **a live message in the same channel**. Both send paths take it: a
+`reply_to` field in the JSON body, or a `reply_to` form field alongside the
+files.
+
+**A deleted parent gives up its text and its author**, and it does so in the
+query rather than in Go. Messages are soft-deleted — the row and every word of
+it survive — so the obvious join would resurrect, inside every reply that
+pointed at it, exactly the text somebody chose to remove. `ListMessagePreviews`
+returns `''` for a deleted parent and the join that fetches the author only
+matches while the parent is live, so there is no code path that can forget.
+What comes back is `deleted: true` and nothing else; the client renders
+"Original message was deleted".
+
+The preview is **one level deep and truncated to 120 characters**, with a
+`truncated` flag and a `has_attachments` flag rather than the attachments
+themselves. A reply to a reply shows its immediate parent and never walks a
+chain — otherwise a page of fifty messages could fetch fifty chains, and the
+chains are the thing that turns replies into threads.
+
+Parents are fetched **once per page**, keyed by the distinct set of parent ids,
+the same join-and-attach shape as attachments and reactions. `MESSAGE_CREATE`
+and `MESSAGE_UPDATE` both carry the resolved preview, so a reply arriving live
+renders without a second request.
+
+Replying **does not notify anybody**, because nothing notifies anybody yet
+(#48). When notifications exist, this is where the first one belongs.
+
+**Replies are not threads and are not a step towards them.** A reply is a
+pointer; a thread is a container with its own membership, read state and
+archival. #46 argues the app is for small groups and may never need the second
+thing — replies are the cheap answer to the same confusion, and they do not
+partition the conversation.
+
 #### Reactions
 
 | Method | Path | Needs |
@@ -990,6 +1026,7 @@ refuses to start without it. Generate one with `openssl rand -base64 48`.
 - [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
 - [x] Text messages with keyset-paginated history
 - [x] Emoji reactions, counted in history and fanned out per channel
+- [x] Replies, one level deep, and a deleted parent that keeps its words
 - [x] READY carries read states, members and presence, so a client paints once
 - [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
 - [ ] Attachments and avatars on S3-compatible storage

@@ -80,13 +80,14 @@ type MemberRole struct {
 }
 
 type Message struct {
-	ID        uuid.UUID
-	ChannelID uuid.UUID
-	AuthorID  uuid.UUID
-	Content   string
-	CreatedAt time.Time
-	EditedAt  *time.Time
-	DeletedAt *time.Time
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
+	AuthorID         uuid.UUID
+	Content          string
+	CreatedAt        time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
+	ReplyToMessageID *uuid.UUID
 }
 
 type MessageReaction struct {

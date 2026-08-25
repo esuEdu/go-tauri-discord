@@ -358,9 +358,11 @@ export class Api {
     channelID: string,
     content: string,
     files: File[],
+    replyTo?: string,
   ): Promise<Message> {
     const form = new FormData();
     if (content) form.append("content", content);
+    if (replyTo) form.append("reply_to", replyTo);
     for (const file of files) form.append("files", file, file.name);
 
     const headers: Record<string, string> = {};
@@ -382,9 +384,10 @@ export class Api {
     return (await res.json()) as Message;
   }
 
-  sendMessage(channelID: string, content: string): Promise<Message> {
+  sendMessage(channelID: string, content: string, replyTo?: string): Promise<Message> {
     return this.request<Message>("POST", `/api/v1/channels/${channelID}/messages`, {
       content,
+      reply_to: replyTo ?? "",
     });
   }
 
