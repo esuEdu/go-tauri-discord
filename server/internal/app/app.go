@@ -41,7 +41,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	if !cfg.RateLimitDisabled {
 		loginThrottle = lim.loginAccount
 	}
-	authSvc := auth.NewService(pool, pool, tokens, cfg.RefreshTokenTTL, loginThrottle)
+	authSvc := auth.NewService(pool, pool, tokens, cfg.RefreshTokenTTL, loginThrottle, cfg.PasswordHashCost)
 	guildSvc := guild.NewService(pool, pool, pool, publisher)
 	messageSvc := message.NewService(pool, guildSvc, publisher)
 

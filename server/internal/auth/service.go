@@ -40,10 +40,20 @@ type Service struct {
 	tokens     *TokenIssuer
 	refreshTTL time.Duration
 	logins     Throttle
+	hashCost   int
+	decoy      []byte
 }
 
-func NewService(repo Repository, tx TxRunner, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle) *Service {
-	return &Service{repo: repo, tx: tx, tokens: tokens, refreshTTL: refreshTTL, logins: logins}
+func NewService(repo Repository, tx TxRunner, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle, hashCost int) *Service {
+	if hashCost < bcrypt.MinCost || hashCost > bcrypt.MaxCost {
+		hashCost = bcrypt.DefaultCost
+	}
+	decoy, err := bcrypt.GenerateFromPassword([]byte("timing-equalizer-not-a-credential"), hashCost)
+	if err != nil {
+		decoy = staticDecoy
+	}
+	return &Service{repo: repo, tx: tx, tokens: tokens, refreshTTL: refreshTTL,
+		logins: logins, hashCost: hashCost, decoy: decoy}
 }
 
 var DeletedUserID = uuid.UUID{}
@@ -75,7 +85,7 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 		return dbgen.User{}, TokenPair{}, domain.Invalid("password must be %d-%d bytes", minPasswordLen, maxPasswordLen)
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.hashCost)
 	if err != nil {
 		return dbgen.User{}, TokenPair{}, domain.Internal(err)
 	}
@@ -113,7 +123,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (dbgen.User
 	if err != nil {
 		if db.IsNoRows(err) {
 
-			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+			_ = bcrypt.CompareHashAndPassword(s.decoy, []byte(password))
 			return dbgen.User{}, TokenPair{}, domain.Unauthorized("invalid credentials")
 		}
 		return dbgen.User{}, TokenPair{}, domain.Internal(err)
@@ -252,7 +262,7 @@ func (s *Service) issuePair(ctx context.Context, userID uuid.UUID) (TokenPair, e
 	return TokenPair{AccessToken: access, RefreshToken: plain, ExpiresAt: expiresAt}, nil
 }
 
-var dummyHash = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+var staticDecoy = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
 
 func (s *Service) Avatar(ctx context.Context, userID uuid.UUID) (*string, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/esuEdu/go-tauri-discord/internal/app"
 	"github.com/esuEdu/go-tauri-discord/internal/config"
@@ -59,6 +60,7 @@ func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 		MessagesPerMinute:  60,
 		MaxSessionsPerUser: 5,
 		JWTSecret:          []byte("test-secret-that-is-long-enough-to-pass"),
+		PasswordHashCost:   bcrypt.MinCost,
 		AccessTokenTTL:     15 * time.Minute,
 		RefreshTokenTTL:    24 * time.Hour,
 		HeartbeatInterval:  30 * time.Second,
