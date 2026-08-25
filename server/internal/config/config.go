@@ -70,9 +70,9 @@ func Load() (Config, error) {
 			Region:    env("S3_REGION", "us-east-1"),
 			UseSSL:    env("S3_USE_SSL", "") == "true",
 		},
-		TURNSecret:         env("TURN_SECRET", ""),
-		TURNTTL:            envDuration("TURN_TTL", 12*time.Hour),
-		VoiceDisabled:      env("VOICE_DISABLED", "") == "true",
+		TURNSecret:    env("TURN_SECRET", ""),
+		TURNTTL:       envDuration("TURN_TTL", 12*time.Hour),
+		VoiceDisabled: env("VOICE_DISABLED", "") == "true",
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}
