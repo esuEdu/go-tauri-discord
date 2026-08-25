@@ -106,7 +106,7 @@ func newVoiceClient(t *testing.T, h *harness) *voiceClient {
 			return
 		}
 		init := candidate.ToJSON()
-		c.sock.write(events.Frame{
+		_ = c.sock.send(events.Frame{
 			Op: events.OpVoiceCandidate,
 			D: mustJSON(t, events.ICECandidate{
 				Candidate:        init.Candidate,
@@ -157,7 +157,7 @@ func (c *voiceClient) pump() {
 				if err := c.pc.SetLocalDescription(answer); err != nil {
 					continue
 				}
-				c.sock.write(events.Frame{
+				_ = c.sock.send(events.Frame{
 					Op: events.OpVoiceAnswer,
 					D:  mustJSON(c.t, events.SessionDescription{Type: answer.Type.String(), SDP: answer.SDP}),
 				})
@@ -769,7 +769,7 @@ func (c *voiceClient) publishScreen(withSound bool) {
 			return
 		}
 		init := candidate.ToJSON()
-		c.sock.write(events.Frame{
+		_ = c.sock.send(events.Frame{
 			Op: events.OpScreenIce,
 			D: mustJSON(c.t, events.ICECandidate{
 				Candidate: init.Candidate, SDPMid: init.SDPMid,
