@@ -491,7 +491,38 @@ channel of N members costs N connections rather than N squared.
 
 The server is always the offerer, which removes SDP glare entirely: clients
 only ever answer. Joining requires the `Connect` permission on the channel.
-`ICE_SERVERS` configures STUN, and `VOICE_DISABLED=true` turns voice off.
+`VOICE_DISABLED=true` turns voice off.
+
+#### Getting out of a strict network
+
+STUN only tells a client what its own address looks like from outside. Where
+that is not enough — symmetric NAT, or a firewall that drops the media — the
+call needs a **TURN relay**, and without one it does not degrade: it simply
+never connects, which looks exactly like a broken microphone.
+
+`ICE_SERVERS` is a comma-separated list, each entry either a bare url or
+`url|username|credential`. A `turn:` entry given without credentials of its own
+is signed with **`TURN_SECRET`**, using the TURN REST convention that coturn
+implements as `use-auth-secret`: the username is `<expiry>:<user id>` and the
+credential is the base64 HMAC-SHA1 of it. `TURN_TTL` sets how long one lasts,
+12 hours by default.
+
+Credentials are therefore **minted per person and expire on their own**, which
+matters because anything handed to a browser is public — a static password in
+the client is a password everybody has. A `turn:` entry with neither its own
+credentials nor a `TURN_SECRET` is **dropped rather than sent**, since pion
+rejects a relay without credentials, and the server logs which one and why.
+
+The client is told what to use in `READY` and no longer decides for itself. It
+used to carry a hardcoded STUN server, so a correctly configured deployment
+still had a client that ignored it. When a connection does fail, the client now
+distinguishes a microphone that was refused from a network it could not get out
+of, and says which — and if no relay is configured, it says that too.
+
+Vocalis does not ship a TURN server. Relaying media costs real bandwidth, which
+makes it the most expensive thing here to self-host, so the choice of whether to
+run one — coturn alongside, or a hosted relay — stays with whoever runs the
+server.
 
 Every forwarded track is renamed by the SFU as `source-owner-ssrc` before it
 leaves — `mic-<user>-<ssrc>`, `screen-<user>-<ssrc>`, `screenaudio-<user>-<ssrc>`.

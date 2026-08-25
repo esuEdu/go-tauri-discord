@@ -165,6 +165,13 @@ type Ready struct {
 	ReadStates []ReadState        `json:"read_states"`
 	Allowed    []GuildPermissions `json:"allowed"`
 	Online     []uuid.UUID        `json:"online"`
+	ICEServers []ICEServer        `json:"ice_servers"`
+}
+
+type ICEServer struct {
+	URLs       []string `json:"urls"`
+	Username   string   `json:"username,omitempty"`
+	Credential string   `json:"credential,omitempty"`
 }
 
 type MessageDelete struct {

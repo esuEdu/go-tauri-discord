@@ -37,7 +37,7 @@ func randomSuffix() string {
 	return strings.ReplaceAll(uuid.NewString()[:8], "-", "")
 }
 
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 	t.Helper()
 
 	url := os.Getenv("DATABASE_URL")
@@ -63,6 +63,10 @@ func newHarness(t *testing.T) *harness {
 		RefreshTokenTTL:    24 * time.Hour,
 		HeartbeatInterval:  30 * time.Second,
 		CORSOrigins:        []string{"*"},
+	}
+
+	for _, fn := range tweak {
+		fn(&cfg)
 	}
 
 	broker := pubsub.NewMemory()

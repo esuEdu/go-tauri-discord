@@ -9,6 +9,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	"github.com/esuEdu/go-tauri-discord/internal/gateway"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
+	"github.com/esuEdu/go-tauri-discord/internal/ice"
 	"github.com/esuEdu/go-tauri-discord/internal/message"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
@@ -80,8 +81,17 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	}
 	handler := httpx.Chain(mux, middleware...)
 
+	minter := ice.NewMinter(cfg.ICEServers, cfg.TURNSecret, cfg.TURNTTL)
+	if stranded := minter.Unusable(); len(stranded) > 0 {
+		slog.Error("TURN servers ignored: no TURN_SECRET set and no credentials given",
+			"servers", stranded,
+			"fix", "set TURN_SECRET to the secret your TURN server was started with, "+
+				"or give the entry as url|username|credential")
+	}
+	gw.AttachICE(minter)
+
 	if !cfg.VoiceDisabled {
-		sfu, err := voice.New(gw, cfg.ICEServers)
+		sfu, err := voice.New(gw, minter)
 		if err != nil {
 			slog.Error("voice disabled: could not start the SFU", "error", err)
 		} else {

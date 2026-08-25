@@ -1,8 +1,7 @@
 import { gateway } from "./gateway";
+import { iceServers } from "./ice";
 import { OpScreenAnswer, OpScreenIce, OpScreenPublish } from "./types/events.gen";
 import type { ICECandidate, ScreenPublish } from "./types/events.gen";
-
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 function layersFor(ceiling: number): RTCRtpEncodingParameters[] {
   return [
@@ -22,7 +21,7 @@ class ScreenPublisher {
   ): Promise<void> {
     await this.stop();
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
     this.pc = pc;
 
     const video = stream.getVideoTracks()[0];

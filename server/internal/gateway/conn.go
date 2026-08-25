@@ -176,6 +176,7 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		return err
 	}
 	ready.Online = g.onlineAmong(sess.userID, ready.Members)
+	ready.ICEServers = g.iceServersFor(sess.userID)
 
 	frame, err := events.NewDispatch(events.EventReady, ready)
 	if err != nil {

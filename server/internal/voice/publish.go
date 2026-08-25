@@ -47,7 +47,7 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 		return ErrNotAllowed
 	}
 
-	pc, err := s.api.NewPeerConnection(s.config)
+	pc, err := s.api.NewPeerConnection(s.iceConfig())
 	if err != nil {
 		return err
 	}
