@@ -280,13 +280,17 @@ func (s *socket) readEvent(t events.EventType) events.Frame {
 func (s *socket) write(frame events.Frame) {
 	s.t.Helper()
 
-	raw, err := json.Marshal(frame)
-	if err != nil {
-		s.t.Fatalf("marshal frame: %v", err)
-	}
-	if err := s.conn.Write(context.Background(), websocket.MessageText, raw); err != nil {
+	if err := s.send(frame); err != nil {
 		s.t.Fatalf("write frame: %v", err)
 	}
+}
+
+func (s *socket) send(frame events.Frame) error {
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return err
+	}
+	return s.conn.Write(context.Background(), websocket.MessageText, raw)
 }
 
 func (s *socket) identify(token string) events.Ready {
