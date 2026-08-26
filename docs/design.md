@@ -111,11 +111,25 @@ be shown, because it does not exist.
 | --- | --- |
 | **Username** | 2–32 characters, chosen at sign-up. Cannot be changed anywhere in the app |
 | **Status** | **Online or offline. That is all.** |
-| **Picture** | None. There is a slot for one; nothing uploads or shows it |
+| **Picture** | Optional. Uploaded, cropped to a square and served at 256×256. Most people will not have one |
 
 **Status is only two values.** Idle, do-not-disturb, invisible, custom status,
 "playing something" — none of these exist. If any of them should, that is new
 work on the server, not just a design.
+
+**A picture is the exception, not the rule.** Everybody has a name; hardly
+anybody will have uploaded a picture, and a server that nobody gave an icon to
+is the normal case. **Both fall back to the first two characters of the name,
+uppercased** — which is a design decision currently made in code and worth
+making properly, because it is what most of the app will actually show. A blank
+name falls back to `?`, and an image that fails to load falls back to the same
+letters rather than to a broken picture.
+
+Pictures are square and cannot be anything else: the server crops the middle of
+whatever arrives and scales it to 256×256, so a wide photo loses its sides
+without asking. Nothing shows the person what will be kept before it happens.
+There is no cropper and no preview of the crop, and offering one is a design
+decision with real server work behind it.
 
 Two behaviours that will affect how status looks:
 
@@ -147,6 +161,11 @@ The part you asked about specifically.
 | **Whether they have muted themselves** | Deliberately silent, as opposed to merely not talking |
 
 Yourself appears in the same list, as **You**, with no volume controls.
+
+**A call is the one place a picture is not shown.** Messages, the member list, a
+quoted reply and the server list all carry one; the people in a call are names
+alone, though the data is there and nothing prevents it. Anyone designing a call
+around faces is designing something the app can already supply.
 
 ### What you cannot see about them, and why it matters
 
@@ -256,6 +275,43 @@ to, with a way out of it; Escape also cancels. A message that answers something
 is never grouped under the one above it, because the quote needs a name over it
 to make sense.
 
+**Choosing a picture** — for yourself, or for a server you may manage. Four
+states: none yet, where the control reads **Add** · one set, where it reads
+**Change** and a **Remove** appears beside it · uploading, where every control
+is disabled and nothing else says it is working · refused, with a message under
+it. A server's icon is chosen inside its settings, which is a sensible home;
+your own has none, so it sits loose in the bar beside your name and the way out,
+purely because there is nowhere else to put it. That bar is also where the app
+says whether it is connected, and — only when it has been pointed at some server
+other than the one it was built for — which address it is talking to. Refusals come from the server *after* the whole file has been sent, because
+nothing is checked in the browser first — so the slowest possible failure is
+also the most likely one, and it is worth designing for. What gets refused: not
+an image we can read, larger than 5 MB, or more than 24 megapixels however
+small the file is.
+
+**Files on a message** — the composer stages them first: chosen files sit above
+it as chips with a way to take each one back, up to ten, and they are sent with
+the message rather than before it. Once sent, an image shows inline and opens
+in a new tab when clicked; anything else is a download chip with a filename and
+a size.
+
+Three gaps here, all of them things people will simply try:
+
+- **Nothing shows an upload happening.** Sending a message with 40 MB of files
+  looks exactly like sending one without, until it finishes.
+- **No dragging a file onto the window, and no pasting a screenshot.** Only the
+  attach button opens the picker.
+- **No lightbox.** An image opens as a new browser tab, which on the desktop app
+  means leaving the app.
+
+And one thing that is not a gap but will look like a bug: **a link to a file
+expires a day after the app asked for it.** Pictures on a message are private to
+the channel, so their addresses are signed and time-limited, which means a copied
+image address is useless to somebody outside — and a window left open for a day
+shows broken pictures until it reloads. Pictures of people and servers work the
+other way: no expiry, no sign-in needed, an unguessable address, because a
+picture beside a name has to load in an ordinary `<img>` tag.
+
 **A reaction on a message** — none · several · one of them yours. A reaction is
 a count with a yes/no for whether you are in it, so a chip has two states rather
 than one, and the whole row appears and disappears as people add and take back.
@@ -272,8 +328,10 @@ back one of their own.
 moment rather than a state, so it fades on its own after a few seconds rather
 than being taken back.
 
-**Making a server** — a name, 1–100 characters. Nothing else: no picture, no
-description, no template.
+**Making a server** — a name, 1–100 characters. Nothing else: no description
+and no template, and **no picture at this point** — an icon can only be added
+afterwards, in the server's settings, by somebody who may manage it. So every
+server is born with letters where its icon goes.
 
 **Managing a server** — roles, who has them, and what each role may do in each
 channel. A role has a name, a position that decides what it outranks, and
@@ -339,6 +397,9 @@ member, and that every device is signed out. It cannot be undone.
 | Message | 4000 characters |
 | Messages sent | 60 per minute |
 | Files on a message | 10, of 25 MB each |
+| A picture for a person or a server | 5 MB, and 24 megapixels however small the file |
+| What a picture becomes | A 256×256 square, cropped from the middle |
+| A link to a file on a message | Stops working 24 hours after it was made |
 | Kinds of reaction on a message | 20 |
 | Quoted reply preview | 120 characters, one level |
 | Reactions added or taken back | 60 per minute |
@@ -370,7 +431,9 @@ available to design without new server work:
 These need server work before they can be designed as anything real:
 
 - Any notification, in-app or from the operating system
-- A settings screen of any kind, including choosing a microphone
+- A settings screen of any kind, including choosing a microphone. There is now
+  one thing about yourself you can change — your picture — and no screen for it
+  to live on, so it is pinned to the chrome next to your name
 - Profiles — clicking a name does nothing
 - An emoji picker worth the name, and custom per-server emoji
 - Search, pins, threads
