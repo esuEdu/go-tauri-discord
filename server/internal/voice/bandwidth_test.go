@@ -41,7 +41,7 @@ func TestTheEstimatorMeasuresWithoutHoldingPacketsBack(t *testing.T) {
 }
 
 func TestJoinAttachesABandwidthEstimator(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestJoinAttachesABandwidthEstimator(t *testing.T) {
 }
 
 func TestEveryPeerGetsAnEstimatorOfItsOwn(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestEveryPeerGetsAnEstimatorOfItsOwn(t *testing.T) {
 }
 
 func TestViewerBandwidthLeavesTheSharerOut(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSpreadOfNoViewersIsNotADivisionByZero(t *testing.T) {
 }
 
 func TestEstimatesOfAnEmptyChannelAreNothingRatherThanZero(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}

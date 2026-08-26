@@ -148,6 +148,9 @@ func (h *Handler) squared(w http.ResponseWriter, r *http.Request, side int) (str
 	case errors.Is(err, media.ErrTooLarge):
 		httpx.Error(w, r, domain.Invalid("that image is larger than %d MB", media.MaxUploadBytes>>20))
 		return "", false
+	case errors.Is(err, media.ErrTooManyPixels):
+		httpx.Error(w, r, domain.Invalid("that image is larger than %d megapixels", media.MaxPixels>>20))
+		return "", false
 	case errors.Is(err, media.ErrNotAnImage):
 		httpx.Error(w, r, domain.Invalid("that file is not a png, jpeg, gif or webp image"))
 		return "", false

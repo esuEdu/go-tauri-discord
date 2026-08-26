@@ -22,7 +22,7 @@ func (r *recordingPublishSignaler) ScreenAnswer(_ uuid.UUID, sdp webrtc.SessionD
 func (r *recordingPublishSignaler) ScreenCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
 
 func TestTheServerAcceptsAScreenPublishedInSeveralSizes(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestTheServerAcceptsAScreenPublishedInSeveralSizes(t *testing.T) {
 }
 
 func TestPublishingWithoutSomewhereToReplyIsRefused(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestPublishingWithoutSomewhereToReplyIsRefused(t *testing.T) {
 }
 
 func TestLayersOfSomebodyNotPublishingAreNothing(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}

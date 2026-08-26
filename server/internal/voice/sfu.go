@@ -127,7 +127,12 @@ func relayKeyframeRequests(sender *webrtc.RTPSender, ask func()) {
 	}
 }
 
-func New(signaler Signaler, minter *ice.Minter) (*SFU, error) {
+func New(signaler Signaler, minter *ice.Minter, network Network) (*SFU, error) {
+	settings, err := network.settingEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	s := &SFU{
 		ice:        minter,
 		signaler:   signaler,
@@ -164,6 +169,7 @@ func New(signaler Signaler, minter *ice.Minter) (*SFU, error) {
 	s.api = webrtc.NewAPI(
 		webrtc.WithMediaEngine(mediaEngine),
 		webrtc.WithInterceptorRegistry(registry),
+		webrtc.WithSettingEngine(settings),
 	)
 
 	go s.sampleBandwidth()

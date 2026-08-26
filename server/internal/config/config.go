@@ -40,6 +40,10 @@ type Config struct {
 	TURNTTL       time.Duration
 	VoiceDisabled bool
 
+	WebRTCPublicIP   string
+	WebRTCUDPPortMin int
+	WebRTCUDPPortMax int
+
 	HeartbeatInterval time.Duration
 }
 
@@ -73,9 +77,12 @@ func Load() (Config, error) {
 			Region:    env("S3_REGION", "us-east-1"),
 			UseSSL:    env("S3_USE_SSL", "") == "true",
 		},
-		TURNSecret:    env("TURN_SECRET", ""),
-		TURNTTL:       envDuration("TURN_TTL", 12*time.Hour),
-		VoiceDisabled: env("VOICE_DISABLED", "") == "true",
+		TURNSecret:       env("TURN_SECRET", ""),
+		TURNTTL:          envDuration("TURN_TTL", 12*time.Hour),
+		VoiceDisabled:    env("VOICE_DISABLED", "") == "true",
+		WebRTCPublicIP:   env("WEBRTC_PUBLIC_IP", ""),
+		WebRTCUDPPortMin: envInt("WEBRTC_UDP_PORT_MIN", 50000),
+		WebRTCUDPPortMax: envInt("WEBRTC_UDP_PORT_MAX", 50999),
 		CORSOrigins: strings.Split(
 			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
 	}

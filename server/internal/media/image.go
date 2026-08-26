@@ -18,6 +18,7 @@ import (
 
 const (
 	MaxUploadBytes = 5 << 20
+	MaxPixels      = 24 << 20
 	AvatarSize     = 256
 	IconSize       = 256
 )
@@ -25,6 +26,8 @@ const (
 var ErrNotAnImage = errors.New("media: that file is not an image we can read")
 
 var ErrTooLarge = errors.New("media: that file is larger than the limit")
+
+var ErrTooManyPixels = errors.New("media: that image has more pixels than we will decode")
 
 func Square(r io.Reader, side int) ([]byte, string, error) {
 	limited := io.LimitReader(r, MaxUploadBytes+1)
@@ -34,6 +37,17 @@ func Square(r io.Reader, side int) ([]byte, string, error) {
 	}
 	if len(raw) > MaxUploadBytes {
 		return nil, "", ErrTooLarge
+	}
+
+	config, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return nil, "", ErrNotAnImage
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return nil, "", ErrNotAnImage
+	}
+	if int64(config.Width)*int64(config.Height) > MaxPixels {
+		return nil, "", ErrTooManyPixels
 	}
 
 	source, _, err := image.Decode(bytes.NewReader(raw))
