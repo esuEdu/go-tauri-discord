@@ -40,6 +40,12 @@ func run() error {
 	defer pool.Close()
 	slog.Info("database connected")
 
+	if cfg.MigrateOnStart {
+		if err := db.Migrate(ctx, pool); err != nil {
+			return err
+		}
+	}
+
 	broker := pubsub.NewMemory()
 	defer broker.Close()
 

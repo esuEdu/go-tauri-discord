@@ -24,6 +24,7 @@ type Config struct {
 	UIDir              string
 	TrustedProxies     []string
 	MaxSessionsPerUser int
+	MigrateOnStart     bool
 
 	RateLimitDisabled bool
 	RegisterPerHour   int
@@ -61,6 +62,7 @@ func Load() (Config, error) {
 		HeartbeatInterval:  envDuration("HEARTBEAT_INTERVAL", 30*time.Second),
 		UIDir:              env("UI_DIR", ""),
 		MaxSessionsPerUser: envInt("MAX_SESSIONS_PER_USER", 5),
+		MigrateOnStart:     env("MIGRATE_ON_START", "true") != "false",
 		TrustedProxies:     strings.Split(env("TRUSTED_PROXIES", "127.0.0.1/32,::1/128"), ","),
 		RateLimitDisabled:  env("RATE_LIMIT_DISABLED", "") == "true",
 		RegisterPerHour:    envInt("REGISTER_PER_HOUR", 10),
