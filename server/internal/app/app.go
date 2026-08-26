@@ -109,7 +109,17 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	gw.AttachICE(minter)
 
 	if !cfg.VoiceDisabled {
-		sfu, err := voice.New(gw, minter)
+		if cfg.WebRTCPublicIP == "" && voice.NoPublicAddress() {
+			slog.Error("voice will not connect: this host has no public address and WEBRTC_PUBLIC_IP is unset",
+				"fix", "set WEBRTC_PUBLIC_IP to the address clients reach this server on, "+
+					"otherwise the SFU offers only private candidates and media never flows")
+		}
+
+		sfu, err := voice.New(gw, minter, voice.Network{
+			PublicIP:   cfg.WebRTCPublicIP,
+			UDPPortMin: cfg.WebRTCUDPPortMin,
+			UDPPortMax: cfg.WebRTCUDPPortMax,
+		})
 		if err != nil {
 			slog.Error("voice disabled: could not start the SFU", "error", err)
 		} else {

@@ -53,7 +53,7 @@ func audioSections(sdp string) int {
 }
 
 func TestResyncOnAnUnknownUserFails(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestResyncOnAnUnknownUserFails(t *testing.T) {
 }
 
 func TestMuteIsRememberedForWhoeverJoinsNext(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestMuteIsRememberedForWhoeverJoinsNext(t *testing.T) {
 }
 
 func TestMutingSomebodyWhoIsNotInACallFails(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestMutingSomebodyWhoIsNotInACallFails(t *testing.T) {
 }
 
 func TestLeavingForgetsTheMute(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestAViewerWhoDroppedNothingWantsEverything(t *testing.T) {
 }
 
 func TestWatchingSomebodyWhileNotInACallFails(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestWatchingSomebodyWhileNotInACallFails(t *testing.T) {
 }
 
 func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestAScreenWithNoLayersIsStillSent(t *testing.T) {
 }
 
 func TestAskingForASmallerScreenIsRemembered(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestAskingForASmallerScreenIsRemembered(t *testing.T) {
 }
 
 func TestTakingAShareBackKeepsTheSizeYouChose(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestTakingAShareBackKeepsTheSizeYouChose(t *testing.T) {
 }
 
 func TestAMemberWhoMayNotStreamCannotPublishAScreen(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestAMemberWhoMayNotStreamCannotPublishAScreen(t *testing.T) {
 
 func TestJoiningOffersOnlyAMicrophone(t *testing.T) {
 	signaler := newRecordingSignaler()
-	sfu, err := New(signaler, nil)
+	sfu, err := New(signaler, nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestJoiningOffersOnlyAMicrophone(t *testing.T) {
 }
 
 func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
 }
 
 func TestLeavingTakesTheScreenConnectionWithIt(t *testing.T) {
-	sfu, err := New(newRecordingSignaler(), nil)
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestLeavingTakesTheScreenConnectionWithIt(t *testing.T) {
 
 func TestATrackThatArrivesMidNegotiationIsStillOffered(t *testing.T) {
 	signaler := newRecordingSignaler()
-	sfu, err := New(signaler, nil)
+	sfu, err := New(signaler, nil, Network{})
 	if err != nil {
 		t.Fatalf("new sfu: %v", err)
 	}
