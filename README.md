@@ -1013,6 +1013,29 @@ make build   # -> server/bin/vocalis-server
 `JWT_SECRET` (32+ bytes) is required when `ENV=production`; the server
 refuses to start without it. Generate one with `openssl rand -base64 48`.
 
+### Deploying it somewhere
+
+```bash
+make deploy-env    # .env with a generated database password and JWT_SECRET
+make deploy-up     # image, Postgres, server and Caddy with automatic TLS
+```
+
+`docker-compose.prod.yml` runs one image holding the Go binary and the built
+client, so the app is one origin on one port. The server applies pending
+migrations at boot under an advisory lock, which is why there is no migrate
+step in that sequence.
+
+Two things decide whether voice works and neither is TLS: **UDP 50000–50999
+must be open**, and `WEBRTC_PUBLIC_IP` must be set anywhere the public address
+belongs to a NAT rather than to the interface — EC2, GCP, Docker without host
+networking. On a plain VPS, leave it empty.
+
+The runbook, including backups, upgrades, what to do when voice connects but
+nobody can hear anybody, and what this deployment deliberately does not have,
+is **[docs/deploy.md](docs/deploy.md)**.
+
+For an evening rather than a deployment, `make share` is still the answer.
+
 ---
 
 ## 📋 Roadmap

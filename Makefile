@@ -6,6 +6,7 @@ CLIENT_DIR   := client
 DATABASE_URL ?= postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable
 MIGRATIONS   := internal/db/migrations
 IMAGE        ?= vocalis:latest
+COMPOSE_PROD := docker compose -f docker-compose.prod.yml
 
 ifneq ($(wildcard $(HOME)/.cargo/bin/cargo),)
 export PATH := $(HOME)/.cargo/bin:$(PATH)
@@ -229,3 +230,40 @@ image-smoke: ## Boot the image against a throwaway Postgres and fail unless it s
 		"select to_regclass('public.users')" | grep -q users \
 		|| { echo "migrations did not run at boot"; docker logs vocalis-smoke; exit 1; }; \
 	echo "image serves the client, answers /healthz and migrated an empty database"
+
+.PHONY: deploy-env
+deploy-env: ## Create .env for a deployment from deploy/env.example, with generated secrets
+	@test ! -f .env || { echo ".env already exists. Move it aside first."; exit 1; }
+	@pass=$$(openssl rand -hex 24); secret=$$(openssl rand -base64 48 | tr -d '\n'); \
+	sed -e "s|CHANGE_ME_PASSWORD|$$pass|g" -e "s|CHANGE_ME_SECRET|$$secret|" \
+		deploy/env.example > .env
+	@echo "created .env with a generated database password and JWT_SECRET."
+	@echo "Set DOMAIN and CORS_ORIGINS to your own name before starting."
+
+.PHONY: deploy-up
+deploy-up: ## Build and start Postgres, the server and Caddy
+	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
+	@grep -q '^ENV=production' .env || { \
+		echo ".env is a development file: it has no ENV=production line."; \
+		echo "The development .env points at a local database with a committed"; \
+		echo "password, and this would hand it to the deployment. Move it aside"; \
+		echo "and run: make deploy-env"; \
+		exit 1; }
+	$(COMPOSE_PROD) --profile tls up -d --build
+
+.PHONY: deploy-down
+deploy-down: ## Stop the deployment; volumes and their data are preserved
+	$(COMPOSE_PROD) --profile tls down
+
+.PHONY: deploy-logs
+deploy-logs: ## Follow the server log
+	$(COMPOSE_PROD) logs -f server
+
+.PHONY: deploy-backup
+deploy-backup: ## Dump the database and the uploaded files into backups/
+	@mkdir -p backups
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	$(COMPOSE_PROD) exec -T postgres pg_dump -U vocalis vocalis | gzip > backups/db-$$ts.sql.gz; \
+	docker run --rm -v vocalis_vocalis-files:/data:ro -v "$$PWD/backups:/out" alpine \
+		tar czf /out/files-$$ts.tar.gz -C /data . ; \
+	echo "wrote backups/db-$$ts.sql.gz and backups/files-$$ts.tar.gz"
