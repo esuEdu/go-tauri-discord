@@ -124,6 +124,7 @@ config.local.*
 data/
 tmp/
 uploads/
+backups/
 
 # ===========================
 # Editors / IDEs

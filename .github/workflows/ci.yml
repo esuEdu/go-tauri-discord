@@ -76,6 +76,27 @@ jobs:
       - name: Typecheck and build
         run: make client-check
 
+  image:
+    name: image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the deployable image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: vocalis:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot it against a throwaway Postgres, which is what catches a bad migration
+        run: make image-smoke
+
   desktop:
     name: desktop
     runs-on: macos-latest

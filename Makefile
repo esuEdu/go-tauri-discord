@@ -5,6 +5,8 @@ SERVER_DIR   := server
 CLIENT_DIR   := client
 DATABASE_URL ?= postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable
 MIGRATIONS   := internal/db/migrations
+IMAGE        ?= vocalis:latest
+COMPOSE_PROD := docker compose -f docker-compose.prod.yml
 
 ifneq ($(wildcard $(HOME)/.cargo/bin/cargo),)
 export PATH := $(HOME)/.cargo/bin:$(PATH)
@@ -187,3 +189,81 @@ lint: ## Vet and check formatting
 
 .PHONY: check
 check: lint test ## Everything CI runs
+
+.PHONY: image
+image: ## Build the deployable image: server binary plus the built client
+	docker build -t $(IMAGE) .
+
+.PHONY: image-smoke
+image-smoke: ## Boot the image against a throwaway Postgres and fail unless it serves
+	@set -e; \
+	cleanup() { \
+		docker rm -f vocalis-smoke vocalis-smoke-db >/dev/null 2>&1 || true; \
+		docker network rm vocalis-smoke >/dev/null 2>&1 || true; \
+	}; \
+	cleanup; trap cleanup EXIT; \
+	docker network create vocalis-smoke >/dev/null; \
+	docker run -d --name vocalis-smoke-db --network vocalis-smoke \
+		-e POSTGRES_USER=vocalis -e POSTGRES_PASSWORD=vocalis -e POSTGRES_DB=vocalis \
+		postgres:17-alpine >/dev/null; \
+	printf "waiting for postgres"; \
+	for i in $$(seq 1 60); do \
+		docker exec vocalis-smoke-db pg_isready -U vocalis -d vocalis >/dev/null 2>&1 && break; \
+		printf "."; sleep 1; \
+	done; echo; \
+	docker run -d --name vocalis-smoke --network vocalis-smoke -p 18080:8080 \
+		-e DATABASE_URL=postgres://vocalis:vocalis@vocalis-smoke-db:5432/vocalis?sslmode=disable \
+		-e JWT_SECRET=$$(openssl rand -base64 48 | tr -d '\n') \
+		-e WEBRTC_PUBLIC_IP=127.0.0.1 \
+		$(IMAGE) >/dev/null; \
+	printf "waiting for the server"; \
+	ok=; \
+	for i in $$(seq 1 60); do \
+		if curl -sf http://localhost:18080/healthz >/dev/null 2>&1; then ok=1; break; fi; \
+		docker inspect -f '{{.State.Running}}' vocalis-smoke | grep -q true || break; \
+		printf "."; sleep 1; \
+	done; echo; \
+	if [ -z "$$ok" ]; then echo "the server never answered /healthz:"; docker logs vocalis-smoke; exit 1; fi; \
+	curl -sf http://localhost:18080/ | grep -q 'id="root"' \
+		|| { echo "the container serves no client at /"; exit 1; }; \
+	docker exec vocalis-smoke-db psql -U vocalis -d vocalis -tAc \
+		"select to_regclass('public.users')" | grep -q users \
+		|| { echo "migrations did not run at boot"; docker logs vocalis-smoke; exit 1; }; \
+	echo "image serves the client, answers /healthz and migrated an empty database"
+
+.PHONY: deploy-env
+deploy-env: ## Create .env for a deployment from deploy/env.example, with generated secrets
+	@test ! -f .env || { echo ".env already exists. Move it aside first."; exit 1; }
+	@pass=$$(openssl rand -hex 24); secret=$$(openssl rand -base64 48 | tr -d '\n'); \
+	sed -e "s|CHANGE_ME_PASSWORD|$$pass|g" -e "s|CHANGE_ME_SECRET|$$secret|" \
+		deploy/env.example > .env
+	@echo "created .env with a generated database password and JWT_SECRET."
+	@echo "Set DOMAIN and CORS_ORIGINS to your own name before starting."
+
+.PHONY: deploy-up
+deploy-up: ## Build and start Postgres, the server and Caddy
+	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
+	@grep -q '^ENV=production' .env || { \
+		echo ".env is a development file: it has no ENV=production line."; \
+		echo "The development .env points at a local database with a committed"; \
+		echo "password, and this would hand it to the deployment. Move it aside"; \
+		echo "and run: make deploy-env"; \
+		exit 1; }
+	$(COMPOSE_PROD) --profile tls up -d --build
+
+.PHONY: deploy-down
+deploy-down: ## Stop the deployment; volumes and their data are preserved
+	$(COMPOSE_PROD) --profile tls down
+
+.PHONY: deploy-logs
+deploy-logs: ## Follow the server log
+	$(COMPOSE_PROD) logs -f server
+
+.PHONY: deploy-backup
+deploy-backup: ## Dump the database and the uploaded files into backups/
+	@mkdir -p backups
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	$(COMPOSE_PROD) exec -T postgres pg_dump -U vocalis vocalis | gzip > backups/db-$$ts.sql.gz; \
+	docker run --rm -v vocalis_vocalis-files:/data:ro -v "$$PWD/backups:/out" alpine \
+		tar czf /out/files-$$ts.tar.gz -C /data . ; \
+	echo "wrote backups/db-$$ts.sql.gz and backups/files-$$ts.tar.gz"
