@@ -2,7 +2,9 @@ package media
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -97,5 +99,42 @@ func TestSquareRefusesSomethingHuge(t *testing.T) {
 	_, _, err := Square(bytes.NewReader(make([]byte, MaxUploadBytes+1)), AvatarSize)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Errorf("err = %v, want ErrTooLarge before the decoder is handed the bytes", err)
+	}
+}
+
+func pngClaiming(t *testing.T, w, h uint32) []byte {
+	t.Helper()
+
+	header := make([]byte, 13)
+	binary.BigEndian.PutUint32(header[0:4], w)
+	binary.BigEndian.PutUint32(header[4:8], h)
+	header[8] = 8
+	header[9] = 6
+
+	chunk := append([]byte("IHDR"), header...)
+
+	var buf bytes.Buffer
+	buf.Write([]byte("\x89PNG\r\n\x1a\n"))
+	binary.Write(&buf, binary.BigEndian, uint32(len(header)))
+	buf.Write(chunk)
+	binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(chunk))
+	return buf.Bytes()
+}
+
+func TestSquareRefusesAPixelBombBeforeDecoding(t *testing.T) {
+	bomb := pngClaiming(t, 20000, 20000)
+	if len(bomb) > 1024 {
+		t.Fatalf("the crafted header is %d bytes; it must stay far under MaxUploadBytes to prove the byte cap is not what stops it", len(bomb))
+	}
+
+	_, _, err := Square(bytes.NewReader(bomb), AvatarSize)
+	if !errors.Is(err, ErrTooManyPixels) {
+		t.Fatalf("err = %v, want ErrTooManyPixels; 20000x20000 RGBA is 1.6 GB of heap for a 256px avatar", err)
+	}
+}
+
+func TestSquareStillAcceptsAnOrdinaryPhoto(t *testing.T) {
+	if _, _, err := Square(bytes.NewReader(opaqueJPEG(t, 4000, 3000)), AvatarSize); err != nil {
+		t.Errorf("Square refused a 12 megapixel photo, which is an ordinary phone camera upload: %v", err)
 	}
 }
