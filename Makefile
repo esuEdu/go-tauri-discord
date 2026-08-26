@@ -5,6 +5,7 @@ SERVER_DIR   := server
 CLIENT_DIR   := client
 DATABASE_URL ?= postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable
 MIGRATIONS   := internal/db/migrations
+IMAGE        ?= vocalis:latest
 
 ifneq ($(wildcard $(HOME)/.cargo/bin/cargo),)
 export PATH := $(HOME)/.cargo/bin:$(PATH)
@@ -187,3 +188,44 @@ lint: ## Vet and check formatting
 
 .PHONY: check
 check: lint test ## Everything CI runs
+
+.PHONY: image
+image: ## Build the deployable image: server binary plus the built client
+	docker build -t $(IMAGE) .
+
+.PHONY: image-smoke
+image-smoke: ## Boot the image against a throwaway Postgres and fail unless it serves
+	@set -e; \
+	cleanup() { \
+		docker rm -f vocalis-smoke vocalis-smoke-db >/dev/null 2>&1 || true; \
+		docker network rm vocalis-smoke >/dev/null 2>&1 || true; \
+	}; \
+	cleanup; trap cleanup EXIT; \
+	docker network create vocalis-smoke >/dev/null; \
+	docker run -d --name vocalis-smoke-db --network vocalis-smoke \
+		-e POSTGRES_USER=vocalis -e POSTGRES_PASSWORD=vocalis -e POSTGRES_DB=vocalis \
+		postgres:17-alpine >/dev/null; \
+	printf "waiting for postgres"; \
+	for i in $$(seq 1 60); do \
+		docker exec vocalis-smoke-db pg_isready -U vocalis -d vocalis >/dev/null 2>&1 && break; \
+		printf "."; sleep 1; \
+	done; echo; \
+	docker run -d --name vocalis-smoke --network vocalis-smoke -p 18080:8080 \
+		-e DATABASE_URL=postgres://vocalis:vocalis@vocalis-smoke-db:5432/vocalis?sslmode=disable \
+		-e JWT_SECRET=$$(openssl rand -base64 48 | tr -d '\n') \
+		-e WEBRTC_PUBLIC_IP=127.0.0.1 \
+		$(IMAGE) >/dev/null; \
+	printf "waiting for the server"; \
+	ok=; \
+	for i in $$(seq 1 60); do \
+		if curl -sf http://localhost:18080/healthz >/dev/null 2>&1; then ok=1; break; fi; \
+		docker inspect -f '{{.State.Running}}' vocalis-smoke | grep -q true || break; \
+		printf "."; sleep 1; \
+	done; echo; \
+	if [ -z "$$ok" ]; then echo "the server never answered /healthz:"; docker logs vocalis-smoke; exit 1; fi; \
+	curl -sf http://localhost:18080/ | grep -q 'id="root"' \
+		|| { echo "the container serves no client at /"; exit 1; }; \
+	docker exec vocalis-smoke-db psql -U vocalis -d vocalis -tAc \
+		"select to_regclass('public.users')" | grep -q users \
+		|| { echo "migrations did not run at boot"; docker logs vocalis-smoke; exit 1; }; \
+	echo "image serves the client, answers /healthz and migrated an empty database"

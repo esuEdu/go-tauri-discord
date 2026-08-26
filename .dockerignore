@@ -1,0 +1,14 @@
+.git
+.github
+data
+docs
+*.md
+!README.md
+.env
+.env.*
+!.env.example
+client/node_modules
+client/dist
+client/src-tauri
+server/bin
+deploy
