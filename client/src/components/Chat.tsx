@@ -302,7 +302,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
               {!grouped && (
                 <div className="message-head">
                   <Avatar name={m.author.username} imageKey={m.author.avatar_key} />
-                  <span className="author">{m.author.username}</span>
+                  <span className="author">{session.labelOf(m.author.id)}</span>
                   <span className="muted timestamp">
                     {new Date(m.created_at).toLocaleTimeString([], {
                       hour: "2-digit",
@@ -375,7 +375,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
 
       {typists.length > 0 && (
         <div className="muted typing">
-          {typists.map((id) => session.nameOf(id)).join(", ")}
+          {typists.map((id) => session.labelOf(id)).join(", ")}
           {typists.length === 1 ? " is typing…" : " are typing…"}
         </div>
       )}
@@ -383,7 +383,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       {replyingTo && (
         <div className="replying">
           <span className="muted">Replying to</span>
-          <strong>{replyingTo.author.username}</strong>
+          <strong>{session.labelOf(replyingTo.author.id)}</strong>
           <span className="muted replying-content">{replyingTo.content}</span>
           <button
             type="button"
@@ -450,7 +450,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
             !maySend
               ? "You cannot post in this channel"
               : replyingTo
-                ? `Reply to ${replyingTo.author.username}`
+                ? `Reply to ${session.labelOf(replyingTo.author.id)}`
                 : `Message #${channel.name}`
           }
           value={draft}

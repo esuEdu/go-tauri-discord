@@ -24,6 +24,7 @@ export interface Invite {
 export interface GuildMember {
   user_id: string;
   username: string;
+  discriminator: string;
   nickname: string | null;
   avatar_key: string | null;
   online: boolean;

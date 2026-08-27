@@ -45,16 +45,17 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, username, email, password_hash)
-VALUES ($1, $2, $3, $4)
-RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at
+INSERT INTO users (id, username, email, password_hash, discriminator)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator
 `
 
 type CreateUserParams struct {
-	ID           uuid.UUID
-	Username     string
-	Email        string
-	PasswordHash string
+	ID            uuid.UUID
+	Username      string
+	Email         string
+	PasswordHash  string
+	Discriminator string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -63,6 +64,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Username,
 		arg.Email,
 		arg.PasswordHash,
+		arg.Discriminator,
 	)
 	var i User
 	err := row.Scan(
@@ -73,6 +75,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AvatarKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Discriminator,
 	)
 	return i, err
 }
@@ -117,7 +120,7 @@ func (q *Queries) GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at FROM users WHERE lower(email) = lower($1)
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE lower(email) = lower($1)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -131,12 +134,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.AvatarKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Discriminator,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at FROM users WHERE id = $1
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -150,12 +154,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.AvatarKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Discriminator,
 	)
 	return i, err
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at FROM users WHERE id = ANY ($1::uuid[])
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE id = ANY ($1::uuid[])
 `
 
 func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, error) {
@@ -175,6 +180,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, 
 			&i.AvatarKey,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Discriminator,
 		); err != nil {
 			return nil, err
 		}
@@ -223,7 +229,7 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID)
 const setUserAvatar = `-- name: SetUserAvatar :one
 UPDATE users SET avatar_key = $1, updated_at = now()
 WHERE id = $2
-RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator
 `
 
 type SetUserAvatarParams struct {
@@ -242,6 +248,31 @@ func (q *Queries) SetUserAvatar(ctx context.Context, arg SetUserAvatarParams) (U
 		&i.AvatarKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Discriminator,
 	)
 	return i, err
+}
+
+const takenDiscriminators = `-- name: TakenDiscriminators :many
+SELECT discriminator FROM users WHERE lower(username) = lower($1)
+`
+
+func (q *Queries) TakenDiscriminators(ctx context.Context, username string) ([]string, error) {
+	rows, err := q.db.Query(ctx, takenDiscriminators, username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var discriminator string
+		if err := rows.Scan(&discriminator); err != nil {
+			return nil, err
+		}
+		items = append(items, discriminator)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

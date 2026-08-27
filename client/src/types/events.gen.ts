@@ -62,6 +62,7 @@ export interface Resume {
 export interface User {
   id: string;
   username: string;
+  discriminator: string;
   avatar_key?: string;
 }
 export interface Guild {

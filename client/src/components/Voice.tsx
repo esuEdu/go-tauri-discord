@@ -141,7 +141,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             {screens.remote.map((screen) => (
               <ScreenTile
                 key={screen.stream.id}
-                label={screen.userID ? `${session.nameOf(screen.userID)}'s screen` : "A shared screen"}
+                label={screen.userID ? `${session.labelOf(screen.userID)}'s screen` : "A shared screen"}
                 stream={screen.stream}
                 controls={
                   screen.userID && (
@@ -177,7 +177,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             {screens.dropped.map((id) => (
               <div key={id} className="dropped-share muted">
                 <span className="channel-name">
-                  Not watching {session.nameOf(id)}'s screen
+                  Not watching {session.labelOf(id)}'s screen
                 </span>
                 <button className="link" onClick={() => voice.watchScreen(id, true)}>
                   Watch again
@@ -193,7 +193,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
             <div key={id} className={speaking[id] ? "voice-member speaking" : "voice-member"}>
               <span className={people.online[id] ? "dot ready" : "dot closed"} />
               <span className="voice-name">
-                {id === selfID ? "You" : people.names[id] ?? id.slice(0, 8)}
+                {id === selfID ? "You" : session.labelOf(id)}
               </span>
               {(id === selfID ? muted : mutes[id]) && (
                 <span className="muted voice-muted">muted</span>

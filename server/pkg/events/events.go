@@ -75,9 +75,10 @@ type Resume struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	AvatarKey *string   `json:"avatar_key"`
+	ID            uuid.UUID `json:"id"`
+	Username      string    `json:"username"`
+	Discriminator string    `json:"discriminator"`
+	AvatarKey     *string   `json:"avatar_key"`
 }
 
 type Guild struct {

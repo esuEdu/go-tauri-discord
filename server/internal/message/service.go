@@ -126,9 +126,12 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 	}
 
 	sent := []events.Message{{
-		ID:          row.ID,
-		ChannelID:   row.ChannelID,
-		Author:      events.User{ID: author.ID, Username: author.Username, AvatarKey: author.AvatarKey},
+		ID:        row.ID,
+		ChannelID: row.ChannelID,
+		Author: events.User{
+			ID: author.ID, Username: author.Username,
+			Discriminator: author.Discriminator, AvatarKey: author.AvatarKey,
+		},
 		Content:     row.Content,
 		CreatedAt:   row.CreatedAt,
 		EditedAt:    row.EditedAt,
@@ -173,9 +176,10 @@ func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, befo
 			ID:        r.ID,
 			ChannelID: r.ChannelID,
 			Author: events.User{
-				ID:        r.AuthorID,
-				Username:  r.AuthorUsername,
-				AvatarKey: r.AuthorAvatarKey,
+				ID:            r.AuthorID,
+				Username:      r.AuthorUsername,
+				Discriminator: r.AuthorDiscriminator,
+				AvatarKey:     r.AuthorAvatarKey,
 			},
 			Content:     r.Content,
 			CreatedAt:   r.CreatedAt,
@@ -263,9 +267,12 @@ func (s *Service) Edit(ctx context.Context, userID, messageID uuid.UUID, content
 	}
 
 	edited := []events.Message{{
-		ID:          row.ID,
-		ChannelID:   row.ChannelID,
-		Author:      events.User{ID: author.ID, Username: author.Username, AvatarKey: author.AvatarKey},
+		ID:        row.ID,
+		ChannelID: row.ChannelID,
+		Author: events.User{
+			ID: author.ID, Username: author.Username,
+			Discriminator: author.Discriminator, AvatarKey: author.AvatarKey,
+		},
 		Content:     row.Content,
 		CreatedAt:   row.CreatedAt,
 		EditedAt:    row.EditedAt,

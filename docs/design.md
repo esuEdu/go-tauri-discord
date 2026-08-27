@@ -52,7 +52,7 @@ show it is working) · rejected with a message · succeeded.
 
 | Field | Rules |
 | --- | --- |
-| Username | 2–32 characters. Any characters, including spaces and emoji |
+| Username | 2–32 characters. Any characters, including spaces and emoji. **Does not have to be unique** |
 | Email | Must be a real email address |
 | Password | 8–72 characters. No complexity requirement — length is the only rule |
 
@@ -63,14 +63,24 @@ show it is working) · rejected with a message · succeeded.
 | Username too short or too long | "username must be 2-32 characters" |
 | Email not an email | "invalid email address" |
 | Password too short or too long | "password must be 8-72 characters" |
-| Username or email already used | "username or email already taken" |
+| Email already registered | "that email already has an account" |
 | Too many accounts made from one place | rate limited, 10 per hour |
 
 **Worth deciding:**
 
-- The "already taken" message deliberately does not say **which** one — same
-  reason as above. If you want it to say which, that is a decision to make
-  knowingly.
+- **A username can be taken and it does not matter**, with one exception:
+  `Deleted User` is refused, because that is the placeholder every deleted
+  account's messages are reassigned to and sharing it would be impersonation.
+  Otherwise two people called Carla both get the name; the server gives each of them four digits, and the pair is
+  what is unique. Nobody picks their own digits, and there is nothing to design
+  about choosing them — but the form may want to say that the number is coming,
+  because the first time somebody sees `Carla#0417` it will be after they typed
+  only `Carla`.
+- The message about an email, unlike the old one, says plainly that the address
+  is in use. It used to be vague on purpose, but a username can no longer
+  conflict, so a conflict could only ever be the email and the vagueness fooled
+  nobody. Hiding it properly would mean an account that does not work until its
+  address is confirmed, which needs email that does not exist here.
 - Nothing is checked until the form is submitted. Whether rules are shown
   up front, as you type, or only on failure is open.
 - There is no email confirmation, no password strength meter, no "show
@@ -109,13 +119,22 @@ be shown, because it does not exist.
 
 | | |
 | --- | --- |
-| **Username** | 2–32 characters, chosen at sign-up. Cannot be changed anywhere in the app |
+| **Username** | 2–32 characters, chosen at sign-up. Cannot be changed anywhere in the app. Shared with anybody else who picked it |
+| **Number** | Four digits the server assigns, `0001`–`9999`. Not chosen, not changeable. What makes `Carla#0417` a different person from `Carla#2258` |
 | **Status** | **Online or offline. That is all.** |
 | **Picture** | Optional. Uploaded, cropped to a square and served at 256×256. Most people will not have one |
 
 **Status is only two values.** Idle, do-not-disturb, invisible, custom status,
 "playing something" — none of these exist. If any of them should, that is new
 work on the server, not just a design.
+
+**The number is shown only when it is needed.** In a server with one Carla she
+is "Carla"; the moment a second Carla arrives, both become "Carla#0417" and
+"Carla#2258" everywhere at once — roster, message author, typing line, call,
+quoted reply. The exception is your own name in the footer, which always shows
+its number, because that is the one place it is there to be read out rather than
+to tell two people apart. A design that wants the number always visible, or
+never, is a change to that rule and not to the data.
 
 **A picture is the exception, not the rule.** Everybody has a name; hardly
 anybody will have uploaded a picture, and a server that nobody gave an icon to
@@ -430,7 +449,8 @@ member, and that every device is signed out. It cannot be undone.
 
 | Thing | Limit |
 | --- | --- |
-| Username | 2–32 characters |
+| Username | 2–32 characters, and may be shared |
+| People with one name | 9999, after which that name is full |
 | Password | 8–72 characters |
 | Server name | 1–100 characters |
 | Channel name | Required |

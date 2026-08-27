@@ -355,7 +355,7 @@ export function Sidebar({
                     {(people.inVoice[c.id] ?? []).map((id) => (
                       <div key={id} className="channel-caller">
                         <Avatar name={people.names[id] ?? id.slice(0, 8)} imageKey={people.avatars[id]} className="avatar tiny" />
-                        <span className="muted">{people.names[id] ?? id.slice(0, 8)}</span>
+                        <span className="muted">{session.labelOf(id)}</span>
                         {people.mutedInVoice[id] && <span className="muted">muted</span>}
                         {people.deafenedInVoice[id] && <span className="muted">can't hear</span>}
                       </div>

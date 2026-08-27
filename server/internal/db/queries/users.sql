@@ -1,7 +1,10 @@
 -- name: CreateUser :one
-INSERT INTO users (id, username, email, password_hash)
-VALUES (@id, @username, @email, @password_hash)
+INSERT INTO users (id, username, email, password_hash, discriminator)
+VALUES (@id, @username, @email, @password_hash, @discriminator)
 RETURNING *;
+
+-- name: TakenDiscriminators :many
+SELECT discriminator FROM users WHERE lower(username) = lower(@username);
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = @id;

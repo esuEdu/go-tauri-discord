@@ -355,7 +355,8 @@ func (s *Service) NewMember(ctx context.Context, guildID, userID uuid.UUID) (eve
 	return events.Member{
 		GuildID: guildID,
 		User: events.User{
-			ID: user.ID, Username: user.Username, AvatarKey: user.AvatarKey,
+			ID: user.ID, Username: user.Username,
+			Discriminator: user.Discriminator, AvatarKey: user.AvatarKey,
 		},
 	}, nil
 }

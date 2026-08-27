@@ -395,7 +395,7 @@ export function ServerSettings({ guild, channels, onClose }: {
                   <span className="channel-name">{b.username}</span>
                   <span className="muted">
                     {new Date(b.created_at).toLocaleDateString()}
-                    {b.banned_by && ` — by ${session.nameOf(b.banned_by)}`}
+                    {b.banned_by && ` — by ${session.labelOf(b.banned_by)}`}
                   </span>
                 </div>
                 <span className="muted ban-reason">{b.reason ?? "No reason given."}</span>

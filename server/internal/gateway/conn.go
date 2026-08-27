@@ -168,7 +168,8 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 			ready.Members = append(ready.Members, events.Member{
 				GuildID: gl.ID,
 				User: events.User{
-					ID: m.UserID, Username: m.Username, AvatarKey: m.AvatarKey,
+					ID: m.UserID, Username: m.Username,
+					Discriminator: m.Discriminator, AvatarKey: m.AvatarKey,
 				},
 			})
 		}

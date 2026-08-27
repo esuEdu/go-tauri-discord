@@ -17,6 +17,7 @@ import (
 
 type Repository interface {
 	CreateUser(ctx context.Context, arg dbgen.CreateUserParams) (dbgen.User, error)
+	TakenDiscriminators(ctx context.Context, username string) ([]string, error)
 	GetUserByEmail(ctx context.Context, email string) (dbgen.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 	SetUserAvatar(ctx context.Context, arg dbgen.SetUserAvatarParams) (dbgen.User, error)
@@ -65,6 +66,10 @@ type TokenPair struct {
 }
 
 const (
+	deletedUsername            = "deleted user"
+	discriminatorRaces         = 3
+	usernameDiscriminatorIndex = "users_username_lower_discriminator_key"
+
 	minPasswordLen = 8
 	maxPasswordLen = 72
 	minUsernameLen = 2
@@ -78,6 +83,10 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	if n := utf8.RuneCountInString(username); n < minUsernameLen || n > maxUsernameLen {
 		return dbgen.User{}, TokenPair{}, domain.Invalid("username must be %d-%d characters", minUsernameLen, maxUsernameLen)
 	}
+	if strings.EqualFold(strings.ToLower(username), deletedUsername) {
+		return dbgen.User{}, TokenPair{}, domain.Conflict(
+			"that name belongs to the placeholder deleted accounts are reassigned to")
+	}
 	if _, err := mail.ParseAddress(email); err != nil {
 		return dbgen.User{}, TokenPair{}, domain.Invalid("invalid email address")
 	}
@@ -90,17 +99,9 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 		return dbgen.User{}, TokenPair{}, domain.Internal(err)
 	}
 
-	user, err := s.repo.CreateUser(ctx, dbgen.CreateUserParams{
-		ID:           uuid.Must(uuid.NewV7()),
-		Username:     username,
-		Email:        email,
-		PasswordHash: string(hash),
-	})
+	user, err := s.createWithDiscriminator(ctx, username, email, string(hash))
 	if err != nil {
-		if db.IsUniqueViolation(err) {
-			return dbgen.User{}, TokenPair{}, domain.Conflict("username or email already taken")
-		}
-		return dbgen.User{}, TokenPair{}, domain.Internal(err)
+		return dbgen.User{}, TokenPair{}, err
 	}
 
 	pair, err := s.issuePair(ctx, user.ID)
@@ -108,6 +109,38 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 		return dbgen.User{}, TokenPair{}, err
 	}
 	return user, pair, nil
+}
+
+func (s *Service) createWithDiscriminator(ctx context.Context, username, email, hash string) (dbgen.User, error) {
+	for range discriminatorRaces {
+		taken, err := s.repo.TakenDiscriminators(ctx, username)
+		if err != nil {
+			return dbgen.User{}, domain.Internal(err)
+		}
+		discriminator, ok := pickDiscriminator(taken)
+		if !ok {
+			return dbgen.User{}, domain.Conflict(
+				"that name has been taken nine thousand times over; pick another")
+		}
+
+		user, err := s.repo.CreateUser(ctx, dbgen.CreateUserParams{
+			ID:            uuid.Must(uuid.NewV7()),
+			Username:      username,
+			Email:         email,
+			PasswordHash:  hash,
+			Discriminator: discriminator,
+		})
+		if err == nil {
+			return user, nil
+		}
+		if !db.IsUniqueViolation(err) {
+			return dbgen.User{}, domain.Internal(err)
+		}
+		if db.ViolatedConstraint(err) != usernameDiscriminatorIndex {
+			return dbgen.User{}, domain.Conflict("that email already has an account")
+		}
+	}
+	return dbgen.User{}, domain.Conflict("could not find a free number for that name; try again")
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (dbgen.User, TokenPair, error) {
