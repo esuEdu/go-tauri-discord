@@ -321,10 +321,13 @@ the message rather than before it. Once sent, an image shows inline and opens
 in a new tab when clicked; anything else is a download chip with a filename and
 a size.
 
-Three gaps here, all of them things people will simply try:
+**An upload now shows itself.** The staged chips are replaced by a bar while
+the files go up, and past 100% it says "almost there" rather than sitting full:
+the bar measures bytes leaving the browser, and a picture still has re-encoding
+to do after that. So there are two waits, and only the first one has a length.
 
-- **Nothing shows an upload happening.** Sending a message with 40 MB of files
-  looks exactly like sending one without, until it finishes.
+Two gaps left here, both things people will simply try:
+
 - **No dragging a file onto the window, and no pasting a screenshot.** Only the
   attach button opens the picker.
 - **No lightbox.** An image opens as a new browser tab, which on the desktop app
@@ -381,6 +384,17 @@ send.
 **Making a channel** — a name and one of three kinds: text, voice, or a category
 to group the other two under. Needs the `ManageChannels` permission, which the
 default role does not carry, so for most members the control is simply absent.
+
+**Ordering channels** — the order is now a decision rather than an accident of
+which channel was made first, and it holds for everybody. Whoever may manage
+channels gets two arrows on hover; everyone else sees nothing and simply gets
+the order. **Moving a channel into another category is not possible**, only
+moving it within the one it is in, so the design of that is still open — it is
+the drag interaction nobody has built.
+
+Worth knowing for a design: a move is announced per channel, and a channel
+somebody cannot see is not announced to them at all, so two people can hold
+different pictures of the same list without either being wrong.
 
 **Joining a server** — by pasted code, or by opening a link.
 
@@ -452,9 +466,15 @@ available to design without new server work:
 These need server work before they can be designed as anything real:
 
 - Any notification, in-app or from the operating system
-- A settings screen of any kind, including choosing a microphone. There is now
-  one thing about yourself you can change — your picture — and no screen for it
-  to live on, so it is pinned to the chrome next to your name
+- Push-to-talk, and any global hotkey. That one is not a browser feature at all:
+  a key that works while the app is not focused needs the desktop shell
+- A settings screen of any kind. There is now one thing about yourself you can
+  change — your picture — and no screen for it to live on, so it is pinned to
+  the chrome next to your name. **Choosing a microphone and joining muted exist
+  but live beside the call**, in a panel behind an "Audio" button, for the same
+  reason: they are preferences with nowhere to live. They are kept in the
+  browser rather than on the account, so they do not follow somebody to another
+  machine, and the panel says a change applies the next time you join
 - Profiles — clicking a name does nothing
 - An emoji picker worth the name, and custom per-server emoji
 - Search, pins, threads
