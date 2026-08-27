@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
+	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
@@ -291,6 +293,35 @@ func (g *Gateway) ScreenChanged(channelID, userID uuid.UUID, streamID string, ac
 	}
 	if err := g.broker.Publish(ctx, pubsub.TopicGuild(channel.GuildID), raw); err != nil {
 		slog.ErrorContext(ctx, "publish screen state", "error", err)
+	}
+}
+
+func (g *Gateway) QualityChanged(channelID uuid.UUID, quality voice.Quality) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	channel, err := g.guilds.Channel(ctx, channelID)
+	if err != nil {
+		return
+	}
+
+	frame, err := events.NewDispatch(events.EventVoiceQuality, events.VoiceQuality{
+		GuildID:   channel.GuildID,
+		ChannelID: channelID,
+		UserID:    quality.UserID,
+		Quality:   quality.Grade,
+		LossPct:   math.Round(quality.Loss*1000) / 10,
+		RTTMillis: quality.RTT.Milliseconds(),
+	})
+	if err != nil {
+		return
+	}
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return
+	}
+	if err := g.broker.Publish(ctx, pubsub.TopicGuild(channel.GuildID), raw); err != nil {
+		slog.ErrorContext(ctx, "publish voice quality", "error", err)
 	}
 }
 

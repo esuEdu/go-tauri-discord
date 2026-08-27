@@ -27,6 +27,7 @@ func (r *recordingSignaler) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescri
 func (r *recordingSignaler) SendCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
 func (r *recordingSignaler) VoiceClosed(uuid.UUID)                            {}
 func (r *recordingSignaler) ScreenChanged(uuid.UUID, uuid.UUID, string, bool) {}
+func (r *recordingSignaler) QualityChanged(uuid.UUID, Quality)                {}
 
 func stateOf(t *testing.T, sfu *SFU, channelID, userID uuid.UUID) Participant {
 	t.Helper()

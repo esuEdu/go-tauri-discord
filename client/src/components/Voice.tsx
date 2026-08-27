@@ -200,6 +200,18 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               {(id === selfID ? deafened : deafs[id]) && (
                 <span className="muted voice-muted">can't hear</span>
               )}
+              {people.connection[id] && people.connection[id] !== "good" && (
+                <span
+                  className={`connection ${people.connection[id]}`}
+                  title={
+                    people.connection[id] === "poor"
+                      ? "Their connection is dropping audio"
+                      : "Their connection is struggling"
+                  }
+                >
+                  {people.connection[id] === "poor" ? "bad connection" : "weak connection"}
+                </span>
+              )}
               {here && id !== selfID && (
                 <div className="volumes">
                   <VolumeSlider

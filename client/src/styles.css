@@ -1252,3 +1252,19 @@ button.reply-quote {
   font-size: 7px;
 }
 
+.connection {
+  font-size: 11px;
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.connection.fair {
+  color: #f0b232;
+  background: rgba(240, 178, 50, 0.12);
+}
+
+.connection.poor {
+  color: #f2626b;
+  background: rgba(242, 98, 107, 0.12);
+}

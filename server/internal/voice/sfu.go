@@ -25,6 +25,7 @@ type Signaler interface {
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
 	VoiceClosed(userID uuid.UUID)
 	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
+	QualityChanged(channelID uuid.UUID, quality Quality)
 }
 
 type SFU struct {
@@ -72,6 +73,7 @@ type peer struct {
 	estimate         cc.BandwidthEstimator
 	muted            bool
 	deafened         bool
+	graded           string
 	ignored          map[uuid.UUID]bool
 	sizes            map[uuid.UUID]string
 	redo             bool
@@ -174,6 +176,7 @@ func New(signaler Signaler, minter *ice.Minter, network Network) (*SFU, error) {
 	)
 
 	go s.sampleBandwidth()
+	go s.sampleQuality()
 	return s, nil
 }
 

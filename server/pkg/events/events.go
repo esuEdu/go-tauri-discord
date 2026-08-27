@@ -49,6 +49,7 @@ const (
 	EventGuildRemove       EventType = "GUILD_REMOVE"
 	EventVoiceStateUpdate  EventType = "VOICE_STATE_UPDATE"
 	EventVoiceScreenUpdate EventType = "VOICE_SCREEN_UPDATE"
+	EventVoiceQuality      EventType = "VOICE_QUALITY"
 )
 
 type Frame struct {
@@ -256,6 +257,15 @@ type VoiceWatchRequest struct {
 type VoiceMuteRequest struct {
 	SelfMute bool `json:"self_mute"`
 	SelfDeaf bool `json:"self_deaf"`
+}
+
+type VoiceQuality struct {
+	GuildID   uuid.UUID `json:"guild_id"`
+	ChannelID uuid.UUID `json:"channel_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Quality   string    `json:"quality"`
+	LossPct   float64   `json:"loss_pct"`
+	RTTMillis int64     `json:"rtt_ms"`
 }
 
 type VoiceScreenRequest struct {

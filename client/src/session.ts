@@ -9,6 +9,7 @@ import type {
   PresenceUpdate,
   Ready,
   VoiceStateUpdate,
+  VoiceQuality,
 } from "./types/events.gen";
 
 export type SessionState = {
@@ -22,6 +23,7 @@ export type SessionState = {
   inVoice: Record<string, string[]>;
   mutedInVoice: Record<string, boolean>;
   deafenedInVoice: Record<string, boolean>;
+  connection: Record<string, string>;
 };
 
 export const emptySession: SessionState = {
@@ -35,6 +37,7 @@ export const emptySession: SessionState = {
   inVoice: {},
   mutedInVoice: {},
   deafenedInVoice: {},
+  connection: {},
 };
 
 class SessionStore {
@@ -50,6 +53,7 @@ class SessionStore {
   private inVoice: Record<string, string[]> = {};
   private mutedInVoice: Record<string, boolean> = {};
   private deafenedInVoice: Record<string, boolean> = {};
+  private connection: Record<string, string> = {};
   private listeners = new Set<(s: SessionState) => void>();
 
   constructor() {
@@ -77,6 +81,11 @@ class SessionStore {
     });
     gateway.on("VOICE_STATE_UPDATE", (payload) => {
       this.voiceMoved(payload as VoiceStateUpdate);
+      this.emit();
+    });
+    gateway.on("VOICE_QUALITY", (payload) => {
+      const report = payload as VoiceQuality;
+      this.connection = { ...this.connection, [report.user_id]: report.quality };
       this.emit();
     });
     gateway.on("PERMISSIONS_UPDATE", (payload) => {
@@ -114,6 +123,7 @@ class SessionStore {
     this.inVoice = {};
     this.mutedInVoice = {};
     this.deafenedInVoice = {};
+    this.connection = {};
     this.emit();
   }
 
@@ -132,6 +142,7 @@ class SessionStore {
       membersByGuild: this.membersByGuild,
       inVoice: this.inVoice,
       deafenedInVoice: this.deafenedInVoice,
+      connection: this.connection,
       mutedInVoice: this.mutedInVoice,
     };
   }
@@ -148,6 +159,7 @@ class SessionStore {
     this.inVoice = {};
     this.mutedInVoice = {};
     this.deafenedInVoice = {};
+    this.connection = {};
     for (const state of ready.voice) this.voiceMoved(state);
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
@@ -195,6 +207,10 @@ class SessionStore {
       ...this.deafenedInVoice,
       [state.user_id]: Boolean(state.channel_id) && state.self_deaf,
     };
+    if (!state.channel_id && this.connection[state.user_id]) {
+      const { [state.user_id]: _gone, ...rest } = this.connection;
+      this.connection = rest;
+    }
   }
 
   private remember(guildID: string, userID: string) {
