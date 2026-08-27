@@ -208,7 +208,7 @@ image-smoke: ## Boot the image against a throwaway Postgres and fail unless it s
 		postgres:17-alpine >/dev/null; \
 	printf "waiting for postgres"; \
 	for i in $$(seq 1 60); do \
-		docker exec vocalis-smoke-db pg_isready -U vocalis -d vocalis >/dev/null 2>&1 && break; \
+		docker exec vocalis-smoke-db pg_isready -h 127.0.0.1 -U vocalis -d vocalis >/dev/null 2>&1 && break; \
 		printf "."; sleep 1; \
 	done; echo; \
 	docker run -d --name vocalis-smoke --network vocalis-smoke -p 18080:8080 \
