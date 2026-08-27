@@ -42,7 +42,7 @@ export function MemberList({ guild, selfID }: { guild: Guild | null; selfID: str
           <Avatar name={session.nameOf(id)} imageKey={people.avatars[id]} />
           <span className={away ? "dot closed" : "dot ready"} />
           <span className="channel-name">
-            {session.nameOf(id)}
+            {session.labelOf(id)}
             {id === selfID && <span className="muted"> (you)</span>}
           </span>
         </button>
@@ -71,7 +71,7 @@ export function MemberList({ guild, selfID }: { guild: Guild | null; selfID: str
         <RemoveMember
           guild={guild}
           userID={removing.userID}
-          name={session.nameOf(removing.userID)}
+          name={session.labelOf(removing.userID)}
           ban={removing.ban}
           onClose={() => {
             setRemoving(null);

@@ -1348,3 +1348,7 @@ button.reply-quote {
   background: var(--bg-raised);
   color: #fff;
 }
+
+.tag {
+  opacity: 0.55;
+}

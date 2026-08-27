@@ -245,7 +245,10 @@ export default function App() {
           imageKey={user.avatar_key}
           onChosen={(key) => setUser({ ...user, avatar_key: key ?? undefined })}
         />
-        <span className="muted">{user.username}</span>
+        <span className="muted" title="Your name and number">
+          {user.username}
+          <span className="tag">#{user.discriminator}</span>
+        </span>
         <button className="link" onClick={() => void logout()}>
           Log out
         </button>

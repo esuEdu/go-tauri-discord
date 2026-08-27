@@ -14,6 +14,7 @@ import type {
 
 export type SessionState = {
   names: Record<string, string>;
+  tags: Record<string, string>;
   avatars: Record<string, string | null>;
   online: Record<string, boolean>;
   unread: Record<string, boolean>;
@@ -28,6 +29,7 @@ export type SessionState = {
 
 export const emptySession: SessionState = {
   names: {},
+  tags: {},
   avatars: {},
   online: {},
   unread: {},
@@ -42,6 +44,7 @@ export const emptySession: SessionState = {
 
 class SessionStore {
   private names: Record<string, string> = {};
+  private tags: Record<string, string> = {};
   private avatars: Record<string, string | null> = {};
   private online: Record<string, boolean> = {};
   private newest: Record<string, string> = {};
@@ -63,6 +66,7 @@ class SessionStore {
     gateway.on("GUILD_MEMBER_ADD", (payload) => {
       const member = payload as Member;
       this.names = { ...this.names, [member.user.id]: member.user.username };
+      this.tags = { ...this.tags, [member.user.id]: member.user.discriminator };
       this.avatars = { ...this.avatars, [member.user.id]: member.user.avatar_key ?? null };
       this.remember(member.guild_id, member.user.id);
       this.emit();
@@ -104,6 +108,25 @@ class SessionStore {
     return this.names[userID] ?? userID.slice(0, 8);
   }
 
+  labelOf(userID: string): string {
+    const name = this.names[userID];
+    if (!name) return userID.slice(0, 8);
+    const tag = this.tags[userID];
+    if (!tag || !this.shared(name)) return name;
+    return `${name}#${tag}`;
+  }
+
+  private shared(name: string): boolean {
+    const wanted = name.toLowerCase();
+    let seen = 0;
+    for (const known of Object.values(this.names)) {
+      if (known.toLowerCase() !== wanted) continue;
+      seen += 1;
+      if (seen > 1) return true;
+    }
+    return false;
+  }
+
   reading(channelID: string | null) {
     this.open = channelID;
     if (channelID) this.catchUp(channelID);
@@ -112,6 +135,7 @@ class SessionStore {
 
   forget() {
     this.names = {};
+    this.tags = {};
     this.avatars = {};
     this.online = {};
     this.newest = {};
@@ -134,6 +158,7 @@ class SessionStore {
     }
     return {
       names: this.names,
+      tags: this.tags,
       avatars: this.avatars,
       online: this.online,
       unread,
@@ -154,6 +179,7 @@ class SessionStore {
 
   private absorb(ready: Ready) {
     this.names = { [ready.user.id]: ready.user.username };
+    this.tags = { [ready.user.id]: ready.user.discriminator };
     this.avatars = { [ready.user.id]: ready.user.avatar_key ?? null };
     this.membersByGuild = {};
     this.inVoice = {};
@@ -163,6 +189,7 @@ class SessionStore {
     for (const state of ready.voice) this.voiceMoved(state);
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
+      this.tags[member.user.id] = member.user.discriminator;
       this.avatars[member.user.id] = member.user.avatar_key ?? null;
       this.remember(member.guild_id, member.user.id);
     }
@@ -226,15 +253,18 @@ class SessionStore {
     if (!members) return;
 
     const names = { ...this.names };
+    const tags = { ...this.tags };
     const avatars = { ...this.avatars };
     const online = { ...this.online };
     for (const member of members) {
       names[member.user_id] = member.username;
+      tags[member.user_id] = member.discriminator;
       avatars[member.user_id] = member.avatar_key ?? null;
       online[member.user_id] = member.online;
       this.remember(guildID, member.user_id);
     }
     this.names = names;
+    this.tags = tags;
     this.avatars = avatars;
     this.online = online;
     this.emit();

@@ -1,4 +1,5 @@
 import { Avatar } from "./Avatar";
+import { session } from "../session";
 import type { ReplyPreview } from "../types/events.gen";
 
 export function ReplyQuote({
@@ -27,7 +28,7 @@ export function ReplyQuote({
             imageKey={reply.author.avatar_key}
             className="avatar reply"
           />
-          <span className="reply-author">{reply.author.username}</span>
+          <span className="reply-author">{session.labelOf(reply.author.id)}</span>
         </>
       )}
       <span className="reply-content muted">
