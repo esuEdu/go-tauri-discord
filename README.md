@@ -195,9 +195,14 @@ request is irreversible.
 keep its `ON DELETE RESTRICT`: nothing is deleted, so nothing has to be
 weakened. Erasing the content instead would take half of every conversation
 away from the people still in the channel, who did not ask to be forgotten.
-That row is real but unusable — its password hash is empty, so no password can
-ever match it, and it holds the name `Deleted User` against the unique index so
-nobody can register it and impersonate the absence.
+That row is real but unusable: its password hash is empty, so no password can
+ever match it.
+
+Nobody can register as it, which used to be a free consequence of usernames
+being unique. Shared usernames took that guarantee away, so registration now
+refuses the name `Deleted User` outright — the one name in the system that
+cannot be shared, because it is the one name that would be an impersonation.
+`0000` is reserved for the same reason and never allocated to a person.
 
 A guild owned by the account is handed to its highest-ranked remaining member,
 earliest joined breaking the tie. If nobody is left it is deleted rather than
@@ -1098,6 +1103,7 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [x] Deafening, enforced by the server, and connection quality per person
 - [x] Channel order that somebody chose, announced and kept
 - [x] Upload progress, microphone choice, and joining muted
+- [x] Four digits after a name, so two people can share one
 - [x] Who is in a voice channel before you join it, seeded by READY
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
