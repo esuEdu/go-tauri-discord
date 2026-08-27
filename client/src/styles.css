@@ -1268,3 +1268,19 @@ button.reply-quote {
   color: #f2626b;
   background: rgba(242, 98, 107, 0.12);
 }
+
+.upload-bar {
+  flex: 1;
+  min-width: 60px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.upload-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+  transition: width 120ms linear;
+}

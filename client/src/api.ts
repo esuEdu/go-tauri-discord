@@ -1,6 +1,8 @@
 import { apiBase, serverURL } from "./server";
 import type { Channel, Guild, Message, Overwrite, Role, User } from "./types/events.gen";
 
+export type Progress = (fraction: number) => void;
+
 export interface TokenPair {
   access_token: string;
   refresh_token: string;
@@ -253,32 +255,63 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/roles/${roleID}`);
   }
 
-  private async upload<T>(path: string, file: File): Promise<T> {
-    const headers: Record<string, string> = { "Content-Type": file.type };
-    if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
+  private send<T>(
+    method: string,
+    path: string,
+    body: XMLHttpRequestBodyInit,
+    contentType: string | null,
+    onProgress?: Progress,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open(method, apiBase() + path);
+      if (contentType) request.setRequestHeader("Content-Type", contentType);
+      if (this.accessToken) {
+        request.setRequestHeader("Authorization", `Bearer ${this.accessToken}`);
+      }
 
-    const res = await fetch(apiBase() + path, { method: "PUT", headers, body: file });
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const parsed = await res.json();
-        if (parsed?.error) message = parsed.error;
-      } catch {}
-      throw new ApiError(res.status, message);
-    }
-    return (await res.json()) as T;
+      if (onProgress) {
+        onProgress(0);
+        request.upload.onprogress = (event) => {
+          if (!event.lengthComputable || event.total === 0) return;
+          onProgress(Math.min(1, event.loaded / event.total));
+        };
+      }
+
+      request.onload = () => {
+        let parsed: unknown = undefined;
+        try {
+          parsed = JSON.parse(request.responseText);
+        } catch {}
+
+        if (request.status < 200 || request.status >= 300) {
+          const said = (parsed as { error?: string } | undefined)?.error;
+          reject(new ApiError(request.status, said ?? request.statusText));
+          return;
+        }
+        resolve(parsed as T);
+      };
+      request.onerror = () => reject(new ApiError(0, "could not reach the server"));
+      request.onabort = () => reject(new ApiError(0, "the upload was cancelled"));
+
+      request.send(body);
+    });
   }
 
-  setAvatar(file: File): Promise<{ avatar_key: string }> {
-    return this.upload<{ avatar_key: string }>("/api/v1/users/@me/avatar", file);
+  private upload<T>(path: string, file: File, onProgress?: Progress): Promise<T> {
+    return this.send<T>("PUT", path, file, file.type, onProgress);
+  }
+
+  setAvatar(file: File, onProgress?: Progress): Promise<{ avatar_key: string }> {
+    return this.upload<{ avatar_key: string }>("/api/v1/users/@me/avatar", file, onProgress);
   }
 
   clearAvatar(): Promise<void> {
     return this.request<void>("DELETE", "/api/v1/users/@me/avatar");
   }
 
-  setGuildIcon(guildID: string, file: File): Promise<{ icon_key: string }> {
-    return this.upload<{ icon_key: string }>(`/api/v1/guilds/${guildID}/icon`, file);
+  setGuildIcon(guildID: string, file: File, onProgress?: Progress): Promise<{ icon_key: string }> {
+    return this.upload<{ icon_key: string }>(`/api/v1/guilds/${guildID}/icon`, file, onProgress);
   }
 
   clearGuildIcon(guildID: string): Promise<void> {
@@ -354,34 +387,25 @@ export class Api {
     );
   }
 
-  async sendMessageWithFiles(
+  sendMessageWithFiles(
     channelID: string,
     content: string,
     files: File[],
     replyTo?: string,
+    onProgress?: Progress,
   ): Promise<Message> {
     const form = new FormData();
     if (content) form.append("content", content);
     if (replyTo) form.append("reply_to", replyTo);
     for (const file of files) form.append("files", file, file.name);
 
-    const headers: Record<string, string> = {};
-    if (this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
-
-    const res = await fetch(`${apiBase()}/api/v1/channels/${channelID}/messages`, {
-      method: "POST",
-      headers,
-      body: form,
-    });
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const parsed = await res.json();
-        if (parsed?.error) message = parsed.error;
-      } catch {}
-      throw new ApiError(res.status, message);
-    }
-    return (await res.json()) as Message;
+    return this.send<Message>(
+      "POST",
+      `/api/v1/channels/${channelID}/messages`,
+      form,
+      null,
+      onProgress,
+    );
   }
 
   sendMessage(channelID: string, content: string, replyTo?: string): Promise<Message> {

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, ApiError } from "../api";
+import { api, ApiError, type Progress } from "../api";
 import { Avatar } from "./Avatar";
 
 export function PickImage({
@@ -15,20 +15,22 @@ export function PickImage({
   imageKey: string | null | undefined;
   label: string;
   onChosen: (key: string | null) => void;
-  upload: (file: File) => Promise<string>;
+  upload: (file: File, onProgress: Progress) => Promise<string>;
   remove: () => Promise<void>;
   className?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
 
   async function chose(file: File | undefined) {
     if (!file) return;
     setBusy(true);
+    setSent(0);
     setProblem(null);
     try {
-      onChosen(await upload(file));
+      onChosen(await upload(file, setSent));
     } catch (err) {
       setProblem(err instanceof ApiError ? err.message : "could not upload that image");
     } finally {
@@ -56,7 +58,11 @@ export function PickImage({
 
       <div className="pick-image-actions">
         <button className="link" disabled={busy} onClick={() => input.current?.click()}>
-          {imageKey ? `Change ${label}` : `Add ${label}`}
+          {busy
+            ? `Sending… ${Math.round(sent * 100)}%`
+            : imageKey
+              ? `Change ${label}`
+              : `Add ${label}`}
         </button>
         {imageKey && (
           <button className="link danger" disabled={busy} onClick={() => void clear()}>
@@ -94,7 +100,7 @@ export function AvatarPicker({
       label="picture"
       className="avatar footer"
       onChosen={onChosen}
-      upload={async (file) => (await api.setAvatar(file)).avatar_key}
+      upload={async (file, onProgress) => (await api.setAvatar(file, onProgress)).avatar_key}
       remove={() => api.clearAvatar()}
     />
   );
