@@ -281,18 +281,31 @@ export function Sidebar({
               <div className="category">{group.category.name.toUpperCase()}</div>
             )}
             {group.channels.map((c) => (
-              <button
-                key={c.id}
-                className={c.id === activeChannel?.id ? "channel active" : "channel"}
-                onClick={() => onSelectChannel(c)}
-              >
-                <span className="channel-name">
-                  {c.kind === "voice" ? "🔊" : "#"} {c.name}
-                </span>
-                {unread[c.id] && c.id !== activeChannel?.id && (
-                  <span className="unread" aria-label="unread messages" />
+              <div key={c.id} className="channel-row">
+                <button
+                  className={c.id === activeChannel?.id ? "channel active" : "channel"}
+                  onClick={() => onSelectChannel(c)}
+                >
+                  <span className="channel-name">
+                    {c.kind === "voice" ? "🔊" : "#"} {c.name}
+                  </span>
+                  {unread[c.id] && c.id !== activeChannel?.id && (
+                    <span className="unread" aria-label="unread messages" />
+                  )}
+                </button>
+                {c.kind === "voice" && (people.inVoice[c.id] ?? []).length > 0 && (
+                  <div className="channel-callers">
+                    {(people.inVoice[c.id] ?? []).map((id) => (
+                      <div key={id} className="channel-caller">
+                        <Avatar name={people.names[id] ?? id.slice(0, 8)} imageKey={people.avatars[id]} className="avatar tiny" />
+                        <span className="muted">{people.names[id] ?? id.slice(0, 8)}</span>
+                        {people.mutedInVoice[id] && <span className="muted">muted</span>}
+                        {people.deafenedInVoice[id] && <span className="muted">can't hear</span>}
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         ))}

@@ -1218,3 +1218,53 @@ button.reply-quote {
   flex: 0 0 22px;
   font-size: 9px;
 }
+
+.channel-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-callers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 4px 22px;
+}
+
+.channel-caller {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.channel-caller > .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar.tiny {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  font-size: 7px;
+}
+
+.connection {
+  font-size: 11px;
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.connection.fair {
+  color: #f0b232;
+  background: rgba(240, 178, 50, 0.12);
+}
+
+.connection.poor {
+  color: #f2626b;
+  background: rgba(242, 98, 107, 0.12);
+}

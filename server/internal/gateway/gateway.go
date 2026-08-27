@@ -10,9 +10,12 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
+	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
+	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
 	"github.com/esuEdu/go-tauri-discord/internal/ice"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/pubsub"
+	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 
 	"sync"
@@ -49,9 +52,9 @@ type VoiceEngine interface {
 	Resync(userID uuid.UUID) error
 	SetScreenActive(userID uuid.UUID, active bool) error
 	ChannelOf(userID uuid.UUID) (uuid.UUID, bool)
-	Participants(channelID uuid.UUID) []uuid.UUID
-	Muted(channelID uuid.UUID) map[uuid.UUID]bool
+	States(channelID uuid.UUID) []voice.Participant
 	SetMuted(userID uuid.UUID, muted bool) error
+	SetDeafened(userID uuid.UUID, deafened bool) error
 	SetWatching(viewerID, sharerID uuid.UUID, watching bool, size string) error
 	PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) error
 	PublishCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error
@@ -336,7 +339,8 @@ func scopedChannel(raw []byte) (uuid.UUID, bool) {
 	switch frame.T {
 	case events.EventMessageCreate, events.EventMessageUpdate, events.EventMessageDelete,
 		events.EventReactionAdd, events.EventReactionRemove,
-		events.EventTypingStart, events.EventVoiceStateUpdate, events.EventVoiceScreenUpdate:
+		events.EventTypingStart, events.EventVoiceStateUpdate, events.EventVoiceScreenUpdate,
+		events.EventVoiceQuality:
 		if frame.D.ChannelID == nil {
 			return uuid.Nil, false
 		}
@@ -391,7 +395,45 @@ func (g *Gateway) sendAccess(sessions []*session, guildID uuid.UUID) {
 			continue
 		}
 		s.enqueue(raw)
+
+		for _, state := range g.voiceStatesIn(guildID, access.Visible) {
+			if state.UserID == s.userID {
+				continue
+			}
+			frame, err := events.NewDispatch(events.EventVoiceStateUpdate, state)
+			if err != nil {
+				continue
+			}
+			raw, err := json.Marshal(frame)
+			if err != nil {
+				continue
+			}
+			s.enqueue(raw)
+		}
 	}
+}
+
+func (g *Gateway) voiceStatesIn(guildID uuid.UUID, visible []dbgen.Channel) []events.VoiceStateUpdate {
+	if g.voice == nil {
+		return nil
+	}
+	out := make([]events.VoiceStateUpdate, 0)
+	for _, ch := range visible {
+		if ch.Kind != domain.ChannelVoice {
+			continue
+		}
+		channelID := ch.ID
+		for _, p := range g.voice.States(channelID) {
+			out = append(out, events.VoiceStateUpdate{
+				GuildID:   guildID,
+				ChannelID: &channelID,
+				UserID:    p.UserID,
+				SelfMute:  p.Muted,
+				SelfDeaf:  p.Deafened,
+			})
+		}
+	}
+	return out
 }
 
 func (g *Gateway) resumableSession(sessionID string, userID uuid.UUID) (*session, bool) {

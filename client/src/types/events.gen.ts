@@ -40,6 +40,7 @@ export const EventGuildMemberRemove: EventType = "GUILD_MEMBER_REMOVE";
 export const EventGuildRemove: EventType = "GUILD_REMOVE";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
 export const EventVoiceScreenUpdate: EventType = "VOICE_SCREEN_UPDATE";
+export const EventVoiceQuality: EventType = "VOICE_QUALITY";
 export interface Frame {
   op: Opcode;
   t?: EventType;
@@ -156,6 +157,7 @@ export interface Ready {
   allowed: GuildPermissions[];
   online: string[];
   ice_servers: ICEServer[];
+  voice: VoiceStateUpdate[];
 }
 export interface ICEServer {
   urls: string[];
@@ -213,6 +215,15 @@ export interface VoiceWatchRequest {
 }
 export interface VoiceMuteRequest {
   self_mute: boolean;
+  self_deaf: boolean;
+}
+export interface VoiceQuality {
+  guild_id: string;
+  channel_id: string;
+  user_id: string;
+  quality: string;
+  loss_pct: number /* float64 */;
+  rtt_ms: number /* int64 */;
 }
 export interface VoiceScreenRequest {
   active: boolean;

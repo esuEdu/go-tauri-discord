@@ -167,25 +167,51 @@ quoted reply and the server list all carry one; the people in a call are names
 alone, though the data is there and nothing prevents it. Anyone designing a call
 around faces is designing something the app can already supply.
 
-### What you cannot see about them, and why it matters
+### Deafening, and how it differs from muting
 
-These are gaps, not oversights to design around silently. Every one of them is
-something people will expect:
+**Whether they can hear you** is now a state of its own. Muting is "I am not
+talking"; deafening is "I am not listening", and the two are not symmetrical:
+deafening takes the microphone down with it, because somebody who cannot hear
+the room should not be broadcasting into it. Undoing it comes back to a live
+microphone, so the pair is one control, not two independent ones.
 
-- **Whether they can hear you** (deafened).
-- **Their connection quality.**
+The server enforces it rather than trusting the client to stay quiet: a
+deafened member is sent no voice and no screen sound at all. **The picture is
+deliberately still sent** — deafening is about hearing, and somebody who cannot
+hear can still watch a screen being shared. So a deafened viewer is a real
+state to design: silent, still watching.
 
-Neither is as immediately confusing as talking and muting were, and both need
-server work before they can be drawn.
+### Their connection quality
+
+Three grades, and **the good one is deliberately silent**. A green light beside
+every name is noise; the interesting cases are the two that are not fine:
+
+| Grade | What it means | What people would notice |
+| --- | --- | --- |
+| good | Under 2% loss and under 200ms round trip | Nothing, and it says nothing |
+| weak | 2–8% loss, or 200–400ms | Occasional clipped words |
+| bad | Over 8% loss, or over 400ms | Words breaking up, people talking over each other |
+
+It arrives about every five seconds and only when it changes, so it is a state
+that settles rather than a number that flickers. It is a fact about **their**
+link, the same for everybody in the call, so it belongs next to their name and
+not next to yours.
+
+Still missing, and still needing server work: nothing tells you your **own**
+connection is the bad one. Everybody sees everybody else's grade.
 
 ### Who is in a voice channel before you join
 
-**You mostly cannot see this.** If someone joins while you are online and
-watching, you learn about it. If they were already in the channel before you
-opened the app, they are invisible to you until you join yourself.
+**You can see this now.** A call in progress is visible from the channel list
+without joining it: who is in it, who is muted, and who cannot hear. It survives
+opening the app mid-call and joining a server mid-call, which is what it did not
+do before.
 
-So a design that shows the members under each voice channel — the way people
-expect — needs server work to be reliable. Say so early if you want it.
+Two things follow for a design. A voice channel is a **container with people in
+it**, not a link — it can be one line tall or five depending on who is in it,
+and it changes while somebody is looking at it. And a voice channel nobody can
+see reports nothing, so an empty-looking channel list is not proof the server is
+quiet.
 
 ### Call states
 
@@ -418,11 +444,6 @@ available to design without new server work:
 
 - **Overwrites aimed at one person** rather than a role. The server accepts
   either; the settings dialog only offers roles.
-- **Who is in a voice channel, before you join it.** The server names people in a
-  call only once you are in it, and announces arrivals only while you are
-  watching. So the app knows who is in a call it has joined, and nothing about
-  one it has not. Showing faces under every voice channel — what people expect —
-  needs server work first.
 
 ---
 

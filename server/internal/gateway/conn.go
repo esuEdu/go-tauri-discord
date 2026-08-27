@@ -145,6 +145,7 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		Channels:  make([]events.Channel, 0),
 		Members:   make([]events.Member, 0),
 		Allowed:   make([]events.GuildPermissions, 0, len(guilds)),
+		Voice:     make([]events.VoiceStateUpdate, 0),
 	}
 	for _, gl := range guilds {
 		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
@@ -157,6 +158,7 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		}
 		sess.hideInGuild(gl.ID, access.Hidden)
 		ready.Allowed = append(ready.Allowed, allowedFrom(gl.ID, access))
+		ready.Voice = append(ready.Voice, g.voiceStatesIn(gl.ID, access.Visible)...)
 
 		members, err := g.guilds.Members(ctx, sess.userID, gl.ID)
 		if err != nil {

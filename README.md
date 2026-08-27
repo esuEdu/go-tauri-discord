@@ -650,6 +650,44 @@ The server is always the offerer, which removes SDP glare entirely: clients
 only ever answer. Joining requires the `Connect` permission on the channel.
 `VOICE_DISABLED=true` turns voice off.
 
+#### Deafening is enforced, not requested
+
+Muting is a client-side courtesy: the microphone track is disabled and everyone
+is told. Deafening is not. The SFU withholds every voice and screen-sound track
+from a deafened peer and renegotiates, so it costs them nothing to receive
+rather than costing them everything and being thrown away on arrival.
+
+It leaves screen **video** alone on purpose — deafening is about hearing, and
+somebody who cannot hear can still watch — and it takes the microphone down
+with it, because somebody who cannot hear the room should not be broadcasting
+into it.
+
+#### Who is in a call, before you are in it
+
+`READY` carries a voice state for every voice channel the member may see, and
+the same list is sent when somebody joins a guild while already connected. The
+SFU always knew who was in a room; until this existed, a client could only find
+out by joining, so a call in progress was invisible to anyone who opened the app
+after it started.
+
+A member who cannot see a voice channel is told nothing about it. That is not
+incidental: without it a hidden channel becomes a way to watch a private call
+from outside.
+
+#### Connection quality
+
+Every five seconds the SFU grades each peer from what the receiver reports back
+— fraction lost and round trip time — and the gateway broadcasts the grade only
+when it changes. Three values: good under 2% loss and 200ms, weak to 8% or
+400ms, bad beyond that.
+
+Grades rather than numbers, because nobody can act on 3.4% loss and everybody
+can act on "their connection is dropping audio". A broadcast is safe here
+because quality is a property of that person's link and is the same for every
+listener; per-viewer state, like a reaction summary, could never ride a fanout
+event this way. `VOICE_QUALITY` is registered in `scopedChannel`, without which
+it would tell a whole guild who is struggling in a call they cannot see.
+
 #### Getting out of a strict network
 
 STUN only tells a client what its own address looks like from outside. Where
@@ -1057,6 +1095,8 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [x] Screen sharing with window selection and picked quality presets
 - [x] Screen share carries its own sound, on a transceiver of its own
 - [x] A volume slider per person, kept by the listener and able to exceed 100%
+- [x] Deafening, enforced by the server, and connection quality per person
+- [x] Who is in a voice channel before you join it, seeded by READY
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
 - [ ] Screen capture proven on the Windows and Linux desktop builds
