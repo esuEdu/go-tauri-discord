@@ -203,6 +203,7 @@ class VoiceClient {
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private dropped = new Set<string>();
+  private deafened = false;
   private sizes: Record<string, ScreenSize> = {};
   private screenListeners = new Set<(s: ScreenState) => void>();
 
@@ -399,8 +400,35 @@ class VoiceClient {
 
     track.enabled = !track.enabled;
     const muted = !track.enabled;
-    gateway.sendRaw({ op: OpVoiceMute, d: { self_mute: muted } satisfies VoiceMuteRequest });
+    if (!muted) this.deafened = false;
+    this.announceListening(muted);
     return muted;
+  }
+
+  get deaf(): boolean {
+    return this.deafened;
+  }
+
+  toggleDeafen(): boolean {
+    this.deafened = !this.deafened;
+
+    const track = this.microphone?.getAudioTracks()[0];
+    if (track) track.enabled = !this.deafened;
+
+    for (const output of this.outputs.values()) this.applySilence(output);
+    this.announceListening(this.deafened || this.muted);
+    return this.deafened;
+  }
+
+  private announceListening(muted: boolean) {
+    gateway.sendRaw({
+      op: OpVoiceMute,
+      d: { self_mute: muted, self_deaf: this.deafened } satisfies VoiceMuteRequest,
+    });
+  }
+
+  private applySilence(output: Output) {
+    output.audio.muted = this.deafened;
   }
 
   async join(channelID: string, selfID: string) {
@@ -610,6 +638,7 @@ class VoiceClient {
     const audio = new Audio();
     audio.srcObject = stream;
     audio.autoplay = true;
+    audio.muted = this.deafened;
 
     const owner = parseTrackName(stream.id);
     const output: Output = {
@@ -661,6 +690,7 @@ class VoiceClient {
     if (!this.pc && !this.channelID) return;
 
     gateway.sendRaw({ op: OpVoiceState, d: { channel_id: null, self_mute: false, self_deaf: false } });
+    this.deafened = false;
 
     for (const off of this.unsubscribe) off();
     this.unsubscribe = [];

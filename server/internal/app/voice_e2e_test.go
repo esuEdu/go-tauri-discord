@@ -805,3 +805,112 @@ func (c *voiceClient) publishScreen(withSound bool) {
 		go c.writeScreenSound(sound, stop)
 	}
 }
+
+func (c *voiceClient) setDeafened(deafened bool) {
+	c.sock.write(events.Frame{
+		Op: events.OpVoiceMute,
+		D:  mustJSON(c.t, events.VoiceMuteRequest{SelfMute: deafened, SelfDeaf: deafened}),
+	})
+}
+
+func voiceStateFor(ready events.Ready, userID uuid.UUID) (events.VoiceStateUpdate, bool) {
+	for _, state := range ready.Voice {
+		if state.UserID == userID {
+			return state, true
+		}
+	}
+	return events.VoiceStateUpdate{}, false
+}
+
+func TestReadyCarriesWhoIsAlreadyInAVoiceChannel(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Already Talking")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+	speaker.setMuted(true)
+	time.Sleep(500 * time.Millisecond)
+
+	latecomer := friend.dial()
+	ready := latecomer.identify(friend.token)
+
+	state, found := voiceStateFor(ready, speakerID)
+	if !found {
+		t.Fatal("READY said nothing about a member who was already in a voice channel, so somebody " +
+			"opening the app cannot see a call in progress until they join it themselves")
+	}
+	if state.ChannelID == nil || *state.ChannelID != voiceChannel {
+		t.Errorf("READY put the speaker in channel %v, want %s", state.ChannelID, voiceChannel)
+	}
+	if !state.SelfMute {
+		t.Error("READY reported a muted member as live, so the flag only becomes true the next " +
+			"time they happen to toggle it")
+	}
+}
+
+func TestReadySaysNothingAboutAVoiceChannelYouCannotSee(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Private Call")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+	member := owner.inviteMember(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	owner.denyView(voiceChannel, everyone.ID, "role")
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+	time.Sleep(500 * time.Millisecond)
+
+	sock := member.dial()
+	ready := sock.identify(member.token)
+
+	if _, found := voiceStateFor(ready, speakerID); found {
+		t.Fatal("READY named somebody in a voice channel this member cannot see, which is a way to " +
+			"watch a private call from outside it")
+	}
+}
+
+func TestDeafeningIsAnnouncedToTheChannel(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Deafening")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := friend.dial()
+	watcher.identify(friend.token)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.SelfDeaf {
+		t.Fatal("a member arrived already deafened")
+	}
+
+	speaker.setDeafened(true)
+
+	state := awaitVoiceState(t, watcher, speakerID)
+	if !state.SelfDeaf {
+		t.Fatal("deafening reached nobody, so somebody who cannot hear a word looks like somebody " +
+			"who is listening")
+	}
+	if !state.SelfMute {
+		t.Error("deafening did not carry the mute with it, so a deafened member still appears live")
+	}
+}

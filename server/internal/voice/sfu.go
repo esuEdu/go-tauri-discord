@@ -71,6 +71,7 @@ type peer struct {
 	screenAsk        func()
 	estimate         cc.BandwidthEstimator
 	muted            bool
+	deafened         bool
 	ignored          map[uuid.UUID]bool
 	sizes            map[uuid.UUID]string
 	redo             bool
@@ -505,7 +506,13 @@ func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 
 func (p *peer) wants(r *room, trackID string) bool {
 	source, owner, ok := ParseTrackName(trackID)
-	if !ok || source != SourceScreen {
+	if !ok {
+		return true
+	}
+	if p.deafened && source != SourceScreen {
+		return false
+	}
+	if source != SourceScreen {
 		return true
 	}
 	if p.ignored[owner] {
@@ -624,7 +631,13 @@ func (s *SFU) Participants(channelID uuid.UUID) []uuid.UUID {
 	return out
 }
 
-func (s *SFU) Muted(channelID uuid.UUID) map[uuid.UUID]bool {
+type Participant struct {
+	UserID   uuid.UUID
+	Muted    bool
+	Deafened bool
+}
+
+func (s *SFU) States(channelID uuid.UUID) []Participant {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -632,11 +645,9 @@ func (s *SFU) Muted(channelID uuid.UUID) map[uuid.UUID]bool {
 	if r == nil {
 		return nil
 	}
-	out := make(map[uuid.UUID]bool, len(r.peers))
+	out := make([]Participant, 0, len(r.peers))
 	for id, p := range r.peers {
-		if p.muted {
-			out[id] = true
-		}
+		out = append(out, Participant{UserID: id, Muted: p.muted, Deafened: p.deafened})
 	}
 	return out
 }
@@ -659,6 +670,31 @@ func (s *SFU) SetMuted(userID uuid.UUID, muted bool) error {
 	}
 
 	p.muted = muted
+	return nil
+}
+
+func (s *SFU) SetDeafened(userID uuid.UUID, deafened bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	channelID, ok := s.homes[userID]
+	if !ok {
+		return ErrNotConnected
+	}
+	r := s.rooms[channelID]
+	if r == nil {
+		return ErrNotConnected
+	}
+	p := r.peers[userID]
+	if p == nil {
+		return ErrNotConnected
+	}
+	if p.deafened == deafened {
+		return nil
+	}
+
+	p.deafened = deafened
+	s.signalLocked(r)
 	return nil
 }
 

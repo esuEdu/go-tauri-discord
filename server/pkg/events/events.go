@@ -185,6 +185,7 @@ type Ready struct {
 	Allowed    []GuildPermissions `json:"allowed"`
 	Online     []uuid.UUID        `json:"online"`
 	ICEServers []ICEServer        `json:"ice_servers"`
+	Voice      []VoiceStateUpdate `json:"voice"`
 }
 
 type ICEServer struct {
@@ -254,6 +255,7 @@ type VoiceWatchRequest struct {
 
 type VoiceMuteRequest struct {
 	SelfMute bool `json:"self_mute"`
+	SelfDeaf bool `json:"self_deaf"`
 }
 
 type VoiceScreenRequest struct {

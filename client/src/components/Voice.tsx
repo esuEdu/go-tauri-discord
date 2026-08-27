@@ -92,6 +92,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [activeChannel, setActiveChannel] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [deafened, setDeafened] = useState(false);
   const [screens, setScreens] = useState<ScreenState>(emptyScreens);
   const [volumes, setVolumes] = useState<Volumes>(noVolumes);
   const [people, setPeople] = useState<SessionState>(emptySession);
@@ -104,6 +105,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
     setStatus(s);
     setActiveChannel(id);
     setMuted(voice.muted);
+    setDeafened(voice.deaf);
   }), []);
 
   useEffect(() => voice.onScreenChange(setScreens), []);
@@ -116,6 +118,7 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
   const here = activeChannel === channel.id;
   const members = people.inVoice[channel.id] ?? [];
   const mutes = people.mutedInVoice;
+  const deafs = people.deafenedInVoice;
   const mayShare = allows(people.channelAllows[channel.id], STREAM);
 
   const share = async () => {
@@ -194,6 +197,9 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               {(id === selfID ? muted : mutes[id]) && (
                 <span className="muted voice-muted">muted</span>
               )}
+              {(id === selfID ? deafened : deafs[id]) && (
+                <span className="muted voice-muted">can't hear</span>
+              )}
               {here && id !== selfID && (
                 <div className="volumes">
                   <VolumeSlider
@@ -221,8 +227,11 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
         <div className="voice-controls">
           {here ? (
             <>
-              <button onClick={() => setMuted(voice.toggleMute())}>
+              <button onClick={() => { setMuted(voice.toggleMute()); setDeafened(voice.deaf); }}>
                 {muted ? "Unmute" : "Mute"}
+              </button>
+              <button onClick={() => { setDeafened(voice.toggleDeafen()); setMuted(voice.muted); }}>
+                {deafened ? "Undeafen" : "Deafen"}
               </button>
               {screens.sharing ? (
                 <button onClick={() => void voice.stopScreenShare()}>

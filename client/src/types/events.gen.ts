@@ -156,6 +156,7 @@ export interface Ready {
   allowed: GuildPermissions[];
   online: string[];
   ice_servers: ICEServer[];
+  voice: VoiceStateUpdate[];
 }
 export interface ICEServer {
   urls: string[];
@@ -213,6 +214,7 @@ export interface VoiceWatchRequest {
 }
 export interface VoiceMuteRequest {
   self_mute: boolean;
+  self_deaf: boolean;
 }
 export interface VoiceScreenRequest {
   active: boolean;

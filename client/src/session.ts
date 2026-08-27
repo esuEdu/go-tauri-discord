@@ -21,6 +21,7 @@ export type SessionState = {
   membersByGuild: Record<string, string[]>;
   inVoice: Record<string, string[]>;
   mutedInVoice: Record<string, boolean>;
+  deafenedInVoice: Record<string, boolean>;
 };
 
 export const emptySession: SessionState = {
@@ -33,6 +34,7 @@ export const emptySession: SessionState = {
   membersByGuild: {},
   inVoice: {},
   mutedInVoice: {},
+  deafenedInVoice: {},
 };
 
 class SessionStore {
@@ -47,6 +49,7 @@ class SessionStore {
   private membersByGuild: Record<string, string[]> = {};
   private inVoice: Record<string, string[]> = {};
   private mutedInVoice: Record<string, boolean> = {};
+  private deafenedInVoice: Record<string, boolean> = {};
   private listeners = new Set<(s: SessionState) => void>();
 
   constructor() {
@@ -110,6 +113,7 @@ class SessionStore {
     this.membersByGuild = {};
     this.inVoice = {};
     this.mutedInVoice = {};
+    this.deafenedInVoice = {};
     this.emit();
   }
 
@@ -127,6 +131,7 @@ class SessionStore {
       channelAllows: this.channelAllows,
       membersByGuild: this.membersByGuild,
       inVoice: this.inVoice,
+      deafenedInVoice: this.deafenedInVoice,
       mutedInVoice: this.mutedInVoice,
     };
   }
@@ -142,6 +147,8 @@ class SessionStore {
     this.membersByGuild = {};
     this.inVoice = {};
     this.mutedInVoice = {};
+    this.deafenedInVoice = {};
+    for (const state of ready.voice) this.voiceMoved(state);
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
       this.avatars[member.user.id] = member.user.avatar_key ?? null;
@@ -183,6 +190,10 @@ class SessionStore {
     this.mutedInVoice = {
       ...this.mutedInVoice,
       [state.user_id]: Boolean(state.channel_id) && state.self_mute,
+    };
+    this.deafenedInVoice = {
+      ...this.deafenedInVoice,
+      [state.user_id]: Boolean(state.channel_id) && state.self_deaf,
     };
   }
 
