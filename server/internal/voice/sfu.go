@@ -232,12 +232,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		s.signaler.SendCandidate(userID, c.ToJSON())
 	})
 
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		switch state {
-		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-			s.leave(userID, p)
-		}
-	})
+	watchConnection(pc, userID, "microphone", func() { s.leave(userID, p) })
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		s.forward(r, p, remote, SourceMicrophone)
@@ -262,6 +257,9 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 		slog.Error("voice: create local track", "error", err)
 		return
 	}
+
+	slog.Info("voice: media arriving at the server",
+		"user_id", p.userID, "source", source, "codec", remote.Codec().MimeType)
 
 	s.mu.Lock()
 	r.tracks[local.ID()] = local

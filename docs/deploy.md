@@ -166,6 +166,20 @@ fails, the callers are behind symmetric NATs that need a TURN relay — Vocalis
 does not ship one, deliberately; point `ICE_SERVERS` and `TURN_SECRET` at a
 coturn started with `use-auth-secret`.
 
+**One person is silent and everybody else is fine.** The server log is the
+first place to look, and it now answers this directly. For that person's user
+id you get one of three pictures:
+
+| What the log says | What it means |
+|---|---|
+| `voice: no path for media` | ICE never connected. Their network cannot reach this host and this host cannot reach them. Only a TURN relay fixes it. |
+| `media path established` and nothing else | They connected but are sending nothing — microphone permission, or a muted device. |
+| `media path established` then `media arriving at the server` | The server has their audio, so anything still wrong is downstream of here. |
+
+The `ours=` field on `media path established` is worth reading: `host` on a
+private address means media never left the LAN, `srflx` means it is traversing
+a NAT, and `relay` means TURN is carrying it.
+
 **Behind Cloudflare's orange cloud.** The proxy passes HTTPS and websockets and
 does not pass WebRTC's UDP at all, so text works and voice never will. Use a
 DNS-only (grey cloud) record, or accept a text-only instance.
@@ -198,10 +212,22 @@ Stated plainly, because finding out later is worse:
 ## Why not just the tunnel
 
 `make share` puts a running instance behind a Cloudflare quick tunnel in one
-command, and it is genuinely fine for an evening. Only the signalling goes
-through the tunnel; media does not, and reaches the SFU on the candidates STUN
-discovered for it, which is why voice has worked from behind a home router
-without any of the configuration above.
+command, and for text it is genuinely fine for an evening.
+
+**Voice through it is a coin toss, and this is the part worth understanding.**
+The tunnel carries signalling only. Cloudflare does not proxy UDP, so media has
+to reach the laptop itself, on the address STUN discovered for it — and whether
+that works depends on the two networks involved, not on anything in this repo.
+It works when the laptop's router keeps one public port for all destinations
+and lets the guest's packets in. It fails, silently and only for that guest,
+when either side is behind carrier-grade NAT, a corporate firewall, or a mobile
+network. The symptom is the confusing one: they join, they see everybody, and
+nothing is ever heard.
+
+There is no configuration that fixes this, because the missing piece is a relay.
+Either give the guests a TURN server through `ICE_SERVERS` and `TURN_SECRET`, or
+deploy properly — a host with its own address and the UDP range open is the
+whole point of everything above.
 
 What it is not is durable: your laptop is the server, the address changes, and
 nothing restarts on its own. This runbook is for the case where somebody other
