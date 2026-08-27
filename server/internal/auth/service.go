@@ -66,6 +66,7 @@ type TokenPair struct {
 }
 
 const (
+	deletedUsername            = "deleted user"
 	discriminatorRaces         = 3
 	usernameDiscriminatorIndex = "users_username_lower_discriminator_key"
 
@@ -81,6 +82,10 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 
 	if n := utf8.RuneCountInString(username); n < minUsernameLen || n > maxUsernameLen {
 		return dbgen.User{}, TokenPair{}, domain.Invalid("username must be %d-%d characters", minUsernameLen, maxUsernameLen)
+	}
+	if strings.EqualFold(strings.ToLower(username), deletedUsername) {
+		return dbgen.User{}, TokenPair{}, domain.Conflict(
+			"that name belongs to the placeholder deleted accounts are reassigned to")
 	}
 	if _, err := mail.ParseAddress(email); err != nil {
 		return dbgen.User{}, TokenPair{}, domain.Invalid("invalid email address")
