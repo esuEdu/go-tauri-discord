@@ -258,6 +258,9 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 		return
 	}
 
+	slog.Info("voice: media arriving at the server",
+		"user_id", p.userID, "source", source, "codec", remote.Codec().MimeType)
+
 	s.mu.Lock()
 	r.tracks[local.ID()] = local
 	p.owned[local.ID()] = true
