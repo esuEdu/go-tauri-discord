@@ -188,11 +188,12 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type member struct {
-		UserID    string  `json:"user_id"`
-		Username  string  `json:"username"`
-		Nickname  *string `json:"nickname"`
-		AvatarKey *string `json:"avatar_key"`
-		Online    bool    `json:"online"`
+		UserID        string  `json:"user_id"`
+		Username      string  `json:"username"`
+		Discriminator string  `json:"discriminator"`
+		Nickname      *string `json:"nickname"`
+		AvatarKey     *string `json:"avatar_key"`
+		Online        bool    `json:"online"`
 	}
 	ids := make([]uuid.UUID, len(rows))
 	for i, m := range rows {
@@ -203,11 +204,12 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	out := make([]member, len(rows))
 	for i, m := range rows {
 		out[i] = member{
-			UserID:    m.UserID.String(),
-			Username:  m.Username,
-			Nickname:  m.Nickname,
-			AvatarKey: m.AvatarKey,
-			Online:    online[m.UserID],
+			UserID:        m.UserID.String(),
+			Username:      m.Username,
+			Discriminator: m.Discriminator,
+			Nickname:      m.Nickname,
+			AvatarKey:     m.AvatarKey,
+			Online:        online[m.UserID],
 		}
 	}
 	httpx.JSON(w, http.StatusOK, out)

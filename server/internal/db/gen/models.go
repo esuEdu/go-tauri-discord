@@ -123,11 +123,12 @@ type Role struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Username     string
-	Email        string
-	PasswordHash string
-	AvatarKey    *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID            uuid.UUID
+	Username      string
+	Email         string
+	PasswordHash  string
+	AvatarKey     *string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Discriminator string
 }

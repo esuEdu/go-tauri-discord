@@ -42,7 +42,7 @@ RETURNING *;
 SELECT * FROM guild_members WHERE guild_id = @guild_id AND user_id = @user_id;
 
 -- name: ListGuildMembers :many
-SELECT m.*, u.username, u.avatar_key
+SELECT m.*, u.username, u.discriminator, u.avatar_key
 FROM guild_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = @guild_id

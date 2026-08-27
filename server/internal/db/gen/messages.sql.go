@@ -223,6 +223,7 @@ const listMessages = `-- name: ListMessages :many
 SELECT
     m.id, m.channel_id, m.author_id, m.content, m.created_at, m.edited_at, m.deleted_at, m.reply_to_message_id,
     u.username   AS author_username,
+    u.discriminator AS author_discriminator,
     u.avatar_key AS author_avatar_key
 FROM messages m
 JOIN users u ON u.id = m.author_id
@@ -240,16 +241,17 @@ type ListMessagesParams struct {
 }
 
 type ListMessagesRow struct {
-	ID               uuid.UUID
-	ChannelID        uuid.UUID
-	AuthorID         uuid.UUID
-	Content          string
-	CreatedAt        time.Time
-	EditedAt         *time.Time
-	DeletedAt        *time.Time
-	ReplyToMessageID *uuid.UUID
-	AuthorUsername   string
-	AuthorAvatarKey  *string
+	ID                  uuid.UUID
+	ChannelID           uuid.UUID
+	AuthorID            uuid.UUID
+	Content             string
+	CreatedAt           time.Time
+	EditedAt            *time.Time
+	DeletedAt           *time.Time
+	ReplyToMessageID    *uuid.UUID
+	AuthorUsername      string
+	AuthorDiscriminator string
+	AuthorAvatarKey     *string
 }
 
 func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
@@ -271,6 +273,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 			&i.DeletedAt,
 			&i.ReplyToMessageID,
 			&i.AuthorUsername,
+			&i.AuthorDiscriminator,
 			&i.AuthorAvatarKey,
 		); err != nil {
 			return nil, err

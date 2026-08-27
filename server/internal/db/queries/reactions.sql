@@ -22,7 +22,7 @@ GROUP BY message_id, emoji
 ORDER BY message_id, min(created_at);
 
 -- name: ListReactors :many
-SELECT u.id, u.username, u.avatar_key
+SELECT u.id, u.username, u.discriminator, u.avatar_key
 FROM message_reactions r
 JOIN users u ON u.id = r.user_id
 WHERE r.message_id = @message_id AND r.emoji = @emoji

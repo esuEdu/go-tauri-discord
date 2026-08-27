@@ -41,9 +41,10 @@ func (s *Service) previewOf(row dbgen.ListMessagePreviewsRow) events.ReplyPrevie
 	}
 	if row.AuthorID != nil && row.AuthorUsername != nil {
 		preview.Author = &events.User{
-			ID:        *row.AuthorID,
-			Username:  *row.AuthorUsername,
-			AvatarKey: row.AuthorAvatarKey,
+			ID:            *row.AuthorID,
+			Username:      *row.AuthorUsername,
+			Discriminator: value(row.AuthorDiscriminator),
+			AvatarKey:     row.AuthorAvatarKey,
 		}
 	}
 	return preview
@@ -77,6 +78,13 @@ func (s *Service) attachReplies(ctx context.Context, msgs []events.Message, pare
 		msgs[i].ReplyTo = nil
 	}
 	return nil
+}
+
+func value(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func replyStub(parentID *uuid.UUID) *events.ReplyPreview {

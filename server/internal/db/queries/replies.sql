@@ -8,6 +8,7 @@ SELECT
     (m.deleted_at IS NOT NULL)::bool AS deleted,
     u.id                             AS author_id,
     u.username                       AS author_username,
+    u.discriminator                  AS author_discriminator,
     u.avatar_key                     AS author_avatar_key,
     (CASE WHEN m.deleted_at IS NULL
           THEN left(m.content, @preview_len::int)

@@ -111,7 +111,10 @@ func (s *Service) Reactors(ctx context.Context, userID, messageID uuid.UUID, emo
 
 	people := make([]events.User, len(rows))
 	for i, r := range rows {
-		people[i] = events.User{ID: r.ID, Username: r.Username, AvatarKey: r.AvatarKey}
+		people[i] = events.User{
+			ID: r.ID, Username: r.Username,
+			Discriminator: r.Discriminator, AvatarKey: r.AvatarKey,
+		}
 	}
 	return people, nil
 }

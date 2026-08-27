@@ -134,5 +134,10 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func PublicUser(u dbgen.User) events.User {
-	return events.User{ID: u.ID, Username: u.Username, AvatarKey: u.AvatarKey}
+	return events.User{
+		ID:            u.ID,
+		Username:      u.Username,
+		Discriminator: u.Discriminator,
+		AvatarKey:     u.AvatarKey,
+	}
 }

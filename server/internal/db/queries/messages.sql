@@ -10,6 +10,7 @@ SELECT * FROM messages WHERE id = @id AND deleted_at IS NULL;
 SELECT
     m.*,
     u.username   AS author_username,
+    u.discriminator AS author_discriminator,
     u.avatar_key AS author_avatar_key
 FROM messages m
 JOIN users u ON u.id = m.author_id
