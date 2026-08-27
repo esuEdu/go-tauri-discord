@@ -67,6 +67,8 @@ func (s *SFU) PublishScreen(userID uuid.UUID, offer webrtc.SessionDescription) e
 		signaler.ScreenCandidate(userID, c.ToJSON())
 	})
 
+	watchConnection(pc, userID, "screen", nil)
+
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		p.sawLayer(remote)
 

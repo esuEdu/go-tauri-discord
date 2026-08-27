@@ -232,12 +232,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		s.signaler.SendCandidate(userID, c.ToJSON())
 	})
 
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		switch state {
-		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-			s.leave(userID, p)
-		}
-	})
+	watchConnection(pc, userID, "microphone", func() { s.leave(userID, p) })
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		s.forward(r, p, remote, SourceMicrophone)
