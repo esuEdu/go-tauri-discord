@@ -24,6 +24,7 @@ type Repository interface {
 	CreateChannel(ctx context.Context, arg dbgen.CreateChannelParams) (dbgen.Channel, error)
 	GetChannel(ctx context.Context, id uuid.UUID) (dbgen.Channel, error)
 	ListChannels(ctx context.Context, guildID uuid.UUID) ([]dbgen.Channel, error)
+	SetChannelPosition(ctx context.Context, arg dbgen.SetChannelPositionParams) error
 	AddGuildMember(ctx context.Context, arg dbgen.AddGuildMemberParams) (dbgen.GuildMember, error)
 	GetGuildMember(ctx context.Context, arg dbgen.GetGuildMemberParams) (dbgen.GuildMember, error)
 	RemoveGuildMember(ctx context.Context, arg dbgen.RemoveGuildMemberParams) error
@@ -257,6 +258,74 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 	}
 	s.permissionsChanged(ctx, guildID)
 	return ch, nil
+}
+
+func (s *Service) MoveChannel(ctx context.Context, userID, channelID uuid.UUID, to int) ([]dbgen.Channel, error) {
+	moving, err := s.Channel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+
+	perms, err := s.PermissionsInGuild(ctx, userID, moving.GuildID)
+	if err != nil {
+		return nil, err
+	}
+	if !perms.Has(domain.PermManageChannels) {
+		return nil, domain.Forbidden("missing ManageChannels permission")
+	}
+
+	all, err := s.repo.ListChannels(ctx, moving.GuildID)
+	if err != nil {
+		return nil, domain.Internal(err)
+	}
+
+	siblings := make([]dbgen.Channel, 0, len(all))
+	for _, ch := range all {
+		if sameParent(ch, moving) && ch.ID != moving.ID {
+			siblings = append(siblings, ch)
+		}
+	}
+
+	if to < 0 {
+		to = 0
+	}
+	if to > len(siblings) {
+		to = len(siblings)
+	}
+	ordered := make([]dbgen.Channel, 0, len(siblings)+1)
+	ordered = append(ordered, siblings[:to]...)
+	ordered = append(ordered, moving)
+	ordered = append(ordered, siblings[to:]...)
+
+	changed := make([]dbgen.Channel, 0, len(ordered))
+	err = s.tx.InTx(ctx, func(q *dbgen.Queries) error {
+		for at, ch := range ordered {
+			if ch.Position == int32(at) {
+				continue
+			}
+			if err := q.SetChannelPosition(ctx, dbgen.SetChannelPositionParams{
+				ID:       ch.ID,
+				GuildID:  moving.GuildID,
+				Position: int32(at),
+			}); err != nil {
+				return err
+			}
+			ch.Position = int32(at)
+			changed = append(changed, ch)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, domain.Internal(err)
+	}
+	return changed, nil
+}
+
+func sameParent(a, b dbgen.Channel) bool {
+	if a.ParentID == nil || b.ParentID == nil {
+		return a.ParentID == nil && b.ParentID == nil
+	}
+	return *a.ParentID == *b.ParentID
 }
 
 func (s *Service) Channel(ctx context.Context, channelID uuid.UUID) (dbgen.Channel, error) {

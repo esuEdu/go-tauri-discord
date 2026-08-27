@@ -141,13 +141,24 @@ export default function App() {
 
   useEffect(() => {
     if (!activeGuild) return;
-    return gateway.on("CHANNEL_CREATE", (payload) => {
+    const forgetCreate = gateway.on("CHANNEL_CREATE", (payload) => {
       const channel = payload as Channel;
       if (channel.guild_id !== activeGuild.id) return;
       setChannels((prev) =>
         prev.some((c) => c.id === channel.id) ? prev : [...prev, channel],
       );
     });
+
+    const forgetUpdate = gateway.on("CHANNEL_UPDATE", (payload) => {
+      const channel = payload as Channel;
+      if (channel.guild_id !== activeGuild.id) return;
+      setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
+    });
+
+    return () => {
+      forgetCreate();
+      forgetUpdate();
+    };
   }, [activeGuild]);
 
   function endSession() {

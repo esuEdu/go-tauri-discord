@@ -37,6 +37,13 @@ func TestScopedChannelRecognisesEveryChannelBoundEvent(t *testing.T) {
 		{events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{ChannelID: channelID}},
 	}
 
+	updates := frameFor(t, events.EventChannelUpdate, events.Channel{ID: channelID})
+	got, scoped := scopedChannel(updates)
+	if !scoped || got != channelID {
+		t.Error("CHANNEL_UPDATE is not treated as channel-bound, so renaming or moving a hidden " +
+			"channel tells everybody it exists")
+	}
+
 	for _, tt := range bound {
 		got, scoped := scopedChannel(frameFor(t, tt.kind, tt.payload))
 		if !scoped {

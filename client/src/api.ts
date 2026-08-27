@@ -318,6 +318,12 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
   }
 
+  moveChannel(channelID: string, position: number): Promise<Channel[]> {
+    return this.request<Channel[]>("PATCH", `/api/v1/channels/${channelID}/position`, {
+      position,
+    });
+  }
+
   members(guildID: string): Promise<GuildMember[]> {
     return this.request<GuildMember[]>("GET", `/api/v1/guilds/${guildID}/members`);
   }

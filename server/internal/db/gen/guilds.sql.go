@@ -731,6 +731,21 @@ func (q *Queries) ResolveGuildAccess(ctx context.Context, arg ResolveGuildAccess
 	return i, err
 }
 
+const setChannelPosition = `-- name: SetChannelPosition :exec
+UPDATE channels SET position = $1 WHERE id = $2 AND guild_id = $3
+`
+
+type SetChannelPositionParams struct {
+	Position int32
+	ID       uuid.UUID
+	GuildID  uuid.UUID
+}
+
+func (q *Queries) SetChannelPosition(ctx context.Context, arg SetChannelPositionParams) error {
+	_, err := q.db.Exec(ctx, setChannelPosition, arg.Position, arg.ID, arg.GuildID)
+	return err
+}
+
 const setGuildIcon = `-- name: SetGuildIcon :one
 UPDATE guilds SET icon_key = $1
 WHERE id = $2

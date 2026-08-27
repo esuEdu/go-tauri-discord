@@ -26,6 +26,9 @@ SELECT * FROM channels WHERE id = @id;
 -- name: ListChannels :many
 SELECT * FROM channels WHERE guild_id = @guild_id ORDER BY position, id;
 
+-- name: SetChannelPosition :exec
+UPDATE channels SET position = @position WHERE id = @id AND guild_id = @guild_id;
+
 -- name: DeleteChannel :exec
 DELETE FROM channels WHERE id = @id;
 

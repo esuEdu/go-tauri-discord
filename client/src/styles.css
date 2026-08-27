@@ -1320,3 +1320,31 @@ button.reply-quote {
   align-items: center;
   gap: 8px;
 }
+
+.channel-move {
+  display: none;
+  gap: 2px;
+  flex: none;
+}
+
+.channel:hover .channel-move,
+.channel:focus-within .channel-move {
+  display: flex;
+}
+
+.channel-move > span {
+  padding: 0 3px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.channel-move > span[aria-disabled="true"] {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.channel-move > span:not([aria-disabled="true"]):hover {
+  background: var(--bg-raised);
+  color: #fff;
+}

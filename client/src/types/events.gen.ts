@@ -27,6 +27,7 @@ export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
 export const EventChannelCreate: EventType = "CHANNEL_CREATE";
+export const EventChannelUpdate: EventType = "CHANNEL_UPDATE";
 export const EventMessageCreate: EventType = "MESSAGE_CREATE";
 export const EventMessageUpdate: EventType = "MESSAGE_UPDATE";
 export const EventMessageDelete: EventType = "MESSAGE_DELETE";
