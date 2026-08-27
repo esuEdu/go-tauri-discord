@@ -12,6 +12,7 @@ import {
   type VolumeTarget,
   type Volumes,
 } from "../voice";
+import { AudioPreferences } from "./AudioPreferences";
 import { emptySession, session, type SessionState } from "../session";
 import { STREAM, allows } from "../permissions";
 import type { Channel } from "../types/events.gen";
@@ -271,9 +272,13 @@ export function Voice({ channel, selfID }: { channel: Channel; selfID: string })
               <button className="leave" onClick={() => void voice.leave()}>
                 Disconnect
               </button>
+              <AudioPreferences />
             </>
           ) : (
-            <button onClick={() => void voice.join(channel.id, selfID)}>Join voice</button>
+            <>
+              <button onClick={() => void voice.join(channel.id, selfID)}>Join voice</button>
+              <AudioPreferences />
+            </>
           )}
         </div>
 

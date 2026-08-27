@@ -1,4 +1,5 @@
 import { gateway } from "./gateway";
+import { audioConstraints, joinsMuted } from "./audioPrefs";
 import { iceServers } from "./ice";
 import { screenPublisher } from "./simulcast";
 import {
@@ -440,7 +441,7 @@ class VoiceClient {
 
     try {
       this.microphone = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: audioConstraints(),
       });
     } catch {
       this.channelID = null;
@@ -461,7 +462,9 @@ class VoiceClient {
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     this.pc = pc;
 
+    const startMuted = joinsMuted();
     for (const track of this.microphone.getAudioTracks()) {
+      track.enabled = !startMuted;
       pc.addTrack(track, this.microphone);
     }
 
@@ -523,7 +526,10 @@ class VoiceClient {
       }),
     );
 
-    gateway.sendRaw({ op: OpVoiceState, d: { channel_id: channelID, self_mute: false, self_deaf: false } });
+    gateway.sendRaw({
+      op: OpVoiceState,
+      d: { channel_id: channelID, self_mute: startMuted, self_deaf: false },
+    });
   }
 
   async startScreenShare(): Promise<boolean> {
