@@ -1096,6 +1096,8 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [x] Screen share carries its own sound, on a transceiver of its own
 - [x] A volume slider per person, kept by the listener and able to exceed 100%
 - [x] Deafening, enforced by the server, and connection quality per person
+- [x] Channel order that somebody chose, announced and kept
+- [x] Upload progress, microphone choice, and joining muted
 - [x] Who is in a voice channel before you join it, seeded by READY
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide

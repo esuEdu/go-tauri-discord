@@ -72,6 +72,7 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
+	mux.HandleFunc("PATCH /api/v1/channels/{channelID}/position", h.moveChannel)
 	mux.HandleFunc("GET /api/v1/channels/{channelID}/overwrites", h.listOverwrites)
 	mux.HandleFunc("PUT /api/v1/channels/{channelID}/overwrites/{targetID}", h.setOverwrite)
 	mux.HandleFunc("DELETE /api/v1/channels/{channelID}/overwrites/{targetID}", h.clearOverwrite)
@@ -317,6 +318,32 @@ func (h *Handler) createChannel(w http.ResponseWriter, r *http.Request) {
 
 	h.pub.ToGuild(r.Context(), guildID, events.EventChannelCreate, PublicChannel(ch))
 	httpx.JSON(w, http.StatusCreated, PublicChannel(ch))
+}
+
+func (h *Handler) moveChannel(w http.ResponseWriter, r *http.Request) {
+	channelID, err := httpx.PathUUID(r, "channelID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Position int `json:"position"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	moved, err := h.svc.MoveChannel(r.Context(), auth.MustUserID(r.Context()), channelID, in.Position)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	for _, ch := range moved {
+		h.pub.ToGuild(r.Context(), ch.GuildID, events.EventChannelUpdate, PublicChannel(ch))
+	}
+	httpx.JSON(w, http.StatusOK, mapSlice(moved, PublicChannel))
 }
 
 func (h *Handler) listRoles(w http.ResponseWriter, r *http.Request) {

@@ -44,6 +44,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
   const [hasMore, setHasMore] = useState(true);
   const [draft, setDraft] = useState("");
   const [staged, setStaged] = useState<File[]>([]);
+  const [sending, setSending] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -256,7 +257,7 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
     try {
       const sent =
         files.length > 0
-          ? await api.sendMessageWithFiles(channel.id, content, files, answering?.id)
+          ? await api.sendMessageWithFiles(channel.id, content, files, answering?.id, setSending)
           : await api.sendMessage(channel.id, content, answering?.id);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id) ? prev : [...prev, sent],
@@ -266,6 +267,8 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
       setDraft(content);
       setStaged(files);
       setReplyingTo(answering);
+    } finally {
+      setSending(null);
     }
   }
 
@@ -393,7 +396,18 @@ export function Chat({ channel, selfID }: { channel: Channel; selfID: string }) 
         </div>
       )}
 
-      {staged.length > 0 && (
+      {sending !== null && (
+        <div className="staged">
+          <span className="muted">
+            {sending < 1 ? `Sending files… ${Math.round(sending * 100)}%` : "Almost there…"}
+          </span>
+          <span className="upload-bar" aria-hidden="true">
+            <span className="upload-bar-fill" style={{ width: `${Math.round(sending * 100)}%` }} />
+          </span>
+        </div>
+      )}
+
+      {staged.length > 0 && sending === null && (
         <div className="staged">
           {staged.map((file, i) => (
             <span key={`${file.name}-${i}`} className="staged-file">

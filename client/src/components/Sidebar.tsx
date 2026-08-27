@@ -24,15 +24,26 @@ function categoriesIn(channels: Channel[]): Channel[] {
   return channels.filter((c) => c.kind === "category");
 }
 
+function inOrder(channels: Channel[]): Channel[] {
+  return [...channels].sort((a, b) =>
+    a.position === b.position ? a.id.localeCompare(b.id) : a.position - b.position,
+  );
+}
+
 function groupByCategory(channels: Channel[]): ChannelGroup[] {
-  const categories = channels.filter((c) => c.kind === "category");
+  const categories = inOrder(channels.filter((c) => c.kind === "category"));
   const rest = channels.filter((c) => c.kind !== "category");
 
-  const loose = rest.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id));
+  const loose = inOrder(
+    rest.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id)),
+  );
   const groups: ChannelGroup[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
 
   for (const category of categories) {
-    groups.push({ category, channels: rest.filter((c) => c.parent_id === category.id) });
+    groups.push({
+      category,
+      channels: inOrder(rest.filter((c) => c.parent_id === category.id)),
+    });
   }
   return groups;
 }
@@ -48,6 +59,12 @@ export function Sidebar({
   unread,
 }: Props) {
   const grouped = groupByCategory(channels);
+
+  const move = async (channelID: string, to: number) => {
+    try {
+      await api.moveChannel(channelID, to);
+    } catch {}
+  };
 
   const [people, setPeople] = useState<SessionState>(emptySession);
   useEffect(() => session.onChange(setPeople), []);
@@ -280,7 +297,7 @@ export function Sidebar({
             {group.category && (
               <div className="category">{group.category.name.toUpperCase()}</div>
             )}
-            {group.channels.map((c) => (
+            {group.channels.map((c, at) => (
               <div key={c.id} className="channel-row">
                 <button
                   className={c.id === activeChannel?.id ? "channel active" : "channel"}
@@ -291,6 +308,46 @@ export function Sidebar({
                   </span>
                   {unread[c.id] && c.id !== activeChannel?.id && (
                     <span className="unread" aria-label="unread messages" />
+                  )}
+                  {mayManageChannels && group.channels.length > 1 && (
+                    <span className="channel-move">
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Move ${c.name} up`}
+                        aria-disabled={at === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (at > 0) void move(c.id, at - 1);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (at > 0) void move(c.id, at - 1);
+                        }}
+                      >
+                        ↑
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Move ${c.name} down`}
+                        aria-disabled={at === group.channels.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (at < group.channels.length - 1) void move(c.id, at + 1);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (at < group.channels.length - 1) void move(c.id, at + 1);
+                        }}
+                      >
+                        ↓
+                      </span>
+                    </span>
                   )}
                 </button>
                 {c.kind === "voice" && (people.inVoice[c.id] ?? []).length > 0 && (

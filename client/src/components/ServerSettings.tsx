@@ -240,7 +240,9 @@ export function ServerSettings({ guild, channels, onClose }: {
             imageKey={icon}
             label="server icon"
             onChosen={setIcon}
-            upload={async (file) => (await api.setGuildIcon(guild.id, file)).icon_key}
+            upload={async (file, onProgress) =>
+              (await api.setGuildIcon(guild.id, file, onProgress)).icon_key
+            }
             remove={() => api.clearGuildIcon(guild.id)}
           />
         )}

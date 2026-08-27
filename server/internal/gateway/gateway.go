@@ -330,6 +330,7 @@ func scopedChannel(raw []byte) (uuid.UUID, bool) {
 	var frame struct {
 		T events.EventType `json:"t"`
 		D struct {
+			ID        *uuid.UUID `json:"id"`
 			ChannelID *uuid.UUID `json:"channel_id"`
 		} `json:"d"`
 	}
@@ -337,6 +338,11 @@ func scopedChannel(raw []byte) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	switch frame.T {
+	case events.EventChannelUpdate:
+		if frame.D.ID == nil {
+			return uuid.Nil, false
+		}
+		return *frame.D.ID, true
 	case events.EventMessageCreate, events.EventMessageUpdate, events.EventMessageDelete,
 		events.EventReactionAdd, events.EventReactionRemove,
 		events.EventTypingStart, events.EventVoiceStateUpdate, events.EventVoiceScreenUpdate,
