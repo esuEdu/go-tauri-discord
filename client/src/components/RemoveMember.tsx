@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { session } from "../session";
+import { Avatar } from "./Avatar";
+import { Icon } from "./Icon";
 import type { Guild } from "../types/events.gen";
 
-export function RemoveMember({ guild, userID, name, ban, onClose }: {
+export function RemoveMember({
+  guild,
+  userID,
+  name,
+  ban,
+  onClose,
+}: {
   guild: Guild;
   userID: string;
   name: string;
@@ -38,60 +47,65 @@ export function RemoveMember({ guild, userID, name, ban, onClose }: {
 
   return (
     <div className="dialog-backdrop" onMouseDown={() => !busy && onClose()}>
-      <div
+      <form
         className="dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="remove-member-title"
+        aria-label={ban ? `Ban ${name}?` : `Remove ${name}?`}
         onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={submit}
       >
-        <h2 id="remove-member-title">
-          {ban ? `Ban ${name} from ${guild.name}?` : `Remove ${name} from ${guild.name}?`}
-        </h2>
-
-        <ul className="muted">
-          <li>They lose the server straight away, and leave any voice channel they are in.</li>
-          <li>What they wrote stays where it is, still shown as theirs.</li>
-          {ban ? (
-            <li>No invite will let them back in until you lift the ban.</li>
-          ) : (
-            <li>Nothing stops them coming back with a new invite.</li>
-          )}
-        </ul>
+        <div className="row">
+          <Avatar name={session.nameOf(userID)} imageKey={null} className="big" />
+          <div className="grow">
+            <div className="dialog-title">
+              {ban ? `Ban ${name}?` : `Remove ${name} from ${guild.name}?`}
+            </div>
+            <div className="dialog-sub">
+              They lose the server as they are looking at it, and drop out of any call.
+            </div>
+          </div>
+        </div>
 
         {ban && (
-          <p className="muted">
-            A ban is by account. Nothing here verifies an email address, so somebody determined
-            can register again and use a fresh invite.
-          </p>
+          <label className="field">
+            Reason — optional, kept for whoever looks later
+            <textarea
+              className="input"
+              autoFocus
+              maxLength={500}
+              placeholder="up to 500 characters"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
         )}
 
-        <form onSubmit={submit}>
-          {ban && (
-            <>
-              <label htmlFor="remove-member-reason">Reason (optional)</label>
-              <input
-                id="remove-member-reason"
-                autoFocus
-                maxLength={500}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </>
-          )}
+        <div className="panel">
+          <span className="dialog-text">What they wrote stays where it is, still shown as theirs.</span>
+          <span className="dialog-text">
+            {ban
+              ? "A ban is by account, and nothing here checks an email address. They can register again in a minute and use a new invite."
+              : "Nothing stops them coming back with a fresh invite."}
+          </span>
+        </div>
 
-          {error && <div className="error inline">{error}</div>}
-
-          <div className="dialog-actions">
-            <button type="button" className="secondary" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
-            <button type="submit" className="danger" disabled={busy}>
-              {busy ? "Working…" : ban ? "Ban them" : "Remove them"}
-            </button>
+        {error && (
+          <div className="banner bad">
+            <Icon name="warning-circle" size={15} />
+            <span>{error}</span>
           </div>
-        </form>
-      </div>
+        )}
+
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-danger" disabled={busy}>
+            {busy ? "…" : ban ? "Ban them" : "Remove them"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

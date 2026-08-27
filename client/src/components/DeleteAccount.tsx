@@ -1,26 +1,25 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Icon } from "./Icon";
 
-export function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
-  const [open, setOpen] = useState(false);
+export function DeleteAccount({
+  onDeleted,
+  onClose,
+}: {
+  onDeleted: () => void;
+  onClose: () => void;
+}) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !busy) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  function close() {
-    setOpen(false);
-    setPassword("");
-    setError(null);
-  }
+  }, [busy, onClose]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,55 +35,58 @@ export function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
     }
   }
 
-  if (!open) {
-    return (
-      <button className="link danger" onClick={() => setOpen(true)}>
-        Delete account
-      </button>
-    );
-  }
-
   return (
-    <div className="dialog-backdrop" onMouseDown={close}>
-      <div
+    <div className="dialog-backdrop" onMouseDown={() => !busy && onClose()}>
+      <form
         className="dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="delete-account-title"
+        aria-label="Delete your account"
         onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={submit}
       >
-        <h2 id="delete-account-title">Delete your account?</h2>
+        <div className="dialog-title">Delete your account</div>
 
-        <p className="muted">This cannot be undone. When it is done:</p>
-        <ul className="muted">
-          <li>Your messages stay where they are, shown as sent by “Deleted User”.</li>
-          <li>Servers you own pass to another member, or are deleted if you are the only one left.</li>
-          <li>You are signed out everywhere, and your sign-in stops working.</li>
-        </ul>
+        <div className="stack tight">
+          <span className="dialog-text">
+            What you wrote stays, under <strong>Deleted User</strong>.
+          </span>
+          <span className="dialog-text">Servers you own pass to another member.</span>
+          <span className="dialog-text">Every device you are signed in on is signed out.</span>
+          <span className="dialog-text">
+            <strong>It cannot be undone.</strong>
+          </span>
+        </div>
 
-        <form onSubmit={submit}>
-          <label htmlFor="delete-account-password">Confirm your password</label>
+        <label className="field">
+          Your password
           <input
-            id="delete-account-password"
+            className="input"
             type="password"
             autoFocus
             autoComplete="current-password"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+        </label>
 
-          {error && <div className="error inline">{error}</div>}
-
-          <div className="dialog-actions">
-            <button type="button" className="secondary" onClick={close} disabled={busy}>
-              Keep my account
-            </button>
-            <button type="submit" className="danger" disabled={busy || password === ""}>
-              {busy ? "Deleting…" : "Delete for good"}
-            </button>
+        {error && (
+          <div className="banner bad">
+            <Icon name="warning-circle" size={15} />
+            <span>{error}</span>
           </div>
-        </form>
-      </div>
+        )}
+
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>
+            Keep it
+          </button>
+          <button type="submit" className="btn btn-danger" disabled={busy || password === ""}>
+            {busy ? "…" : "Delete for good"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -5,7 +5,7 @@ export function fileURL(key: string): string {
   return `${apiBase()}/api/v1/files/${key}`;
 }
 
-function initials(name: string): string {
+export function initials(name: string): string {
   const trimmed = name.trim();
   if (trimmed === "") return "?";
   return [...trimmed].slice(0, 2).join("").toUpperCase();
@@ -14,17 +14,20 @@ function initials(name: string): string {
 export function Avatar({
   name,
   imageKey,
-  className = "avatar",
+  className,
+  mine = false,
 }: {
   name: string;
   imageKey?: string | null;
   className?: string;
+  mine?: boolean;
 }) {
   const [broken, setBroken] = useState(false);
+  const classes = ["avatar", mine ? "mine" : null, className].filter(Boolean).join(" ");
 
   if (!imageKey || broken) {
     return (
-      <span className={`${className} lettered`} aria-hidden="true">
+      <span className={classes} aria-hidden="true">
         {initials(name)}
       </span>
     );
@@ -32,7 +35,7 @@ export function Avatar({
 
   return (
     <img
-      className={className}
+      className={classes}
       src={fileURL(imageKey)}
       alt=""
       loading="lazy"

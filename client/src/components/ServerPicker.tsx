@@ -14,7 +14,6 @@ export function ServerPicker() {
   const [error, setError] = useState<string | null>(null);
 
   const current = serverURL();
-  const pinned = serverIsPinned();
 
   function apply(url: string) {
     const trimmed = url.trim();
@@ -33,70 +32,78 @@ export function ServerPicker() {
 
   if (!serverIsEditable()) {
     return (
-      <p className="muted server-line">
-        Server: <code>{current}</code> (fixed at build time)
-      </p>
+      <div className="gate-foot">
+        <span className="muted">
+          Server <span className="mono">{current}</span>
+        </span>
+        <span className="muted">fixed at build time</span>
+      </div>
     );
   }
 
   if (!open) {
     return (
-      <p className="muted server-line">
-        Server: <code>{current}</code>{" "}
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            setDraft(current);
-            setError(null);
-            setOpen(true);
-          }}
-        >
-          Change
-        </button>
-        {pinned && (
-          <>
-            {" "}
-            <button type="button" className="link" onClick={() => apply("")}>
+      <div className="gate-foot">
+        <span className="muted clip">
+          Server <span className="mono">{current}</span>
+        </span>
+        <span className="row">
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              setDraft(current);
+              setError(null);
+              setOpen(true);
+            }}
+          >
+            Change
+          </button>
+          {serverIsPinned() && (
+            <button type="button" className="link quiet" onClick={() => apply("")}>
               Reset
             </button>
-          </>
-        )}
-      </p>
+          )}
+        </span>
+      </div>
     );
   }
 
   return (
-    <div className="server-edit">
-      <label htmlFor="server-url">Server address</label>
-      <input
-        id="server-url"
-        type="url"
-        inputMode="url"
-        placeholder={defaultServerURL()}
-        value={draft}
-        autoFocus
-        onChange={(e) => {
-          setDraft(e.target.value);
-          setError(null);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            apply(draft);
-          }
-          if (e.key === "Escape") setOpen(false);
-        }}
-      />
-      {error && <div className="error inline">{error}</div>}
-      <div className="server-actions">
-        <button type="button" className="secondary" onClick={() => setOpen(false)}>
+    <div className="gate-card">
+      <label className="field">
+        Server address
+        <input
+          className="input"
+          type="url"
+          inputMode="url"
+          placeholder={defaultServerURL()}
+          value={draft}
+          autoFocus
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply(draft);
+            }
+            if (e.key === "Escape") setOpen(false);
+          }}
+        />
+      </label>
+
+      {error && <span className="field-note">{error}</span>}
+
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-quiet" onClick={() => setOpen(false)}>
           Cancel
         </button>
-        <button type="button" className="link" onClick={() => apply("")}>
+        <button type="button" className="btn btn-quiet" onClick={() => apply("")}>
           Use default
         </button>
-        <button type="button" onClick={() => apply(draft)}>
+        <button type="button" className="btn btn-primary" onClick={() => apply(draft)}>
           Connect
         </button>
       </div>

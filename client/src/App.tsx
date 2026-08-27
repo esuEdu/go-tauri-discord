@@ -2,18 +2,28 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { Chat } from "./components/Chat";
-import { AvatarPicker } from "./components/PickImage";
 import { DeleteAccount } from "./components/DeleteAccount";
+import { Icon } from "./components/Icon";
 import { Login } from "./components/Login";
 import { MemberList } from "./components/MemberList";
 import { Sidebar } from "./components/Sidebar";
+import { UserBar } from "./components/UserBar";
 import { Voice } from "./components/Voice";
 import { emptySession, session, type SessionState } from "./session";
-import { serverIsPinned, serverURL } from "./server";
 import type { Channel, Guild, GuildRemoval, User } from "./types/events.gen";
 
 function pendingInviteCode(): string | null {
   return new URLSearchParams(location.search).get("invite");
+}
+
+function Booting() {
+  return (
+    <div className="boot">
+      <span className="boot-block" style={{ width: 60, height: "100%" }} />
+      <span className="boot-block" style={{ width: 248, height: "100%" }} />
+      <span className="boot-block" style={{ flex: 1, height: "100%" }} />
+    </div>
+  );
 }
 
 export default function App() {
@@ -23,6 +33,8 @@ export default function App() {
   const [removedFrom, setRemovedFrom] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>("closed");
+  const [leaving, setLeaving] = useState(false);
+  const [watching, setWatching] = useState<string | null>(null);
 
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -113,12 +125,12 @@ export default function App() {
       const gone = payload as GuildRemoval;
       setGuilds((prev) => {
         const left = prev.filter((g) => g.id !== gone.guild_id);
-        setActiveGuild((current) =>
-          current?.id === gone.guild_id ? (left[0] ?? null) : current,
-        );
+        setActiveGuild((current) => (current?.id === gone.guild_id ? (left[0] ?? null) : current));
         return left;
       });
-      setRemovedFrom(gone.banned ? "You were banned from that server." : "You were removed from that server.");
+      setRemovedFrom(
+        gone.banned ? "You were banned from that server." : "You were removed from that server.",
+      );
     });
   }, [user]);
 
@@ -144,9 +156,7 @@ export default function App() {
     const forgetCreate = gateway.on("CHANNEL_CREATE", (payload) => {
       const channel = payload as Channel;
       if (channel.guild_id !== activeGuild.id) return;
-      setChannels((prev) =>
-        prev.some((c) => c.id === channel.id) ? prev : [...prev, channel],
-      );
+      setChannels((prev) => (prev.some((c) => c.id === channel.id) ? prev : [...prev, channel]));
     });
 
     const forgetUpdate = gateway.on("CHANNEL_UPDATE", (payload) => {
@@ -170,6 +180,7 @@ export default function App() {
     setActiveGuild(null);
     setActiveChannel(null);
     setRemovedFrom(null);
+    setLeaving(false);
   }
 
   async function logout() {
@@ -177,83 +188,92 @@ export default function App() {
     endSession();
   }
 
-  if (booting) return <div className="boot">Loading…</div>;
+  if (booting) return <Booting />;
   if (!user) return <Login onAuthenticated={setUser} inviteCode={invite} />;
 
   return (
     <div className="app">
-      <Sidebar
-        guilds={guilds}
-        channels={channels}
-        activeGuild={activeGuild}
-        activeChannel={activeChannel}
-        onSelectGuild={setActiveGuild}
-        onSelectChannel={setActiveChannel}
-        onGuildsChanged={() => void loadGuilds()}
-        unread={state.unread}
-      />
-
-      <main className="main">
-        {activeChannel ? (
-          activeChannel.kind === "voice" ? (
-            <Voice channel={activeChannel} selfID={user.id} />
-          ) : (
-            <Chat channel={activeChannel} selfID={user.id} />
-          )
-        ) : (
-          <div className="empty">
-            {guilds.length === 0
-              ? "Create a server with +, or join one with a server id."
-              : "Pick a channel."}
-          </div>
-        )}
-      </main>
-
-      <MemberList guild={activeGuild} selfID={user.id} />
+      {leaving && <DeleteAccount onDeleted={endSession} onClose={() => setLeaving(false)} />}
 
       {(inviteError || removedFrom) && (
-        <div className="banners">
-          {inviteError && <div className="error">{inviteError}</div>}
+        <div className="toasts">
+          {inviteError && (
+            <div className="banner">
+              <Icon name="warning-circle" size={16} />
+              <span className="grow">{inviteError}</span>
+              <span className="banner-actions">
+                <button className="link quiet" onClick={() => setInviteError(null)}>
+                  Dismiss
+                </button>
+              </span>
+            </div>
+          )}
           {removedFrom && (
-            <div className="error">
-              {removedFrom}
-              <button className="link" onClick={() => setRemovedFrom(null)}>
-                Dismiss
-              </button>
+            <div className="banner">
+              <Icon name="warning-circle" size={16} />
+              <span className="grow">{removedFrom}</span>
+              <span className="banner-actions">
+                <button className="link quiet" onClick={() => setRemovedFrom(null)}>
+                  Dismiss
+                </button>
+              </span>
             </div>
           )}
         </div>
       )}
 
-      <footer className="statusbar">
-        <span className={`dot ${connection}`} />
-        <span className="muted">
-          {connection === "ready"
-            ? "connected"
-            : connection === "reconnecting"
-              ? "reconnecting…"
-              : connection}
-        </span>
-        {serverIsPinned() && (
-          <span className="muted server-badge" title="This app is pointed at a non-default server">
-            {serverURL()}
-          </span>
-        )}
-        <span className="spacer" />
-        <AvatarPicker
-          name={user.username}
-          imageKey={user.avatar_key}
-          onChosen={(key) => setUser({ ...user, avatar_key: key ?? undefined })}
+      <div className="left-column">
+        <div className="left-column-top">
+          <Sidebar
+            guilds={guilds}
+            channels={channels}
+            activeGuild={activeGuild}
+            activeChannel={activeChannel}
+            selfID={user.id}
+            watching={watching}
+            onWatch={setWatching}
+            onSelectGuild={setActiveGuild}
+            onSelectChannel={setActiveChannel}
+            onGuildsChanged={() => void loadGuilds()}
+            unread={state.unread}
+          />
+        </div>
+
+        <UserBar
+          user={user}
+          connection={connection}
+          channels={channels}
+          onUserChanged={setUser}
+          onSignOut={() => void logout()}
+          onDeleteAccount={() => setLeaving(true)}
+          onOpenChannel={setActiveChannel}
+          watching={watching}
         />
-        <span className="muted" title="Your name and number">
-          {user.username}
-          <span className="tag">#{user.discriminator}</span>
-        </span>
-        <button className="link" onClick={() => void logout()}>
-          Log out
-        </button>
-        <DeleteAccount onDeleted={endSession} />
-      </footer>
+      </div>
+
+      <main className="card main">
+        {activeChannel ? (
+          activeChannel.kind === "voice" ? (
+            <Voice
+              key={activeChannel.id}
+              channel={activeChannel}
+              selfID={user.id}
+              watching={watching}
+              onWatch={setWatching}
+            />
+          ) : (
+            <Chat key={activeChannel.id} channel={activeChannel} selfID={user.id} />
+          )
+        ) : (
+          <div className="room-empty">
+            {guilds.length === 0
+              ? "Start a server with the plus, or step into one you were given a code for."
+              : "Pick a channel."}
+          </div>
+        )}
+      </main>
+
+      {activeChannel?.kind !== "voice" && <MemberList guild={activeGuild} selfID={user.id} />}
     </div>
   );
 }
