@@ -1,29 +1,57 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Ban, type GuildMember } from "../api";
-import { ADMINISTRATOR, BAN_MEMBERS, MANAGE_GUILD, MANAGE_ROLES, PERMISSIONS, allows, has, summarise, withBit } from "../permissions";
+import {
+  ADMINISTRATOR,
+  BAN_MEMBERS,
+  MANAGE_GUILD,
+  MANAGE_ROLES,
+  PERMISSIONS,
+  allows,
+  has,
+  summarise,
+  withBit,
+} from "../permissions";
 import { emptySession, session, type SessionState } from "../session";
+import { Avatar } from "./Avatar";
+import { Icon } from "./Icon";
 import { PickImage } from "./PickImage";
 import type { Channel, Guild, Overwrite, Role } from "../types/events.gen";
 
-type Tab = "roles" | "members" | "channels" | "bans";
+type Tab = "overview" | "roles" | "members" | "channels" | "bans";
+type Cell = "allow" | "deny" | "inherit";
 
-const TAB_NAMES: Record<Tab, string> = {
-  roles: "Roles",
-  members: "Members",
-  channels: "Channel access",
-  bans: "Bans",
-};
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "overview", label: "Overview", icon: "identification-card" },
+  { id: "roles", label: "Roles", icon: "users-three" },
+  { id: "members", label: "People", icon: "user" },
+  { id: "channels", label: "Channel access", icon: "hash" },
+  { id: "bans", label: "Bans", icon: "prohibit" },
+];
 
-type OverwriteState = "allow" | "deny" | "inherit";
-
-function stateOf(overwrite: Overwrite | undefined, bit: number): OverwriteState {
+function stateOf(overwrite: Overwrite | undefined, bit: number): Cell {
   if (!overwrite) return "inherit";
   if (has(overwrite.allow, bit)) return "allow";
   if (has(overwrite.deny, bit)) return "deny";
   return "inherit";
 }
 
-export function ServerSettings({ guild, channels, onClose }: {
+function nextState(current: Cell): Cell {
+  if (current === "inherit") return "allow";
+  if (current === "allow") return "deny";
+  return "inherit";
+}
+
+function glyph(state: Cell): string {
+  if (state === "allow") return "✓";
+  if (state === "deny") return "✕";
+  return "–";
+}
+
+export function ServerSettings({
+  guild,
+  channels,
+  onClose,
+}: {
   guild: Guild;
   channels: Channel[];
   onClose: () => void;
@@ -45,9 +73,18 @@ export function ServerSettings({ guild, channels, onClose }: {
   const [overwrites, setOverwrites] = useState<Overwrite[]>([]);
 
   const [bans, setBans] = useState<Ban[]>([]);
+  const [lifting, setLifting] = useState<string | null>(null);
   const [people, setPeople] = useState<SessionState>(emptySession);
 
   useEffect(() => session.onChange(setPeople), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const held = people.guildAllows[guild.id];
   const mayManageRoles = allows(held, MANAGE_ROLES);
@@ -55,11 +92,11 @@ export function ServerSettings({ guild, channels, onClose }: {
   const mayManageGuild = allows(held, MANAGE_GUILD);
 
   const offered: Tab[] = [
+    ...(mayManageGuild ? (["overview"] as Tab[]) : []),
     ...(mayManageRoles ? (["roles", "members", "channels"] as Tab[]) : []),
     ...(mayBan ? (["bans"] as Tab[]) : []),
   ];
   const tab = chosen && offered.includes(chosen) ? chosen : (offered[0] ?? null);
-  const setTab = setChosen;
 
   const complain = (err: unknown, fallback: string) =>
     setError(err instanceof Error ? err.message : fallback);
@@ -68,7 +105,9 @@ export function ServerSettings({ guild, channels, onClose }: {
     try {
       const list = await api.roles(guild.id);
       setRoles(list);
-      setSelectedRole((current) => current ?? list.find((r) => !r.is_default)?.id ?? list[0]?.id ?? null);
+      setSelectedRole(
+        (current) => current ?? list.find((r) => !r.is_default)?.id ?? list[0]?.id ?? null,
+      );
     } catch (err) {
       complain(err, "could not load roles");
     }
@@ -81,7 +120,7 @@ export function ServerSettings({ guild, channels, onClose }: {
 
   useEffect(() => {
     if (tab !== "members") return;
-    api.members(guild.id).then(setMembers).catch((err) => complain(err, "could not load members"));
+    api.members(guild.id).then(setMembers).catch((err) => complain(err, "could not load people"));
   }, [tab, guild.id]);
 
   useEffect(() => {
@@ -97,7 +136,7 @@ export function ServerSettings({ guild, channels, onClose }: {
     api
       .overwrites(selectedChannel)
       .then(setOverwrites)
-      .catch((err) => complain(err, "could not load overwrites"));
+      .catch((err) => complain(err, "could not load the overrides"));
   }, [selectedChannel]);
 
   const loadBans = useCallback(async () => {
@@ -195,6 +234,7 @@ export function ServerSettings({ guild, channels, onClose }: {
   }
 
   async function liftBan(userID: string) {
+    setLifting(userID);
     setError(null);
     try {
       await api.unban(guild.id, userID);
@@ -202,267 +242,393 @@ export function ServerSettings({ guild, channels, onClose }: {
     } catch (err) {
       complain(err, "could not lift the ban");
       await loadBans();
+    } finally {
+      setLifting(null);
     }
   }
 
-  async function setOverwrite(roleID: string, bit: number, next: OverwriteState) {
+  async function cycle(roleID: string, bit: number, from: Cell) {
     if (!selectedChannel) return;
     setError(null);
+    const next = nextState(from);
 
     const current = overwrites.find((o) => o.target_id === roleID);
     const allow = withBit(current?.allow ?? 0, bit, next === "allow");
     const deny = withBit(current?.deny ?? 0, bit, next === "deny");
 
     try {
-      if (allow === 0 && deny === 0) {
-        await api.clearOverwrite(selectedChannel, roleID);
-      } else {
-        await api.setOverwrite(selectedChannel, roleID, allow, deny);
-      }
+      if (allow === 0 && deny === 0) await api.clearOverwrite(selectedChannel, roleID);
+      else await api.setOverwrite(selectedChannel, roleID, allow, deny);
       setOverwrites(await api.overwrites(selectedChannel));
     } catch (err) {
-      complain(err, "could not change the overwrite");
+      complain(err, "could not change the override");
     }
   }
+
+  const editing = channels.find((c) => c.id === selectedChannel) ?? null;
 
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <div
-        className="dialog settings"
+        className="settings-window"
         role="dialog"
         aria-modal="true"
         aria-label={`${guild.name} settings`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {mayManageGuild && (
-          <PickImage
-            name={guild.name}
-            imageKey={icon}
-            label="server icon"
-            onChosen={setIcon}
-            upload={async (file, onProgress) =>
-              (await api.setGuildIcon(guild.id, file, onProgress)).icon_key
-            }
-            remove={() => api.clearGuildIcon(guild.id)}
-          />
-        )}
-
-        <div className="settings-tabs">
-          {offered.map((name) => (
-            <button
-              key={name}
-              className={tab === name ? "link active" : "link"}
-              onClick={() => setTab(name)}
-            >
-              {TAB_NAMES[name]}
+        <aside className="card settings-nav">
+          <div className="settings-nav-head">
+            <Avatar name={guild.name} imageKey={icon} mine />
+            <div className="grow">
+              <div className="identity-name clip">{guild.name}</div>
+              <div className="identity-state">Settings</div>
+            </div>
+            <button className="icon-button" title="Close" onClick={onClose}>
+              <Icon name="x" size={15} />
             </button>
-          ))}
-          <span className="spacer" />
-          <button className="secondary" onClick={onClose}>
-            Done
-          </button>
-        </div>
+          </div>
 
-        {error && <div className="error inline">{error}</div>}
+          <div className="settings-nav-list">
+            {TABS.filter((t) => offered.includes(t.id)).map((t) => (
+              <button
+                key={t.id}
+                className={t.id === tab ? "role-pick active" : "role-pick"}
+                onClick={() => setChosen(t.id)}
+              >
+                <Icon name={t.icon} size={16} />
+                {t.label}
+              </button>
+            ))}
 
-        {tab === "roles" && (
-          <div className="settings-body">
-            <div className="settings-list">
-              {roles.map((r) => (
-                <button
-                  key={r.id}
-                  className={r.id === selectedRole ? "channel active" : "channel"}
-                  onClick={() => setSelectedRole(r.id)}
-                >
-                  <span className="channel-name">{r.name}</span>
-                  <span className="muted role-summary">{summarise(r.permissions)}</span>
-                </button>
-              ))}
-              <form className="inline-form" onSubmit={createRole}>
-                <input
-                  placeholder="new role"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                />
-                <button type="submit">Add</button>
-              </form>
+            <div className="settings-nav-note">
+              You see this because of what you hold here. Nothing on this list is offered to
+              somebody who does not.
+            </div>
+          </div>
+        </aside>
+
+        <section className="card settings-main">
+          <div className="settings-head">
+            <div>
+              <div className="settings-head-title">
+                {tab === "channels" && editing ? (
+                  <>
+                    Editing <em>#{editing.name}</em>
+                  </>
+                ) : (
+                  (TABS.find((t) => t.id === tab)?.label ?? "Settings")
+                )}
+              </div>
+              <div className="settings-head-about">
+                {tab === "channels"
+                  ? "A cell overrides the role's own setting, here only. Deny wins over allow."
+                  : tab === "roles"
+                    ? "Position is what a role outranks. The everyone role cannot move out of last place."
+                    : tab === "bans"
+                      ? "Nobody banned is the normal state. Without this list a ban is permanent by accident."
+                      : tab === "members"
+                        ? "A person's roles decide what they can do, everywhere in the server."
+                        : "The name and the picture the server is known by."}
+              </div>
             </div>
 
-            <div className="settings-detail">
-              {!role && <div className="muted">Pick a role.</div>}
-              {role && (
-                <>
-                  <div className="role-head">
+            {tab === "channels" && (
+              <div className="legend">
+                <span>
+                  <span className="cell allow">✓</span>Allowed here
+                </span>
+                <span>
+                  <span className="cell deny">✕</span>Denied here
+                </span>
+                <span>
+                  <span className="cell">–</span>Whatever the role says
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="settings-content">
+            {error && (
+              <div className="banner bad">
+                <Icon name="warning-circle" size={15} />
+                <span className="grow">{error}</span>
+                <span className="banner-actions">
+                  <button className="link quiet" onClick={() => setError(null)}>
+                    Dismiss
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {tab === "overview" && (
+              <PickImage
+                name={guild.name}
+                imageKey={icon}
+                label="a picture"
+                className="big"
+                mine
+                onChosen={setIcon}
+                upload={async (file, onProgress) =>
+                  (await api.setGuildIcon(guild.id, file, onProgress)).icon_key
+                }
+                remove={() => api.clearGuildIcon(guild.id)}
+              />
+            )}
+
+            {tab === "roles" && (
+              <div className="row top">
+                <div className="settings-side">
+                  {roles.map((r) => (
+                    <button
+                      key={r.id}
+                      className={r.id === selectedRole ? "role-pick active" : "role-pick"}
+                      onClick={() => setSelectedRole(r.id)}
+                    >
+                      <span className={r.is_default ? "matrix-swatch plain" : "matrix-swatch"} />
+                      <span className="grow clip">{r.name}</span>
+                      {r.is_default && <Icon name="lock-simple" size={12} />}
+                    </button>
+                  ))}
+
+                  <form className="row" onSubmit={createRole}>
                     <input
-                      value={nameDraft}
-                      aria-label="Role name"
-                      disabled={role.is_default}
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      onBlur={() => void renameRole()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void renameRole();
-                        if (e.key === "Escape") setNameDraft(role.name);
-                      }}
+                      className="input grow"
+                      placeholder="new role"
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value)}
                     />
-                    <button className="link" onClick={() => void moveRole(1)} disabled={role.is_default}>
-                      ↑
+                    <button className="btn btn-primary btn-small" type="submit">
+                      Add
                     </button>
-                    <button className="link" onClick={() => void moveRole(-1)} disabled={role.is_default}>
-                      ↓
-                    </button>
-                    <button className="link danger" onClick={() => void removeRole()} disabled={role.is_default}>
-                      Delete
-                    </button>
-                  </div>
+                  </form>
+                </div>
 
-                  {role.is_default && (
-                    <div className="muted">
-                      Everyone has this role. It cannot be renamed, moved or removed.
-                    </div>
+                <div className="grow stack">
+                  {!role && <div className="note">Pick a role.</div>}
+                  {role && (
+                    <>
+                      <div className="row">
+                        <input
+                          className="input grow"
+                          value={nameDraft}
+                          aria-label="Role name"
+                          disabled={role.is_default}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          onBlur={() => void renameRole()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void renameRole();
+                            if (e.key === "Escape") setNameDraft(role.name);
+                          }}
+                        />
+                        <button
+                          className="icon-button"
+                          title="Move up"
+                          disabled={role.is_default}
+                          onClick={() => void moveRole(1)}
+                        >
+                          <Icon name="arrow-up" size={15} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          title="Move down"
+                          disabled={role.is_default}
+                          onClick={() => void moveRole(-1)}
+                        >
+                          <Icon name="arrow-down" size={15} />
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          title="Delete this role"
+                          disabled={role.is_default}
+                          onClick={() => void removeRole()}
+                        >
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </div>
+
+                      {role.is_default && (
+                        <div className="note">
+                          Everyone has this role. It cannot be renamed, moved or removed.
+                        </div>
+                      )}
+
+                      {has(role.permissions, ADMINISTRATOR) && (
+                        <div className="banner">
+                          <Icon name="warning-circle" size={15} />
+                          <span>
+                            Administrator grants everything below, and anything added in future.
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="stack tight">
+                        {PERMISSIONS.map((permission) => (
+                          <label key={permission.bit} className="check">
+                            <input
+                              type="checkbox"
+                              checked={has(role.permissions, permission.bit)}
+                              onChange={(e) =>
+                                void togglePermission(permission.bit, e.target.checked)
+                              }
+                            />
+                            <span>
+                              {permission.name}
+                              <span className="check-about"> — {permission.about}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
                   )}
+                </div>
+              </div>
+            )}
 
-                  {has(role.permissions, ADMINISTRATOR) && (
-                    <div className="muted">
-                      Administrator grants everything below, and anything added in future.
-                    </div>
-                  )}
+            {tab === "members" && (
+              <div className="row top">
+                <div className="settings-side">
+                  {members.map((m) => (
+                    <button
+                      key={m.user_id}
+                      className={m.user_id === selectedMember ? "role-pick active" : "role-pick"}
+                      onClick={() => setSelectedMember(m.user_id)}
+                    >
+                      <Avatar name={m.username} imageKey={m.avatar_key} />
+                      <span className="grow clip">{m.nickname ?? m.username}</span>
+                      <span className="member-tag">#{m.discriminator}</span>
+                    </button>
+                  ))}
+                </div>
 
-                  <div className="permissions">
-                    {PERMISSIONS.map((permission) => (
-                      <label key={permission.bit} className="permission">
+                <div className="grow stack tight">
+                  {!selectedMember && <div className="note">Pick somebody.</div>}
+                  {selectedMember &&
+                    roles.map((r) => (
+                      <label key={r.id} className="check">
                         <input
                           type="checkbox"
-                          checked={has(role.permissions, permission.bit)}
-                          onChange={(e) => void togglePermission(permission.bit, e.target.checked)}
+                          checked={r.is_default || memberRoles.includes(r.id)}
+                          disabled={r.is_default}
+                          onChange={(e) => void toggleMemberRole(r.id, e.target.checked)}
                         />
                         <span>
-                          {permission.name}
-                          <span className="muted permission-about"> — {permission.about}</span>
+                          {r.name}
+                          <span className="check-about"> — {summarise(r.permissions)}</span>
                         </span>
                       </label>
                     ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === "members" && (
-          <div className="settings-body">
-            <div className="settings-list">
-              {members.map((m) => (
-                <button
-                  key={m.user_id}
-                  className={m.user_id === selectedMember ? "channel active" : "channel"}
-                  onClick={() => setSelectedMember(m.user_id)}
-                >
-                  <span className="channel-name">{m.nickname ?? m.username}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="settings-detail">
-              {!selectedMember && <div className="muted">Pick somebody.</div>}
-              {selectedMember && (
-                <div className="permissions">
-                  {roles.map((r) => (
-                    <label key={r.id} className="permission">
-                      <input
-                        type="checkbox"
-                        checked={r.is_default || memberRoles.includes(r.id)}
-                        disabled={r.is_default}
-                        onChange={(e) => void toggleMemberRole(r.id, e.target.checked)}
-                      />
-                      <span>
-                        {r.name}
-                        <span className="muted permission-about"> — {summarise(r.permissions)}</span>
-                      </span>
-                    </label>
-                  ))}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === "bans" && (
-          <div className="settings-detail settings-single">
-            {bans.length === 0 && <div className="muted">Nobody is banned from this server.</div>}
-            {bans.map((b) => (
-              <div key={b.user_id} className="ban">
-                <div className="ban-who">
-                  <span className="channel-name">{b.username}</span>
-                  <span className="muted">
-                    {new Date(b.created_at).toLocaleDateString()}
-                    {b.banned_by && ` — by ${session.labelOf(b.banned_by)}`}
-                  </span>
-                </div>
-                <span className="muted ban-reason">{b.reason ?? "No reason given."}</span>
-                <button className="link" onClick={() => void liftBan(b.user_id)}>
-                  Lift
-                </button>
               </div>
-            ))}
-          </div>
-        )}
+            )}
 
-        {tab === "channels" && (
-          <div className="settings-body">
-            <div className="settings-list">
-              {channels
-                .filter((c) => c.kind !== "category")
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    className={c.id === selectedChannel ? "channel active" : "channel"}
-                    onClick={() => setSelectedChannel(c.id)}
-                  >
-                    <span className="channel-name">
-                      {c.kind === "voice" ? "🔊" : "#"} {c.name}
-                    </span>
-                  </button>
-                ))}
-            </div>
+            {tab === "channels" && (
+              <>
+                <div className="row wrap">
+                  {channels
+                    .filter((c) => c.kind !== "category")
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        className={c.id === selectedChannel ? "role-pick active" : "role-pick"}
+                        onClick={() => setSelectedChannel(c.id)}
+                      >
+                        <Icon name={c.kind === "voice" ? "speaker-high" : "hash"} size={14} />
+                        {c.name}
+                      </button>
+                    ))}
+                </div>
 
-            <div className="settings-detail">
-              {!selectedChannel && <div className="muted">Pick a channel.</div>}
-              {selectedChannel && (
-                <>
-                  <div className="muted">
-                    Inherit means the role's own permission decides. Deny always wins over allow.
-                  </div>
-                  {roles.map((r) => {
-                    const overwrite = overwrites.find((o) => o.target_id === r.id);
-                    return (
-                      <div key={r.id} className="overwrite-role">
-                        <div className="overwrite-name">{r.name}</div>
-                        {PERMISSIONS.map((permission) => (
-                          <div key={permission.bit} className="overwrite-row">
-                            <span className="channel-name">{permission.name}</span>
-                            {(["allow", "inherit", "deny"] as OverwriteState[]).map((choice) => (
-                              <button
-                                key={choice}
-                                className={
-                                  stateOf(overwrite, permission.bit) === choice
-                                    ? `overwrite ${choice} on`
-                                    : "overwrite"
-                                }
-                                onClick={() => void setOverwrite(r.id, permission.bit, choice)}
-                              >
-                                {choice === "allow" ? "✓" : choice === "deny" ? "✕" : "–"}
-                              </button>
-                            ))}
+                {!selectedChannel && <div className="note">Pick a channel.</div>}
+
+                {selectedChannel && (
+                  <div className="matrix">
+                    <div className="matrix-head">
+                      <div className="matrix-role kicker">Role</div>
+                      {PERMISSIONS.map((p) => (
+                        <div key={p.bit} className="matrix-column">
+                          {p.name}
+                        </div>
+                      ))}
+                    </div>
+
+                    {roles.map((r) => {
+                      const overwrite = overwrites.find((o) => o.target_id === r.id);
+                      return (
+                        <div key={r.id} className="matrix-row">
+                          <div className="matrix-role">
+                            <div className="matrix-role-name">
+                              <span
+                                className={r.is_default ? "matrix-swatch plain" : "matrix-swatch"}
+                              />
+                              <span className="clip">{r.name}</span>
+                            </div>
+                            <div className="matrix-role-sub">{summarise(r.permissions)}</div>
                           </div>
-                        ))}
+
+                          {PERMISSIONS.map((p) => {
+                            const state = stateOf(overwrite, p.bit);
+                            return (
+                              <div key={p.bit} className="matrix-cell">
+                                <button
+                                  className={state === "inherit" ? "cell" : `cell ${state}`}
+                                  aria-label={`${p.name} for ${r.name}: ${state}`}
+                                  onClick={() => void cycle(r.id, p.bit, state)}
+                                >
+                                  {glyph(state)}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedChannel && (
+                  <div className="dashed">
+                    <div className="note">
+                      A cell cycles: whatever the role says, allowed, denied. An override can also
+                      be aimed at one person; the server takes it, nothing here offers it yet.
+                    </div>
+                    <span className="pending">per-person overrides · design only</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {tab === "bans" && (
+              <div className="stack tight">
+                {bans.length === 0 && (
+                  <div className="note">Nobody is banned from this server.</div>
+                )}
+                {bans.map((b) => (
+                  <div
+                    key={b.user_id}
+                    className={lifting === b.user_id ? "list-row fading" : "list-row"}
+                  >
+                    <Avatar name={b.username} imageKey={null} />
+                    <div className="grow">
+                      <div className="clip">{b.username}</div>
+                      <div className="field-note">
+                        {new Date(b.created_at).toLocaleDateString()}
+                        {b.banned_by && ` · by ${session.labelOf(b.banned_by)}`}
+                        {b.reason ? ` · ${b.reason}` : ""}
                       </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
+                    </div>
+                    <button
+                      className="link"
+                      disabled={lifting === b.user_id}
+                      onClick={() => void liftBan(b.user_id)}
+                    >
+                      {lifting === b.user_id ? "lifting…" : "Lift"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </section>
       </div>
     </div>
   );

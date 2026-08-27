@@ -1,5 +1,5 @@
-import { Avatar } from "./Avatar";
 import { session } from "../session";
+import { Icon } from "./Icon";
 import type { ReplyPreview } from "../types/events.gen";
 
 export function ReplyQuote({
@@ -11,7 +11,7 @@ export function ReplyQuote({
 }) {
   if (reply.deleted) {
     return (
-      <div className="reply-quote muted">
+      <div className="reply-line gone">
         <span className="reply-mark" aria-hidden="true" />
         Original message was deleted
       </div>
@@ -22,27 +22,20 @@ export function ReplyQuote({
     <>
       <span className="reply-mark" aria-hidden="true" />
       {reply.author && (
-        <>
-          <Avatar
-            name={reply.author.username}
-            imageKey={reply.author.avatar_key}
-            className="avatar reply"
-          />
-          <span className="reply-author">{session.labelOf(reply.author.id)}</span>
-        </>
+        <span className="reply-line-author">{session.labelOf(reply.author.id)}</span>
       )}
-      <span className="reply-content muted">
+      <span className="reply-line-text">
         {reply.content}
         {reply.truncated && "…"}
-        {reply.has_attachments && <span className="reply-clip"> 📎</span>}
       </span>
+      {reply.has_attachments && <Icon name="paperclip" size={12} />}
     </>
   );
 
-  if (!onJump) return <div className="reply-quote">{body}</div>;
+  if (!onJump) return <div className="reply-line">{body}</div>;
 
   return (
-    <button className="reply-quote link" onClick={() => onJump(reply.message_id)}>
+    <button className="reply-line" onClick={() => onJump(reply.message_id)}>
       {body}
     </button>
   );

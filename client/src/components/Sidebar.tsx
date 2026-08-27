@@ -1,28 +1,51 @@
 import { useCallback, useEffect, useState } from "react";
-import { Avatar } from "./Avatar";
 import { api } from "../api";
-import { ServerSettings } from "./ServerSettings";
+import { useDismiss } from "../dismiss";
 import { emptySession, session, type SessionState } from "../session";
-import { BAN_MEMBERS, CREATE_INVITE, MANAGE_CHANNELS, MANAGE_ROLES, allows } from "../permissions";
+import { voice, type ScreenState } from "../voice";
+import {
+  CREATE_INVITE,
+  MANAGE_CHANNELS,
+  MANAGE_GUILD,
+  MANAGE_ROLES,
+  BAN_MEMBERS,
+  allows,
+} from "../permissions";
+import { Avatar } from "./Avatar";
+import { Icon } from "./Icon";
+import { NewChannel } from "./NewChannel";
+import { NewServer } from "./NewServer";
+import { Invites } from "./Invites";
+import { ServerSettings } from "./ServerSettings";
+import { PersonMenu } from "./PersonMenu";
 import type { Channel, Guild } from "../types/events.gen";
-import type { Invite } from "../api";
 
 interface Props {
   guilds: Guild[];
   channels: Channel[];
   activeGuild: Guild | null;
   activeChannel: Channel | null;
+  selfID: string;
+  watching: string | null;
+  onWatch: (userID: string | null) => void;
   onSelectGuild: (g: Guild) => void;
   onSelectChannel: (c: Channel) => void;
   onGuildsChanged: () => void;
   unread: Record<string, boolean>;
 }
 
-type ChannelGroup = { category: Channel | null; channels: Channel[] };
+type Group = { category: Channel | null; channels: Channel[] };
 
-function categoriesIn(channels: Channel[]): Channel[] {
-  return channels.filter((c) => c.kind === "category");
-}
+const emptyScreens: ScreenState = {
+  sharing: false,
+  sound: false,
+  local: null,
+  remote: [],
+  audible: [],
+  dropped: [],
+  sizes: {},
+  quality: "smooth",
+};
 
 function inOrder(channels: Channel[]): Channel[] {
   return [...channels].sort((a, b) =>
@@ -30,20 +53,17 @@ function inOrder(channels: Channel[]): Channel[] {
   );
 }
 
-function groupByCategory(channels: Channel[]): ChannelGroup[] {
+function groupByCategory(channels: Channel[]): Group[] {
   const categories = inOrder(channels.filter((c) => c.kind === "category"));
   const rest = channels.filter((c) => c.kind !== "category");
 
   const loose = inOrder(
     rest.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id)),
   );
-  const groups: ChannelGroup[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
+  const groups: Group[] = loose.length > 0 ? [{ category: null, channels: loose }] : [];
 
   for (const category of categories) {
-    groups.push({
-      category,
-      channels: inOrder(rest.filter((c) => c.parent_id === category.id)),
-    });
+    groups.push({ category, channels: inOrder(rest.filter((c) => c.parent_id === category.id)) });
   }
   return groups;
 }
@@ -53,12 +73,44 @@ export function Sidebar({
   channels,
   activeGuild,
   activeChannel,
+  selfID,
+  watching,
+  onWatch,
   onSelectGuild,
   onSelectChannel,
   onGuildsChanged,
   unread,
 }: Props) {
-  const grouped = groupByCategory(channels);
+  const [people, setPeople] = useState<SessionState>(emptySession);
+  const [screens, setScreens] = useState<ScreenState>(emptyScreens);
+  const [speaking, setSpeaking] = useState<Record<string, boolean>>({});
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
+  const [guildMenu, setGuildMenu] = useState(false);
+  const [makingServer, setMakingServer] = useState(false);
+  const [makingChannel, setMakingChannel] = useState<Channel | null | false>(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [person, setPerson] = useState<string | null>(null);
+
+  useEffect(() => session.onChange(setPeople), []);
+  useEffect(() => voice.onScreenChange(setScreens), []);
+  useEffect(() => voice.onSpeakingChange(setSpeaking), []);
+
+  const closeGuildMenu = useCallback(() => setGuildMenu(false), []);
+  const guildAnchor = useDismiss<HTMLDivElement>(guildMenu, closeGuildMenu);
+
+  const held = activeGuild ? people.guildAllows[activeGuild.id] : undefined;
+  const mayManageChannels = allows(held, MANAGE_CHANNELS);
+  const mayInvite = allows(held, CREATE_INVITE);
+  const maySeeSettings =
+    allows(held, MANAGE_ROLES) || allows(held, BAN_MEMBERS) || allows(held, MANAGE_GUILD);
+
+  const groups = groupByCategory(channels);
+  const roster = activeGuild ? (people.membersByGuild[activeGuild.id] ?? []) : [];
+  const online = roster.filter((id) => people.online[id]).length;
+  const live = new Set(
+    screens.remote.map((s) => s.userID).filter((id): id is string => Boolean(id)),
+  );
 
   const move = async (channelID: string, to: number) => {
     try {
@@ -66,134 +118,72 @@ export function Sidebar({
     } catch {}
   };
 
-  const [people, setPeople] = useState<SessionState>(emptySession);
-  useEffect(() => session.onChange(setPeople), []);
+  function voiceRow(channel: Channel, id: string) {
+    const classes = ["voice-person"];
+    if (watching === id) classes.push("watching");
+    if (!people.online[id] && id !== selfID) classes.push("quiet");
 
-  const guildAllows = activeGuild ? people.guildAllows[activeGuild.id] : undefined;
-  const mayManageChannels = allows(guildAllows, MANAGE_CHANNELS);
-  const mayManageRoles = allows(guildAllows, MANAGE_ROLES);
-  const mayBan = allows(guildAllows, BAN_MEMBERS);
-  const mayInvite = allows(guildAllows, CREATE_INVITE);
-
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [addingChannel, setAddingChannel] = useState(false);
-  const [channelName, setChannelName] = useState("");
-  const [channelKind, setChannelKind] = useState<"text" | "voice" | "category">("text");
-  const [channelParent, setChannelParent] = useState("");
-  const [code, setCode] = useState("");
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [maxUses, setMaxUses] = useState("");
-  const [expiresIn, setExpiresIn] = useState("");
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [managing, setManaging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function createGuild(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    try {
-      await api.createGuild(name.trim());
-      setName("");
-      setCreating(false);
-      onGuildsChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "could not create");
-    }
-  }
-
-  async function createChannel(e: React.FormEvent) {
-    e.preventDefault();
-    if (!activeGuild || !channelName.trim()) return;
-    setError(null);
-    try {
-      await api.createChannel(
-        activeGuild.id,
-        channelName.trim(),
-        channelKind,
-        channels.length,
-        channelKind === "category" || !channelParent ? undefined : channelParent,
-      );
-      setChannelName("");
-      setAddingChannel(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "could not create the channel");
-    }
-  }
-
-  async function joinByCode(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = code.trim();
-    if (!trimmed) return;
-    setError(null);
-    try {
-      await api.redeemInvite(trimmed);
-      setCode("");
-      onGuildsChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "could not join");
-    }
-  }
-
-  const loadInvites = useCallback(async () => {
-    if (!activeGuild) return;
-    try {
-      setInvites(await api.invites(activeGuild.id));
-    } catch {
-      setInvites([]);
-    }
-  }, [activeGuild]);
-
-  useEffect(() => {
-    setManaging(false);
-    setInvites([]);
-    setInviteLink(null);
-  }, [activeGuild]);
-
-  useEffect(() => {
-    if (managing) void loadInvites();
-  }, [managing, loadInvites]);
-
-  async function revoke(code: string) {
-    setError(null);
-    try {
-      await api.revokeInvite(code);
-      await loadInvites();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "could not revoke");
-    }
-  }
-
-  async function makeInvite() {
-    if (!activeGuild) return;
-    setError(null);
-    try {
-      const uses = Number(maxUses);
-      const hours = Number(expiresIn);
-      const invite = await api.createInvite(
-        activeGuild.id,
-        uses > 0 ? uses : undefined,
-        hours > 0 ? hours : undefined,
-      );
-      if (managing) void loadInvites();
-      const link = `${location.origin}/?invite=${invite.code}`;
-      setInviteLink(link);
-      try {
-        await navigator.clipboard.writeText(link);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        setCopied(false);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "could not create invite");
-    }
+    return (
+      <button
+        key={id}
+        className={classes.join(" ")}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (id !== selfID) setPerson(id);
+        }}
+        onClick={() => {
+          if (!live.has(id)) return;
+          voice.watchScreen(id, true);
+          onSelectChannel(channel);
+          onWatch(id);
+        }}
+      >
+        <Avatar
+          name={session.nameOf(id)}
+          imageKey={people.avatars[id]}
+          mine={id === selfID}
+          className={speaking[id] ? "speaking" : undefined}
+        />
+        <span className="grow clip">{session.nameOf(id)}</span>
+        {speaking[id] && (
+          <span className="bars">
+            <span />
+            <span />
+          </span>
+        )}
+        {people.mutedInVoice[id] && <Icon name="microphone-slash" size={13} />}
+        {people.deafenedInVoice[id] && <Icon name="speaker-simple-slash" size={13} />}
+        {live.has(id) && <span className="live">LIVE</span>}
+        {id === selfID && <span className="you-tag">you</span>}
+      </button>
+    );
   }
 
   return (
     <>
+      {makingServer && (
+        <NewServer
+          onClose={() => setMakingServer(false)}
+          onMade={() => {
+            setMakingServer(false);
+            onGuildsChanged();
+          }}
+        />
+      )}
+
+      {makingChannel !== false && activeGuild && (
+        <NewChannel
+          guild={activeGuild}
+          parent={makingChannel}
+          taken={channels.length}
+          onClose={() => setMakingChannel(false)}
+        />
+      )}
+
+      {invitesOpen && activeGuild && (
+        <Invites guild={activeGuild} onClose={() => setInvitesOpen(false)} />
+      )}
+
       {settingsOpen && activeGuild && (
         <ServerSettings
           guild={activeGuild}
@@ -202,236 +192,196 @@ export function Sidebar({
         />
       )}
 
-      <nav className="guilds">
+      {person && (
+        <PersonMenu
+          userID={person}
+          live={live.has(person)}
+          onClose={() => setPerson(null)}
+        />
+      )}
+
+      <nav className="rail" aria-label="Servers">
         {guilds.map((g) => (
           <button
             key={g.id}
-            className={g.id === activeGuild?.id ? "guild active" : "guild"}
+            className={g.id === activeGuild?.id ? "rail-server active" : "rail-server"}
             title={g.name}
             onClick={() => onSelectGuild(g)}
           >
-            <Avatar name={g.name} imageKey={g.icon_key} className="guild-image" />
+            <Avatar name={g.name} imageKey={g.icon_key} />
           </button>
         ))}
-        <button className="guild add" title="New server" onClick={() => setCreating(!creating)}>
-          +
+        <button
+          className="rail-server rail-add"
+          title="A place for the group"
+          onClick={() => setMakingServer(true)}
+        >
+          <Icon name="plus" size={17} />
         </button>
+        <span className="rail-fade" />
       </nav>
 
-      <aside className="channels">
-        {creating && (
-          <form className="inline-form" onSubmit={createGuild}>
-            <input
-              placeholder="server name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
-            <button type="submit">Create</button>
-          </form>
-        )}
+      <aside className="card channels">
+        <div className="anchor" ref={guildAnchor}>
+          <button
+            className="guild-head"
+            disabled={!activeGuild}
+            aria-expanded={guildMenu}
+            onClick={() => setGuildMenu(!guildMenu)}
+          >
+            <span className="grow">
+              <span className="guild-head-name clip">{activeGuild?.name ?? "No server"}</span>
+              <span className="guild-head-meta">
+                {activeGuild
+                  ? `${roster.length} member${roster.length === 1 ? "" : "s"} · ${online} online`
+                  : "Make one, or step into one you were given a code for"}
+              </span>
+            </span>
+            {activeGuild && <Icon name="caret-down" size={15} />}
+          </button>
 
-        <div className="channels-head">
-          <span className="channel-name">{activeGuild?.name ?? "No server"}</span>
-          {activeGuild && (
-            <>
-              {(mayManageRoles || mayBan) && (
-                <button
-                  className="link add-channel"
-                  title="Server settings"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  ⚙
-                </button>
-              )}
-              {mayManageChannels && (
-                <button
-                  className="link add-channel"
-                  title="New channel"
-                  onClick={() => setAddingChannel(!addingChannel)}
-                >
-                  +
-                </button>
-              )}
-            </>
+          {guildMenu && activeGuild && (
+            <div className="menu below-left">
+              <div className="menu-title">The server</div>
+              <button
+                className="menu-item"
+                disabled={!mayInvite}
+                onClick={() => {
+                  closeGuildMenu();
+                  setInvitesOpen(true);
+                }}
+              >
+                <Icon name="user-plus" size={16} />
+                Invite people
+                {!mayInvite && <span className="menu-item-hint">not yours to give</span>}
+              </button>
+              <button
+                className="menu-item"
+                disabled={!maySeeSettings}
+                onClick={() => {
+                  closeGuildMenu();
+                  setSettingsOpen(true);
+                }}
+              >
+                <Icon name="gear-six" size={16} />
+                Server settings
+              </button>
+              <div className="menu-separator" />
+              <button
+                className="menu-item"
+                disabled={!mayManageChannels}
+                onClick={() => {
+                  closeGuildMenu();
+                  setMakingChannel(null);
+                }}
+              >
+                <Icon name="plus-circle" size={16} />
+                Add a channel
+              </button>
+            </div>
           )}
         </div>
 
-        {addingChannel && activeGuild && mayManageChannels && (
-          <form className="inline-form" onSubmit={createChannel}>
-            <input
-              placeholder="channel name"
-              value={channelName}
-              autoFocus
-              onChange={(e) => setChannelName(e.target.value)}
-            />
-            <select
-              aria-label="Channel kind"
-              value={channelKind}
-              onChange={(e) => setChannelKind(e.target.value as "text" | "voice" | "category")}
-            >
-              <option value="text">Text</option>
-              <option value="voice">Voice</option>
-              <option value="category">Category</option>
-            </select>
-            {channelKind !== "category" && categoriesIn(channels).length > 0 && (
-              <select
-                aria-label="Category"
-                value={channelParent}
-                onChange={(e) => setChannelParent(e.target.value)}
-              >
-                <option value="">No category</option>
-                {categoriesIn(channels).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button type="submit">Create</button>
-          </form>
-        )}
+        <div className="channel-list">
+          {groups.map((group) => {
+            const key = group.category?.id ?? "loose";
+            const shut = Boolean(group.category && folded[group.category.id]);
 
-        {grouped.map((group) => (
-          <div key={group.category?.id ?? "loose"} className="channel-group">
-            {group.category && (
-              <div className="category">{group.category.name.toUpperCase()}</div>
-            )}
-            {group.channels.map((c, at) => (
-              <div key={c.id} className="channel-row">
-                <button
-                  className={c.id === activeChannel?.id ? "channel active" : "channel"}
-                  onClick={() => onSelectChannel(c)}
-                >
-                  <span className="channel-name">
-                    {c.kind === "voice" ? "🔊" : "#"} {c.name}
-                  </span>
-                  {unread[c.id] && c.id !== activeChannel?.id && (
-                    <span className="unread" aria-label="unread messages" />
-                  )}
-                  {mayManageChannels && group.channels.length > 1 && (
-                    <span className="channel-move">
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Move ${c.name} up`}
-                        aria-disabled={at === 0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (at > 0) void move(c.id, at - 1);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.stopPropagation();
-                          e.preventDefault();
-                          if (at > 0) void move(c.id, at - 1);
-                        }}
-                      >
-                        ↑
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Move ${c.name} down`}
-                        aria-disabled={at === group.channels.length - 1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (at < group.channels.length - 1) void move(c.id, at + 1);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.stopPropagation();
-                          e.preventDefault();
-                          if (at < group.channels.length - 1) void move(c.id, at + 1);
-                        }}
-                      >
-                        ↓
-                      </span>
-                    </span>
-                  )}
-                </button>
-                {c.kind === "voice" && (people.inVoice[c.id] ?? []).length > 0 && (
-                  <div className="channel-callers">
-                    {(people.inVoice[c.id] ?? []).map((id) => (
-                      <div key={id} className="channel-caller">
-                        <Avatar name={people.names[id] ?? id.slice(0, 8)} imageKey={people.avatars[id]} className="avatar tiny" />
-                        <span className="muted">{session.labelOf(id)}</span>
-                        {people.mutedInVoice[id] && <span className="muted">muted</span>}
-                        {people.deafenedInVoice[id] && <span className="muted">can't hear</span>}
-                      </div>
-                    ))}
-                  </div>
+            return (
+              <div key={key} className="channel-group">
+                {group.category && (
+                  <button
+                    className={shut ? "category folded" : "category"}
+                    onClick={() =>
+                      setFolded((prev) => ({
+                        ...prev,
+                        [group.category!.id]: !prev[group.category!.id],
+                      }))
+                    }
+                  >
+                    <Icon name="caret-down" size={11} />
+                    {group.category.name}
+                  </button>
                 )}
+
+                {!shut &&
+                  group.channels.map((c, at) => {
+                    const here = people.inVoice[c.id] ?? [];
+                    const classes = ["channel"];
+                    if (c.id === activeChannel?.id) classes.push("active");
+                    else if (c.kind === "voice" && here.length > 0) classes.push("busy");
+                    else if (unread[c.id]) classes.push("unread");
+
+                    return (
+                      <div key={c.id} className="channel-slot">
+                        <button className={classes.join(" ")} onClick={() => onSelectChannel(c)}>
+                          <Icon name={c.kind === "voice" ? "speaker-high" : "hash"} size={15} />
+                          <span className="clip">{c.name}</span>
+
+                          {c.kind === "voice" && here.length > 0 && (
+                            <span className="channel-count">{here.length}</span>
+                          )}
+                          {c.kind !== "voice" && unread[c.id] && c.id !== activeChannel?.id && (
+                            <span className="unread-dot" aria-label="unread messages" />
+                          )}
+
+                          {mayManageChannels && group.channels.length > 1 && (
+                            <span className="channel-move">
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Move ${c.name} up`}
+                                aria-disabled={at === 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (at > 0) void move(c.id, at - 1);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter" && e.key !== " ") return;
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  if (at > 0) void move(c.id, at - 1);
+                                }}
+                              >
+                                ↑
+                              </span>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Move ${c.name} down`}
+                                aria-disabled={at === group.channels.length - 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (at < group.channels.length - 1) void move(c.id, at + 1);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter" && e.key !== " ") return;
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  if (at < group.channels.length - 1) void move(c.id, at + 1);
+                                }}
+                              >
+                                ↓
+                              </span>
+                            </span>
+                          )}
+                        </button>
+
+                        {c.kind === "voice" && here.length > 0 && (
+                          <div className="voice-roster">
+                            {here.map((id) => voiceRow(c, id))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
-            ))}
-          </div>
-        ))}
+            );
+          })}
 
-        <div className="join-box">
-          {activeGuild && mayInvite && (
-            <>
-              <div className="invite-limits">
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="uses"
-                  aria-label="Maximum uses, blank for unlimited"
-                  value={maxUses}
-                  onChange={(e) => setMaxUses(e.target.value)}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="hours"
-                  aria-label="Expires after, blank for never"
-                  value={expiresIn}
-                  onChange={(e) => setExpiresIn(e.target.value)}
-                />
-              </div>
-              <button className="invite-button" onClick={() => void makeInvite()}>
-                {copied ? "Link copied" : "Invite a friend"}
-              </button>
-              {inviteLink && (
-                <input className="invite-link" readOnly value={inviteLink} onFocus={(e) => e.target.select()} />
-              )}
-
-              <button className="link" onClick={() => setManaging(!managing)}>
-                {managing ? "Hide invites" : "Manage invites"}
-              </button>
-
-              {managing && (
-                <div className="invite-list">
-                  {invites.length === 0 && <div className="muted">No invites yet.</div>}
-                  {invites.map((invite) => (
-                    <div key={invite.code} className="invite-row">
-                      <code>{invite.code}</code>
-                      <span className="muted">
-                        {invite.uses}
-                        {invite.max_uses ? `/${invite.max_uses}` : ""} used
-                        {invite.expires_at
-                          ? `, until ${new Date(invite.expires_at).toLocaleDateString()}`
-                          : ""}
-                      </span>
-                      <button className="link danger" onClick={() => void revoke(invite.code)}>
-                        Revoke
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+          {activeGuild && channels.length === 0 && (
+            <div className="note">Nothing here yet. Add a channel from the server name above.</div>
           )}
-
-          <form className="inline-form" onSubmit={joinByCode}>
-            <input
-              placeholder="invite code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
-            <button type="submit">Join</button>
-          </form>
-
-          {error && <div className="error inline">{error}</div>}
         </div>
       </aside>
     </>
