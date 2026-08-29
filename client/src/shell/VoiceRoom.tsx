@@ -16,6 +16,7 @@ export function VoiceRoom({
   channel,
   inCall,
   state,
+  nameFor,
   meID,
   speaking,
   screens,
@@ -33,6 +34,7 @@ export function VoiceRoom({
   channel: Channel;
   inCall: string[];
   state: SessionState;
+  nameFor: (id: string) => string;
   meID: string;
   speaking: Record<string, boolean>;
   screens: ScreenState;
@@ -100,7 +102,7 @@ export function VoiceRoom({
           }}
         >
           {inCall.map((id) => {
-            const name = state.names[id] ?? "Someone";
+            const name = nameFor(id);
             const picture = avatarURL(id);
             const avatarSize = Math.round(grid.height * 0.34);
             return (

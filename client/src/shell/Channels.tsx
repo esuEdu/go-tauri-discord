@@ -35,6 +35,7 @@ export function Channels({
   channels,
   activeChannelID,
   state,
+  nameFor,
   meID,
   live,
   speaking,
@@ -50,6 +51,7 @@ export function Channels({
   channels: Channel[];
   activeChannelID: string | null;
   state: SessionState;
+  nameFor: (id: string) => string;
   meID: string;
   live: Set<string>;
   speaking: Record<string, boolean>;
@@ -234,13 +236,13 @@ export function Channels({
                 onContextMenu={(event) => onOpenVoiceMember(id, channel.id, event)}
               >
                 <Avatar
-                  name={state.names[id] ?? "?"}
+                  name={nameFor(id)}
                   url={avatarURL(id)}
                   size={20}
                   tone={id === meID ? "accent" : "neutral"}
                   className={speaking[id] ? "speaking-ring" : undefined}
                 />
-                <span className="voice-member-name">{state.names[id] ?? "Someone"}</span>
+                <span className="voice-member-name">{nameFor(id)}</span>
                 {live.has(id) && <LiveBadge tone="solid" />}
                 {id === meID && <span className="voice-member-you">you</span>}
                 <span className="voice-member-icons">

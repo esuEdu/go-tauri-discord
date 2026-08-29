@@ -7,7 +7,6 @@ import {
   type MouseEvent,
 } from "react";
 import { api } from "../api";
-import type { SessionState } from "../session";
 import type { Attachment, Channel, Message } from "../types/events.gen";
 import { Avatar } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
@@ -20,7 +19,7 @@ const MAX_FILES = 10;
 export function Room({
   channel,
   messages,
-  state,
+  nameFor,
   meID,
   typing,
   canSend,
@@ -36,7 +35,7 @@ export function Room({
 }: {
   channel: Channel;
   messages: Message[];
-  state: SessionState;
+  nameFor: (id: string) => string;
   meID: string;
   typing: string[];
   canSend: boolean;
@@ -183,7 +182,7 @@ export function Room({
                 else rows.current.delete(group.message.id);
               }}
               onJumpTo={jumpTo}
-              state={state}
+              nameFor={nameFor}
               meID={meID}
               canReact={canReact}
               avatarURL={avatarURL}
@@ -236,7 +235,7 @@ export function Room({
             <div className="composer-reply">
               <span className="composer-reply-label">Replying to</span>
               <span className="composer-reply-name">
-                {state.names[replyTo.author.id] ?? replyTo.author.username}
+                {nameFor(replyTo.author.id)}
               </span>
               <button
                 type="button"
@@ -371,7 +370,7 @@ function MessageRow({
   highlighted,
   onMounted,
   onJumpTo,
-  state,
+  nameFor,
   meID,
   canReact,
   avatarURL,
@@ -387,7 +386,7 @@ function MessageRow({
   highlighted: boolean;
   onMounted: (node: HTMLElement | null) => void;
   onJumpTo: (messageID: string) => void;
-  state: SessionState;
+  nameFor: (id: string) => string;
   meID: string;
   canReact: boolean;
   avatarURL: (id: string) => string | null;
@@ -399,7 +398,7 @@ function MessageRow({
   onOpenImage: (attachment: Attachment, message: Message) => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const name = state.names[message.author.id] ?? message.author.username;
+  const name = nameFor(message.author.id);
   const reply = message.reply_to;
   const showHead = !grouped || Boolean(reply);
 

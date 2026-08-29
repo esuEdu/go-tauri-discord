@@ -6,6 +6,7 @@ import { LiveBadge } from "../ui/LiveBadge";
 export function Members({
   ids,
   state,
+  nameFor,
   meID,
   live,
   avatarURL,
@@ -13,6 +14,7 @@ export function Members({
 }: {
   ids: string[];
   state: SessionState;
+  nameFor: (id: string) => string;
   meID: string;
   live: Set<string>;
   avatarURL: (id: string) => string | null;
@@ -21,7 +23,7 @@ export function Members({
   const named = ids.filter((id) => state.names[id]);
   const online = named.filter((id) => state.online[id]);
   const offline = named.filter((id) => !state.online[id]);
-  const shared = sharedNames(named, state);
+  const shared = sharedNames(named, nameFor);
 
   function group(title: string, list: string[], presence: "online" | "offline") {
     if (!list.length) return null;
@@ -40,7 +42,7 @@ export function Members({
           >
             <span className="avatar-slot">
               <Avatar
-                name={state.names[id]}
+                name={nameFor(id)}
                 url={avatarURL(id)}
                 size={28}
                 tone={id === meID ? "accent" : "neutral"}
@@ -48,8 +50,8 @@ export function Members({
               {presence === "online" && <span className="presence-dot" />}
             </span>
             <span className="member-row-identity">
-              <span className="member-row-name">{state.names[id]}</span>
-              {shared.has(state.names[id]) && state.tags[id] && (
+              <span className="member-row-name">{nameFor(id)}</span>
+              {shared.has(nameFor(id)) && state.tags[id] && (
                 <span className="member-row-tag">#{state.tags[id]}</span>
               )}
             </span>
@@ -68,10 +70,10 @@ export function Members({
   );
 }
 
-function sharedNames(ids: string[], state: SessionState): Set<string> {
+function sharedNames(ids: string[], nameFor: (id: string) => string): Set<string> {
   const seen = new Map<string, number>();
   for (const id of ids) {
-    const name = state.names[id];
+    const name = nameFor(id);
     if (name) seen.set(name, (seen.get(name) ?? 0) + 1);
   }
   const shared = new Set<string>();

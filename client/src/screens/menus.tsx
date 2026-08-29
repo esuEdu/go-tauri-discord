@@ -15,8 +15,10 @@ export function VoiceMemberMenu({
   live,
   canKick,
   canBan,
+  canRename,
   onKick,
   onBan,
+  onRename,
   onClose,
 }: {
   at: Anchor;
@@ -26,8 +28,10 @@ export function VoiceMemberMenu({
   live: boolean;
   canKick: boolean;
   canBan: boolean;
+  canRename: boolean;
   onKick: () => void;
   onBan: () => void;
+  onRename: () => void;
   onClose: () => void;
 }) {
   const [userVolume, setUserVolume] = useState(() => voice.volumeOf(userID, "voice"));
@@ -79,12 +83,16 @@ export function VoiceMemberMenu({
 
       <MenuSeparator />
       <MenuItem icon="user-circle" label="View Profile" hint="Not built yet" disabled />
-      <MenuItem
-        icon="pencil-simple"
-        label="Change Nickname"
-        hint="No endpoint yet"
-        disabled
-      />
+      {canRename && (
+        <MenuItem
+          icon="pencil-simple"
+          label="Change Nickname"
+          onClick={() => {
+            onClose();
+            onRename();
+          }}
+        />
+      )}
       <MenuItem icon="phone-x" label="Disconnect" hint="Needs the server" disabled />
 
       {(canKick || canBan) && <MenuSeparator />}
