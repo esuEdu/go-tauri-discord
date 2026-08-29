@@ -65,6 +65,81 @@ there is no admin, and whoever creates a server owns it.
 
 ---
 
+## Oracle Cloud, and a name without buying one
+
+Oracle's free tier is a good host for this and gets two things wrong by
+default. Both fail in ways that look like the application is broken.
+
+**Its firewall is two firewalls.** Opening ports in the VCN security list is
+only half: Oracle's Ubuntu images also ship iptables rules that drop everything
+except SSH, and those survive a reboot. Open both, or the cloud console will
+show your rules while the host quietly refuses the packets.
+
+```bash
+sudo iptables -I INPUT -p tcp --dport 80  -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT -p udp --dport 50000:50999 -j ACCEPT
+sudo netfilter-persistent save
+```
+
+Then the same three, as ingress rules on the subnet's security list, from
+0.0.0.0/0.
+
+**Its instances are behind NAT.** The VM sees a private address on its NIC and
+never learns the public one, so the SFU offers candidates nobody can reach.
+Set it explicitly:
+
+```bash
+curl -s ifconfig.me          # the address to put in WEBRTC_PUBLIC_IP
+```
+
+Leaving it empty here is the failure the boot log warns about, and the symptom
+is that everything works except that nobody can hear anybody.
+
+**A hostname without buying a domain.** Browsers refuse microphone access
+outside a secure context, so an IP address alone cannot carry a call however
+open the ports are. `nip.io` resolves `1-2-3-4.nip.io` to `1.2.3.4`, and it is
+a real name, so Caddy can get a real certificate for it:
+
+```
+DOMAIN=203-0-113-45.nip.io
+CORS_ORIGINS=https://203-0-113-45.nip.io,tauri://localhost
+```
+
+Swap in your own domain later by editing those two lines and restarting; the
+certificate is fetched again and nothing else changes.
+
+---
+
+## Watching it run
+
+`make observe-up` starts Prometheus, Grafana, Loki and two exporters beside the
+deployment. cAdvisor reports CPU, memory, disk and network per container, so
+the server, Postgres and Caddy are each accounted for separately; node-exporter
+covers the host itself; Loki collects every container's logs so the server's
+errors are searchable next to the graphs.
+
+Grafana binds to loopback and is not published, because a dashboard with a
+default password on a public address is a worse problem than no dashboard.
+Reach it over SSH:
+
+```bash
+ssh -N -L 3000:127.0.0.1:3000 ubuntu@your-host
+```
+
+Then <http://localhost:3000>, user `admin`, password from `GRAFANA_PASSWORD` in
+`.env`. Both datasources are already configured.
+
+The stack costs roughly 400MB of memory and keeps 15 days or 2GB of metrics,
+whichever comes first. On a 1GB instance run the deployment without it and use
+`make deploy-logs`; on the 24GB Ampere shape it is not worth thinking about.
+
+If the `host` target reads *down* in Prometheus, node-exporter did not get the
+mount propagation it needs -- that is a Linux host detail and the reason this
+part cannot be tested on a Mac.
+
+---
+
 ## What is running
 
 | Piece | What it does |

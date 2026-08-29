@@ -7,6 +7,7 @@ DATABASE_URL ?= postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disabl
 MIGRATIONS   := internal/db/migrations
 IMAGE        ?= vocalis:latest
 COMPOSE_PROD := docker compose -f docker-compose.prod.yml
+COMPOSE_OBSERVE := docker compose -f docker-compose.observe.yml
 
 ifneq ($(wildcard $(HOME)/.cargo/bin/cargo),)
 export PATH := $(HOME)/.cargo/bin:$(PATH)
@@ -235,7 +236,9 @@ image-smoke: ## Boot the image against a throwaway Postgres and fail unless it s
 deploy-env: ## Create .env for a deployment from deploy/env.example, with generated secrets
 	@test ! -f .env || { echo ".env already exists. Move it aside first."; exit 1; }
 	@pass=$$(openssl rand -hex 24); secret=$$(openssl rand -base64 48 | tr -d '\n'); \
+	grafana=$$(openssl rand -hex 16); \
 	sed -e "s|CHANGE_ME_PASSWORD|$$pass|g" -e "s|CHANGE_ME_SECRET|$$secret|" \
+		-e "s|CHANGE_ME_GRAFANA|$$grafana|" \
 		deploy/env.example > .env
 	@echo "created .env with a generated database password and JWT_SECRET."
 	@echo "Set DOMAIN and CORS_ORIGINS to your own name before starting."
@@ -258,6 +261,28 @@ deploy-down: ## Stop the deployment; volumes and their data are preserved
 .PHONY: deploy-logs
 deploy-logs: ## Follow the server log
 	$(COMPOSE_PROD) logs -f server
+
+.PHONY: observe-up
+observe-up: ## Start Grafana, Prometheus, Loki and the exporters alongside the deployment
+	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
+	@grep -q '^GRAFANA_PASSWORD=' .env || { \
+		echo "no GRAFANA_PASSWORD in .env. Add one:"; \
+		echo "  echo \"GRAFANA_PASSWORD=$$(openssl rand -hex 16)\" >> .env"; \
+		exit 1; }
+	$(COMPOSE_OBSERVE) up -d
+	@echo ""
+	@echo "  Grafana is on the host's loopback only. Reach it from your laptop with:"
+	@echo "    ssh -N -L 3000:127.0.0.1:3000 <user>@<this-host>"
+	@echo "  then open http://localhost:3000 and sign in as admin."
+	@echo ""
+
+.PHONY: observe-down
+observe-down: ## Stop the observability stack; its data is preserved
+	$(COMPOSE_OBSERVE) down
+
+.PHONY: observe-logs
+observe-logs: ## Follow the observability stack's own logs
+	$(COMPOSE_OBSERVE) logs -f
 
 .PHONY: deploy-backup
 deploy-backup: ## Dump the database and the uploaded files into backups/
