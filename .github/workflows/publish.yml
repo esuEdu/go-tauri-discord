@@ -20,6 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase the owner, because a registry reference must be
+        id: owner
+        run: |
+          echo "name=$(echo "$GITHUB_REPOSITORY_OWNER" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Sign in to the registry
@@ -36,12 +41,12 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/vocalis:latest
-            ghcr.io/${{ github.repository_owner }}/vocalis:${{ github.sha }}
+            ghcr.io/${{ steps.owner.outputs.name }}/vocalis:latest
+            ghcr.io/${{ steps.owner.outputs.name }}/vocalis:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Say what to run on the host
         run: |
-          echo "Published ghcr.io/${{ github.repository_owner }}/vocalis:latest"
+          echo "Published ghcr.io/${{ steps.owner.outputs.name }}/vocalis:latest"
           echo "On the deployment host: make deploy-pull"
