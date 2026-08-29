@@ -1,5 +1,6 @@
 const MIC_KEY = "microphone_id";
 const JOIN_MUTED_KEY = "join_muted";
+const SUPPRESS_KEY = "suppress_noise";
 
 export type Microphone = {
   id: string;
@@ -35,6 +36,14 @@ export function joinsMuted(): boolean {
 
 export function setJoinsMuted(muted: boolean) {
   write(JOIN_MUTED_KEY, muted ? "true" : "false");
+}
+
+export function suppressesNoise(): boolean {
+  return read(SUPPRESS_KEY) !== "false";
+}
+
+export function setSuppressesNoise(on: boolean) {
+  write(SUPPRESS_KEY, on ? "true" : "false");
 }
 
 export function audioConstraints(): MediaTrackConstraints {

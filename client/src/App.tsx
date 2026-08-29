@@ -94,6 +94,7 @@ export default function App() {
   const [speaking, setSpeaking] = useState<Speaking>({});
   const [muted, setMuted] = useState(joinsMuted);
   const [deafened, setDeafened] = useState(false);
+  const [suppressing, setSuppressing] = useState(() => voice.suppressing);
   const [callChannel, setCallChannel] = useState<Channel | null>(null);
   const [watching, setWatching] = useState<string | null>(null);
 
@@ -606,6 +607,11 @@ export default function App() {
           onOpenSettings={() => setProfileSettings(true)}
           onToggleShare={() => (screens.sharing ? void voice.stopScreenShare() : startShare())}
           onHangUp={() => void hangUp()}
+          suppressing={suppressing}
+          onSuppression={(on) => {
+            setSuppressing(on);
+            void voice.setSuppression(on).then(setSuppressing);
+          }}
           onStopWatching={() => {
             if (watching) voice.watchScreen(watching, false);
             setWatching(null);

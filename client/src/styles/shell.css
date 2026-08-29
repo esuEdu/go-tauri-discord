@@ -916,3 +916,52 @@ button {
   flex: 1 0 0;
   min-width: 0;
 }
+
+.noise-anchor {
+  position: relative;
+  display: flex;
+}
+
+.noise-popover {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 268px;
+  padding: 14px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+  transform: translateX(-50%);
+}
+
+.noise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.noise-title {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.noise-text {
+  margin: 0;
+  color: var(--color-neutral-400);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.noise-credit {
+  color: var(--color-neutral-600);
+  font-size: 11px;
+  line-height: 13px;
+}

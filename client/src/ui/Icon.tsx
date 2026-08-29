@@ -34,6 +34,8 @@ export type IconName =
   | "speaker-slash"
   | "trash"
   | "user-circle"
+  | "waveform"
+  | "waveform-slash"
   | "wifi-high"
   | "x";
 
