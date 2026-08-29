@@ -338,6 +338,10 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
   }
 
+  updateGuild(guildID: string, patch: { name?: string }): Promise<Guild> {
+    return this.request<Guild>("PATCH", `/api/v1/guilds/${guildID}`, { name: patch.name ?? null });
+  }
+
   updateChannel(
     channelID: string,
     patch: { name?: string; topic?: string | null },
