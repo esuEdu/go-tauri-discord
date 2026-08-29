@@ -75,6 +75,7 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
+	mux.HandleFunc("PATCH /api/v1/guilds/{guildID}", h.updateGuild)
 	mux.HandleFunc("PATCH /api/v1/channels/{channelID}", h.updateChannel)
 	mux.HandleFunc("DELETE /api/v1/channels/{channelID}", h.deleteChannel)
 	mux.HandleFunc("PATCH /api/v1/channels/{channelID}/position", h.moveChannel)
@@ -383,6 +384,30 @@ func (o *optionalParent) UnmarshalJSON(b []byte) error {
 	}
 	o.id = &id
 	return nil
+}
+
+func (h *Handler) updateGuild(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Name *string `json:"name"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	updated, err := h.svc.Update(r.Context(), auth.MustUserID(r.Context()), guildID, in.Name)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, PublicGuild(updated))
+	httpx.JSON(w, http.StatusOK, PublicGuild(updated))
 }
 
 func (h *Handler) updateChannel(w http.ResponseWriter, r *http.Request) {

@@ -56,6 +56,7 @@ export function ServerSettings({
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [naming, setNaming] = useState<{ role: Role | null; name: string } | null>(null);
   const [dropping, setDropping] = useState<Role | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const ranked = [...roles].sort((a, b) => {
     if (a.is_default !== b.is_default) return a.is_default ? 1 : -1;
@@ -199,7 +200,20 @@ export function ServerSettings({
           </label>
 
           <div className="settings-actions">
-            <Button disabled={!canManage || name.trim() === guild.name}>Save changes</Button>
+            <Button
+              disabled={!canManage || saving || !name.trim() || name.trim() === guild.name}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await api.updateGuild(guild.id, { name: name.trim() });
+                  onChanged();
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
           </div>
         </>
       )}

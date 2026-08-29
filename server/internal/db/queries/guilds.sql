@@ -3,6 +3,11 @@ INSERT INTO guilds (id, name, owner_id)
 VALUES (@id, @name, @owner_id)
 RETURNING *;
 
+-- name: UpdateGuild :one
+UPDATE guilds SET name = COALESCE(sqlc.narg('name'), name)
+WHERE id = @id
+RETURNING *;
+
 -- name: GetGuild :one
 SELECT * FROM guilds WHERE id = @id;
 

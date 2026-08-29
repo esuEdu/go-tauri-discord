@@ -249,6 +249,15 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+    return gateway.on("GUILD_UPDATE", (payload) => {
+      const changed = payload as Guild;
+      setGuilds((prev) => prev.map((g) => (g.id === changed.id ? changed : g)));
+      setActiveGuild((held) => (held?.id === changed.id ? changed : held));
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
     return gateway.on("GUILD_REMOVE", (payload) => {
       const gone = payload as GuildRemoval;
       setGuilds((prev) => {

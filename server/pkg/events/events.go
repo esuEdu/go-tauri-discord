@@ -35,6 +35,7 @@ type EventType string
 const (
 	EventReady             EventType = "READY"
 	EventGuildCreate       EventType = "GUILD_CREATE"
+	EventGuildUpdate       EventType = "GUILD_UPDATE"
 	EventChannelCreate     EventType = "CHANNEL_CREATE"
 	EventChannelUpdate     EventType = "CHANNEL_UPDATE"
 	EventChannelDelete     EventType = "CHANNEL_DELETE"
