@@ -91,6 +91,16 @@ func Recover(next http.Handler) http.Handler {
 	})
 }
 
+// AllowedMethods is every method the API registers a route for. A browser
+// refuses a request whose method is absent here without ever sending it, so a
+// method missing from this list disables those routes entirely for any client
+// on another origin -- and only for those clients, which is why it survives
+// both the test suite and development against a proxied dev server.
+var AllowedMethods = []string{
+	http.MethodGet, http.MethodPost, http.MethodPut,
+	http.MethodPatch, http.MethodDelete, http.MethodOptions,
+}
+
 func CORS(allowed []string) Middleware {
 	allowAll := slices.Contains(allowed, "*")
 	return func(next http.Handler) http.Handler {
@@ -100,10 +110,7 @@ func CORS(allowed []string) Middleware {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
-				w.Header().Set("Access-Control-Allow-Methods", strings.Join([]string{
-					http.MethodGet, http.MethodPost, http.MethodPatch,
-					http.MethodDelete, http.MethodOptions,
-				}, ", "))
+				w.Header().Set("Access-Control-Allow-Methods", strings.Join(AllowedMethods, ", "))
 				w.Header().Add("Vary", "Origin")
 			}
 			if r.Method == http.MethodOptions {
