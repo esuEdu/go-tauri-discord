@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import {
-  chooseMicrophone,
   chosenMicrophone,
   joinsMuted,
   microphones,
@@ -15,6 +14,7 @@ import { PlacePicture } from "./PlacePicture";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Toggle } from "../ui/Toggle";
+import { voice } from "../voice";
 
 type Tab = "account" | "voice" | "alerts" | "look";
 
@@ -234,7 +234,7 @@ function VoiceTab() {
           onChange={(event) => {
             const id = event.target.value || null;
             setMic(id);
-            chooseMicrophone(id);
+            void voice.useMicrophone(id);
           }}
         >
           <option value="">System default</option>

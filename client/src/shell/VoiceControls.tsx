@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  chooseMicrophone,
   chosenMicrophone,
   microphones,
   type Microphone,
@@ -164,7 +163,7 @@ function DevicePicker({ mics, onPick }: { mics: Microphone[]; onPick: () => void
         className="voice-option"
         data-active={chosenMicrophone() === null}
         onClick={() => {
-          chooseMicrophone(null);
+          void voice.useMicrophone(null);
           onPick();
         }}
       >
@@ -178,7 +177,7 @@ function DevicePicker({ mics, onPick }: { mics: Microphone[]; onPick: () => void
           className="voice-option"
           data-active={chosenMicrophone() === mic.id}
           onClick={() => {
-            chooseMicrophone(mic.id);
+            void voice.useMicrophone(mic.id);
             onPick();
           }}
         >

@@ -1,5 +1,11 @@
 import { gateway } from "./gateway";
-import { audioConstraints, joinsMuted, setSuppressesNoise, suppressesNoise } from "./audioPrefs";
+import {
+  audioConstraints,
+  chooseMicrophone,
+  joinsMuted,
+  setSuppressesNoise,
+  suppressesNoise,
+} from "./audioPrefs";
 import { clean, RNNOISE_RATE, type Cleaned } from "./noise";
 import { iceServers } from "./ice";
 import { screenPublisher } from "./simulcast";
@@ -190,6 +196,7 @@ class VoiceClient {
   private pc: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
   private cleaned: Cleaned | null = null;
+  private selfID: string | null = null;
   private mixer: AudioContext | null = null;
   private outputs = new Map<string, Output>();
   private volumes = storedVolumes();
@@ -413,6 +420,58 @@ class VoiceClient {
     return track ? !track.enabled : false;
   }
 
+  async useMicrophone(deviceID: string | null): Promise<boolean> {
+    chooseMicrophone(deviceID);
+    if (!this.pc || !this.microphone) return true;
+
+    const sender = this.pc.getSenders().find((s) => s.track?.kind === "audio");
+    if (!sender) return true;
+
+    const wasEnabled = this.microphone.getAudioTracks()[0]?.enabled ?? true;
+
+    let fresh: MediaStream;
+    try {
+      fresh = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints() });
+    } catch {
+      return false;
+    }
+
+    const older = this.microphone;
+    const olderClean = this.cleaned;
+    this.microphone = fresh;
+    this.cleaned = null;
+
+    for (const track of fresh.getAudioTracks()) track.enabled = wasEnabled;
+
+    const mixer = this.context();
+    if (mixer && suppressesNoise()) {
+      this.cleaned = await clean(mixer, fresh).catch(() => null);
+    }
+
+    const sending = this.cleaned?.track ?? fresh.getAudioTracks()[0] ?? null;
+    if (sending) {
+      sending.enabled = wasEnabled;
+      await sender.replaceTrack(sending).catch(() => undefined);
+    }
+
+    if (this.selfID && mixer) {
+      this.forgetLevel(this.selfID);
+      try {
+        this.watchLevel(
+          this.selfID,
+          mixer,
+          this.cleaned?.tap ?? mixer.createMediaStreamSource(fresh),
+        );
+      } catch {
+        this.forgetLevel(this.selfID);
+      }
+    }
+
+    olderClean?.stop();
+    older.getTracks().forEach((t) => t.stop());
+    return true;
+  }
+
   get suppressing(): boolean {
     return suppressesNoise();
   }
@@ -491,6 +550,7 @@ class VoiceClient {
   async join(channelID: string, selfID: string) {
     await this.leave();
 
+    this.selfID = selfID;
     this.channelID = channelID;
     this.failure = null;
     this.setStatus("connecting");
@@ -773,6 +833,7 @@ class VoiceClient {
 
     this.cleaned?.stop();
     this.cleaned = null;
+    this.selfID = null;
 
     void this.mixer?.close().catch(() => undefined);
     this.mixer = null;
