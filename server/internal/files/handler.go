@@ -16,8 +16,10 @@ import (
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/media"
+	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 	"github.com/esuEdu/go-tauri-discord/internal/storage"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 type People interface {
@@ -26,7 +28,7 @@ type People interface {
 }
 
 type Guilds interface {
-	SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) error
+	SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) (events.Guild, error)
 	Icon(ctx context.Context, guildID uuid.UUID) (*string, error)
 }
 
@@ -40,10 +42,11 @@ type Handler struct {
 	guilds      Guilds
 	attachments Attachments
 	signer      *Signer
+	pub         *bus.Publisher
 }
 
-func NewHandler(store storage.Store, people People, guilds Guilds) *Handler {
-	return &Handler{store: store, people: people, guilds: guilds}
+func NewHandler(store storage.Store, people People, guilds Guilds, pub *bus.Publisher) *Handler {
+	return &Handler{store: store, people: people, guilds: guilds, pub: pub}
 }
 
 func (h *Handler) AttachMessages(attachments Attachments, signer *Signer) {
@@ -239,13 +242,15 @@ func (h *Handler) setIcon(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.guilds.SetIcon(r.Context(), actorID, guildID, &key); err != nil {
+	updated, err := h.guilds.SetIcon(r.Context(), actorID, guildID, &key)
+	if err != nil {
 		h.forget(r, &key)
 		httpx.Error(w, r, err)
 		return
 	}
 
 	h.forget(r, previous)
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, updated)
 	httpx.JSON(w, http.StatusOK, map[string]string{"icon_key": key})
 }
 
@@ -262,11 +267,13 @@ func (h *Handler) clearIcon(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	if err := h.guilds.SetIcon(r.Context(), actorID, guildID, nil); err != nil {
+	updated, err := h.guilds.SetIcon(r.Context(), actorID, guildID, nil)
+	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 
 	h.forget(r, previous)
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, updated)
 	httpx.JSON(w, http.StatusNoContent, nil)
 }
