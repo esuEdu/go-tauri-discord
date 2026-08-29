@@ -1,0 +1,107 @@
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px 40px;
+  background: rgb(11 13 22 / 0.72);
+  backdrop-filter: blur(18px) saturate(0.9);
+  -webkit-backdrop-filter: blur(18px) saturate(0.9);
+}
+
+.lightbox-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 20px;
+  background: rgb(20 21 28 / 0.85);
+}
+
+.lightbox-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.lightbox-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lightbox-avatar {
+  border-radius: 14px;
+}
+
+.lightbox-filename {
+  overflow: hidden;
+  color: var(--color-neutral-100);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-when {
+  color: var(--color-neutral-400);
+  font-size: 11px;
+}
+
+.lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.lightbox-divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: rgb(255 255 255 / 0.14);
+}
+
+.lightbox-action-wrap {
+  position: relative;
+}
+
+.lightbox-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-neutral-300);
+  cursor: pointer;
+}
+
+.lightbox-action:hover {
+  color: var(--color-neutral-100);
+}
+
+.lightbox-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 190px;
+}
+
+.lightbox-picture {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  object-fit: contain;
+}
