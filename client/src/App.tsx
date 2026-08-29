@@ -9,11 +9,12 @@ import {
   CREATE_INVITE,
   KICK_MEMBERS,
   MANAGE_CHANNELS,
+  MANAGE_GUILD,
   MANAGE_MESSAGES,
   SEND_MESSAGES,
   VIEW_CHANNEL,
 } from "./permissions";
-import { emptySession, session, type SessionState } from "./session";
+import { emptySession, nameOf, session, type SessionState } from "./session";
 import { voice, type ScreenQualityID, type ScreenState, type Speaking } from "./voice";
 import type {
   Attachment,
@@ -119,6 +120,7 @@ export default function App() {
   const [privateChannel, setPrivateChannel] = useState(false);
   const [editingChannel, setEditingChannel] = useState<{ channel: Channel; name: string } | null>(null);
   const [droppingChannel, setDroppingChannel] = useState<Channel | null>(null);
+  const [renaming, setRenaming] = useState<{ userID: string; name: string } | null>(null);
   const [serverMenu, setServerMenu] = useState<Anchor | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -387,6 +389,11 @@ export default function App() {
     [state.avatars],
   );
 
+  const nameFor = useCallback(
+    (id: string) => nameOf(state, activeGuild?.id ?? null, id),
+    [state, activeGuild],
+  );
+
   const permissions = activeGuild ? (state.guildAllows[activeGuild.id] ?? 0) : 0;
   const channelAllows = activeChannel ? state.channelAllows[activeChannel.id] : undefined;
   const effective = channelAllows ?? permissions;
@@ -494,6 +501,7 @@ export default function App() {
               channels={channels}
               activeChannelID={activeChannel?.id ?? null}
               state={state}
+              nameFor={nameFor}
               meID={user.id}
               live={live}
               speaking={speaking}
@@ -573,7 +581,7 @@ export default function App() {
             watching
               ? {
                   userID: watching,
-                  name: state.names[watching] ?? "Someone",
+                  name: nameFor(watching),
                   avatarURL: avatarURL(watching),
                 }
               : null
@@ -607,7 +615,7 @@ export default function App() {
 
       {watching && watchedStream ? (
         <StreamStage
-          name={state.names[watching] ?? "Someone"}
+          name={nameFor(watching)}
           avatarURL={avatarURL(watching)}
           stream={watchedStream}
           userID={watching}
@@ -635,6 +643,7 @@ export default function App() {
           channel={activeChannel}
           inCall={state.inVoice[activeChannel.id] ?? []}
           state={state}
+          nameFor={nameFor}
           meID={user.id}
           speaking={speaking}
           screens={screens}
@@ -666,9 +675,9 @@ export default function App() {
           key={activeChannel.id}
           channel={activeChannel}
           messages={messages}
-          state={state}
+          nameFor={nameFor}
           meID={user.id}
-          typing={typing.map((id) => state.names[id] ?? "Someone")}
+          typing={typing.map(nameFor)}
           canSend={allows(effective, SEND_MESSAGES)}
           canReact={allows(effective, ADD_REACTIONS)}
           avatarURL={avatarURL}
@@ -702,6 +711,7 @@ export default function App() {
         <Members
           ids={state.membersByGuild[activeGuild.id] ?? []}
           state={state}
+          nameFor={nameFor}
           meID={user.id}
           live={live}
           avatarURL={avatarURL}
@@ -888,7 +898,7 @@ export default function App() {
       {lightbox && (
         <Lightbox
           attachment={lightbox.file}
-          uploader={state.names[lightbox.message.author.id] ?? lightbox.message.author.username}
+          uploader={nameFor(lightbox.message.author.id)}
           uploaderAvatarURL={avatarURL(lightbox.message.author.id)}
           postedAt={new Date(lightbox.message.created_at).toLocaleString()}
           onClose={() => setLightbox(null)}
@@ -981,9 +991,13 @@ export default function App() {
         <VoiceMemberMenu
           at={menu.at}
           userID={menu.userID}
-          name={state.names[menu.userID] ?? "Someone"}
+          name={nameFor(menu.userID)}
           avatarURL={avatarURL(menu.userID)}
           live={live.has(menu.userID)}
+          canRename={menu.userID === user.id || allows(permissions, MANAGE_GUILD)}
+          onRename={() =>
+            setRenaming({ userID: menu.userID, name: nameFor(menu.userID) })
+          }
           canKick={allows(permissions, KICK_MEMBERS)}
           canBan={allows(permissions, BAN_MEMBERS)}
           onKick={() => setConfirm({ action: "kick", userID: menu.userID })}
@@ -997,8 +1011,8 @@ export default function App() {
           title={confirm.action === "kick" ? "Kick member" : "Ban member"}
           subtitle={
             confirm.action === "kick"
-              ? `${state.names[confirm.userID] ?? "They"} can come back with a new invite. What they wrote stays.`
-              : `${state.names[confirm.userID] ?? "They"} is kept out by account id only, so a new account gets back in. What they wrote stays.`
+              ? `${nameFor(confirm.userID)} can come back with a new invite. What they wrote stays.`
+              : `${nameFor(confirm.userID)} is kept out by account id only, so a new account gets back in. What they wrote stays.`
           }
           onClose={() => setConfirm(null)}
         >
@@ -1082,6 +1096,39 @@ export default function App() {
             </Button>
             <Button disabled={!channelName.trim()} onClick={() => void makeChannel(activeGuild.id)}>
               Create Channel
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {renaming && activeGuild && (
+        <Sheet
+          title="Change nickname"
+          subtitle="It applies in this server only. Clear it to go back to their username."
+          onClose={() => setRenaming(null)}
+        >
+          <label className="field">
+            <span className="field-label">Nickname</span>
+            <input
+              className="input"
+              value={renaming.name}
+              placeholder={state.names[renaming.userID] ?? ""}
+              autoFocus
+              onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+            />
+          </label>
+          <div className="sheet-actions">
+            <Button kind="quiet" onClick={() => setRenaming(null)}>
+              Never mind
+            </Button>
+            <Button
+              onClick={async () => {
+                const { userID, name } = renaming;
+                setRenaming(null);
+                await api.setNickname(activeGuild.id, userID, name.trim() || null);
+              }}
+            >
+              Save it
             </Button>
           </div>
         </Sheet>
