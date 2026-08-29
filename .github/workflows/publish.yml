@@ -2,7 +2,7 @@ name: publish
 
 on:
   push:
-    branches: [developer]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
