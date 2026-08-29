@@ -111,6 +111,39 @@ certificate is fetched again and nothing else changes.
 
 ---
 
+## Letting CI build it
+
+`make deploy-up` builds the image on the host. On two cores that means
+compiling Go and bundling the client every time, so the workflow in
+`.github/workflows/publish.yml` does it instead: every push to `developer`
+builds `linux/arm64` on GitHub's ARM runners and pushes to
+`ghcr.io/esuEdu/vocalis:latest`.
+
+Nothing is stored in GitHub for this and nothing reaches in. The workflow signs
+in with the token Actions already has, and the host only pulls a public image.
+
+Once, after the first successful run, open the package under the repository's
+Packages tab and set its visibility to public. Until you do, the host's pull
+fails with `denied`, which reads like an authentication problem rather than a
+one-time setting.
+
+Then on the host:
+
+```bash
+echo 'VOCALIS_IMAGE=ghcr.io/esuEdu/vocalis:latest' >> .env
+make deploy-pull
+```
+
+`deploy-pull` fetches that image and restarts without building. Leave
+`VOCALIS_IMAGE` out of `.env` and `make deploy-up` behaves exactly as before,
+building locally -- useful when you are testing a change that is not pushed.
+
+The image is arm64 only, because that is the host it is for. Building for amd64
+as well means a second runner and a manifest merge, and is worth adding the day
+there is a second host rather than before.
+
+---
+
 ## Watching it run
 
 `make observe-up` starts Prometheus, Grafana, Loki and two exporters beside the
