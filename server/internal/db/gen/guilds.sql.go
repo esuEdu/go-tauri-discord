@@ -892,6 +892,30 @@ func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (C
 	return i, err
 }
 
+const updateGuild = `-- name: UpdateGuild :one
+UPDATE guilds SET name = COALESCE($1, name)
+WHERE id = $2
+RETURNING id, name, owner_id, icon_key, created_at
+`
+
+type UpdateGuildParams struct {
+	Name *string
+	ID   uuid.UUID
+}
+
+func (q *Queries) UpdateGuild(ctx context.Context, arg UpdateGuildParams) (Guild, error) {
+	row := q.db.QueryRow(ctx, updateGuild, arg.Name, arg.ID)
+	var i Guild
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.IconKey,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateRole = `-- name: UpdateRole :one
 UPDATE roles SET
     name        = COALESCE($1, name),

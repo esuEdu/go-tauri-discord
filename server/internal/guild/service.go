@@ -43,6 +43,7 @@ type Repository interface {
 	UnassignRole(ctx context.Context, arg dbgen.UnassignRoleParams) error
 	ListMemberRoles(ctx context.Context, arg dbgen.ListMemberRolesParams) ([]dbgen.Role, error)
 	UpsertChannelOverwrite(ctx context.Context, arg dbgen.UpsertChannelOverwriteParams) error
+	UpdateGuild(ctx context.Context, arg dbgen.UpdateGuildParams) (dbgen.Guild, error)
 	UpdateChannel(ctx context.Context, arg dbgen.UpdateChannelParams) (dbgen.Channel, error)
 	DeleteChannel(ctx context.Context, id uuid.UUID) error
 	DeleteChannelOverwrite(ctx context.Context, arg dbgen.DeleteChannelOverwriteParams) error
@@ -134,6 +135,32 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, name string) (d
 		return dbgen.Guild{}, domain.Internal(err)
 	}
 	return created, nil
+}
+
+func (s *Service) Update(ctx context.Context, userID, guildID uuid.UUID, name *string) (dbgen.Guild, error) {
+	perms, err := s.PermissionsInGuild(ctx, userID, guildID)
+	if err != nil {
+		return dbgen.Guild{}, err
+	}
+	if !perms.Has(domain.PermManageGuild) {
+		return dbgen.Guild{}, domain.Forbidden("missing ManageGuild permission")
+	}
+
+	arg := dbgen.UpdateGuildParams{ID: guildID}
+
+	if name != nil {
+		clean := strings.TrimSpace(*name)
+		if n := utf8.RuneCountInString(clean); n < 1 || n > maxGuildNameLen {
+			return dbgen.Guild{}, domain.Invalid("guild name must be 1-%d characters", maxGuildNameLen)
+		}
+		arg.Name = &clean
+	}
+
+	updated, err := s.repo.UpdateGuild(ctx, arg)
+	if err != nil {
+		return dbgen.Guild{}, domain.Internal(err)
+	}
+	return updated, nil
 }
 
 func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Guild, error) {

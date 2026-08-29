@@ -26,6 +26,7 @@ export const OpScreenIce: Opcode = 17;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
+export const EventGuildUpdate: EventType = "GUILD_UPDATE";
 export const EventChannelCreate: EventType = "CHANNEL_CREATE";
 export const EventChannelUpdate: EventType = "CHANNEL_UPDATE";
 export const EventChannelDelete: EventType = "CHANNEL_DELETE";
