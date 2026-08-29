@@ -37,6 +37,7 @@ export const EventReactionAdd: EventType = "MESSAGE_REACTION_ADD";
 export const EventReactionRemove: EventType = "MESSAGE_REACTION_REMOVE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
+export const EventUserUpdate: EventType = "USER_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
 export const EventGuildMemberRemove: EventType = "GUILD_MEMBER_REMOVE";

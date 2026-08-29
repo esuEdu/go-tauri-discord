@@ -23,13 +23,14 @@ import (
 )
 
 type People interface {
-	SetAvatar(ctx context.Context, userID uuid.UUID, key *string) error
+	SetAvatar(ctx context.Context, userID uuid.UUID, key *string) (events.User, error)
 	Avatar(ctx context.Context, userID uuid.UUID) (*string, error)
 }
 
 type Guilds interface {
 	SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) (events.Guild, error)
 	Icon(ctx context.Context, guildID uuid.UUID) (*string, error)
+	ListForUser(ctx context.Context, userID uuid.UUID) ([]dbgen.Guild, error)
 }
 
 type Attachments interface {
@@ -197,13 +198,15 @@ func (h *Handler) setAvatar(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.people.SetAvatar(r.Context(), userID, &key); err != nil {
+	updated, err := h.people.SetAvatar(r.Context(), userID, &key)
+	if err != nil {
 		h.forget(r, &key)
 		httpx.Error(w, r, err)
 		return
 	}
 
 	h.forget(r, previous)
+	h.announceUser(r, updated)
 	httpx.JSON(w, http.StatusOK, map[string]string{"avatar_key": key})
 }
 
@@ -215,13 +218,29 @@ func (h *Handler) clearAvatar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	if err := h.people.SetAvatar(r.Context(), userID, nil); err != nil {
+	updated, err := h.people.SetAvatar(r.Context(), userID, nil)
+	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 
 	h.forget(r, previous)
+	h.announceUser(r, updated)
 	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) announceUser(r *http.Request, who events.User) {
+	h.pub.ToUser(r.Context(), who.ID, events.EventUserUpdate, who)
+
+	guilds, err := h.guilds.ListForUser(r.Context(), who.ID)
+	if err != nil {
+		slog.WarnContext(r.Context(), "files: cannot announce a new picture",
+			"user_id", who.ID, "error", err)
+		return
+	}
+	for _, g := range guilds {
+		h.pub.ToGuild(r.Context(), g.ID, events.EventUserUpdate, who)
+	}
 }
 
 func (h *Handler) setIcon(w http.ResponseWriter, r *http.Request) {

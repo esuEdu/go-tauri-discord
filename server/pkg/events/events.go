@@ -46,6 +46,7 @@ const (
 	EventReactionRemove    EventType = "MESSAGE_REACTION_REMOVE"
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
+	EventUserUpdate        EventType = "USER_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
 	EventGuildMemberAdd    EventType = "GUILD_MEMBER_ADD"
 	EventGuildMemberRemove EventType = "GUILD_MEMBER_REMOVE"
