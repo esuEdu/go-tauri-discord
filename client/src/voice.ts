@@ -1,5 +1,6 @@
 import { gateway } from "./gateway";
 import { audioConstraints, joinsMuted } from "./audioPrefs";
+import { clean, RNNOISE_RATE, type Cleaned } from "./noise";
 import { iceServers } from "./ice";
 import { screenPublisher } from "./simulcast";
 import {
@@ -188,6 +189,7 @@ type Meter = {
 class VoiceClient {
   private pc: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
+  private cleaned: Cleaned | null = null;
   private mixer: AudioContext | null = null;
   private outputs = new Map<string, Output>();
   private volumes = storedVolumes();
@@ -385,9 +387,13 @@ class VoiceClient {
   private context(): AudioContext | null {
     if (!this.mixer) {
       try {
-        this.mixer = new AudioContext();
+        this.mixer = new AudioContext({ sampleRate: RNNOISE_RATE });
       } catch {
-        return null;
+        try {
+          this.mixer = new AudioContext();
+        } catch {
+          return null;
+        }
       }
     }
     void this.mixer.resume().catch(() => undefined);
@@ -412,6 +418,7 @@ class VoiceClient {
     if (!track) return false;
 
     track.enabled = !track.enabled;
+    if (this.cleaned) this.cleaned.track.enabled = track.enabled;
     const muted = !track.enabled;
     if (!muted) this.silent = false;
     this.announceListening(muted);
@@ -464,8 +471,13 @@ class VoiceClient {
 
     const mixer = this.context();
     if (mixer) {
+      this.cleaned = await clean(mixer, this.microphone).catch(() => null);
       try {
-        this.watchLevel(selfID, mixer, mixer.createMediaStreamSource(this.microphone));
+        this.watchLevel(
+          selfID,
+          mixer,
+          this.cleaned?.tap ?? mixer.createMediaStreamSource(this.microphone),
+        );
       } catch {
         this.forgetLevel(selfID);
       }
@@ -475,7 +487,11 @@ class VoiceClient {
     this.pc = pc;
 
     const startMuted = joinsMuted();
-    for (const track of this.microphone.getAudioTracks()) {
+    const sending = this.cleaned
+      ? [this.cleaned.track]
+      : this.microphone.getAudioTracks();
+    for (const track of this.microphone.getAudioTracks()) track.enabled = !startMuted;
+    for (const track of sending) {
       track.enabled = !startMuted;
       pc.addTrack(track, this.microphone);
     }
@@ -715,6 +731,9 @@ class VoiceClient {
     this.meters.clear();
     this.speaking = {};
     for (const fn of this.speakingListeners) fn(this.speaking);
+
+    this.cleaned?.stop();
+    this.cleaned = null;
 
     void this.mixer?.close().catch(() => undefined);
     this.mixer = null;
