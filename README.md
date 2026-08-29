@@ -479,10 +479,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 `make client-build` produces `Vocalis.app` and a `.dmg` under
 `client/src-tauri/target/release/bundle/` — around 3 MB.
 
-The packaged app serves its frontend from `tauri://localhost`, so it cannot
-use the page origin to find the API the way the browser build does. It falls
-back to `http://localhost:8080`. Point it elsewhere with `VITE_API_URL` at
-build time, or by setting `server_url` in local storage at runtime.
+The packaged app serves its frontend from `tauri://localhost` on macOS and
+Linux, and from `http://tauri.localhost` on Windows, so it cannot use the page
+origin to find the API the way the browser build does. It falls back to
+`http://localhost:8080`. Point it elsewhere with `VITE_API_URL` at build time,
+or by setting `server_url` in local storage at runtime. Whichever server it
+points at needs *both* of those origins in `CORS_ORIGINS`; a list carrying only
+the first works everywhere except Windows.
 
 The client covers registration and login, creating and joining servers,
 channel switching, message history with scroll-back paging, sending and
