@@ -295,6 +295,10 @@ observe-down: ## Stop the observability stack; its data is preserved
 observe-logs: ## Follow the observability stack's own logs
 	$(COMPOSE_OBSERVE) logs -f
 
+.PHONY: observe-check
+observe-check: ## Run every dashboard query and report which panels have no data
+	@python3 deploy/observe/check.py
+
 .PHONY: deploy-autostart
 deploy-autostart: ## Install systemd units so the deployment comes back after a reboot
 	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
