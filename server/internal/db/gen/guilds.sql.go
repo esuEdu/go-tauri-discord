@@ -856,6 +856,42 @@ func (q *Queries) UnassignRole(ctx context.Context, arg UnassignRoleParams) erro
 	return err
 }
 
+const updateChannel = `-- name: UpdateChannel :one
+UPDATE channels SET
+    name  = COALESCE($1, name),
+    topic = CASE WHEN $2::bool THEN NULL ELSE COALESCE($3, topic) END
+WHERE id = $4
+RETURNING id, guild_id, parent_id, kind, name, topic, position, created_at
+`
+
+type UpdateChannelParams struct {
+	Name       *string
+	ClearTopic bool
+	Topic      *string
+	ID         uuid.UUID
+}
+
+func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (Channel, error) {
+	row := q.db.QueryRow(ctx, updateChannel,
+		arg.Name,
+		arg.ClearTopic,
+		arg.Topic,
+		arg.ID,
+	)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.Topic,
+		&i.Position,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateRole = `-- name: UpdateRole :one
 UPDATE roles SET
     name        = COALESCE($1, name),

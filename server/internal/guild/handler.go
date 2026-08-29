@@ -75,6 +75,8 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
+	mux.HandleFunc("PATCH /api/v1/channels/{channelID}", h.updateChannel)
+	mux.HandleFunc("DELETE /api/v1/channels/{channelID}", h.deleteChannel)
 	mux.HandleFunc("PATCH /api/v1/channels/{channelID}/position", h.moveChannel)
 	mux.HandleFunc("GET /api/v1/channels/{channelID}/overwrites", h.listOverwrites)
 	mux.HandleFunc("PUT /api/v1/channels/{channelID}/overwrites/{targetID}", h.setOverwrite)
@@ -380,6 +382,70 @@ func (o *optionalParent) UnmarshalJSON(b []byte) error {
 		return domain.Invalid("parent_id must be a channel id or null")
 	}
 	o.id = &id
+	return nil
+}
+
+func (h *Handler) updateChannel(w http.ResponseWriter, r *http.Request) {
+	channelID, err := httpx.PathUUID(r, "channelID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Name  *string       `json:"name"`
+		Topic optionalTopic `json:"topic"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	updated, err := h.svc.UpdateChannel(
+		r.Context(), auth.MustUserID(r.Context()), channelID,
+		in.Name, in.Topic.text, in.Topic.given && in.Topic.text == nil,
+	)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToGuild(r.Context(), updated.GuildID, events.EventChannelUpdate, PublicChannel(updated))
+	httpx.JSON(w, http.StatusOK, PublicChannel(updated))
+}
+
+func (h *Handler) deleteChannel(w http.ResponseWriter, r *http.Request) {
+	channelID, err := httpx.PathUUID(r, "channelID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	gone, err := h.svc.DeleteChannel(r.Context(), auth.MustUserID(r.Context()), channelID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToGuild(r.Context(), gone.GuildID, events.EventChannelDelete, PublicChannel(gone))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type optionalTopic struct {
+	given bool
+	text  *string
+}
+
+func (o *optionalTopic) UnmarshalJSON(b []byte) error {
+	o.given = true
+	if string(b) == "null" {
+		o.text = nil
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(b, &text); err != nil {
+		return domain.Invalid("topic must be text or null")
+	}
+	o.text = &text
 	return nil
 }
 

@@ -43,6 +43,8 @@ type Repository interface {
 	UnassignRole(ctx context.Context, arg dbgen.UnassignRoleParams) error
 	ListMemberRoles(ctx context.Context, arg dbgen.ListMemberRolesParams) ([]dbgen.Role, error)
 	UpsertChannelOverwrite(ctx context.Context, arg dbgen.UpsertChannelOverwriteParams) error
+	UpdateChannel(ctx context.Context, arg dbgen.UpdateChannelParams) (dbgen.Channel, error)
+	DeleteChannel(ctx context.Context, id uuid.UUID) error
 	DeleteChannelOverwrite(ctx context.Context, arg dbgen.DeleteChannelOverwriteParams) error
 	ListChannelOverwrites(ctx context.Context, channelID uuid.UUID) ([]dbgen.ChannelOverwrite, error)
 	GetGuildBan(ctx context.Context, arg dbgen.GetGuildBanParams) (dbgen.GuildBan, error)
@@ -304,6 +306,69 @@ func (s *Service) CreateChannel(ctx context.Context, userID, guildID uuid.UUID, 
 	}
 	s.permissionsChanged(ctx, guildID)
 	return ch, nil
+}
+
+func (s *Service) UpdateChannel(
+	ctx context.Context,
+	userID, channelID uuid.UUID,
+	name *string,
+	topic *string,
+	clearTopic bool,
+) (dbgen.Channel, error) {
+	if err := s.mayManageChannel(ctx, userID, channelID); err != nil {
+		return dbgen.Channel{}, err
+	}
+
+	arg := dbgen.UpdateChannelParams{ID: channelID, ClearTopic: clearTopic}
+
+	if name != nil {
+		clean := strings.TrimSpace(*name)
+		if clean == "" {
+			return dbgen.Channel{}, domain.Invalid("channel name is required")
+		}
+		arg.Name = &clean
+	}
+
+	if topic != nil && !clearTopic {
+		clean := strings.TrimSpace(*topic)
+		arg.Topic = &clean
+	}
+
+	updated, err := s.repo.UpdateChannel(ctx, arg)
+	if err != nil {
+		return dbgen.Channel{}, domain.Internal(err)
+	}
+	return updated, nil
+}
+
+func (s *Service) DeleteChannel(ctx context.Context, userID, channelID uuid.UUID) (dbgen.Channel, error) {
+	going, err := s.Channel(ctx, channelID)
+	if err != nil {
+		return dbgen.Channel{}, err
+	}
+	if err := s.mayManageChannel(ctx, userID, channelID); err != nil {
+		return dbgen.Channel{}, err
+	}
+	if err := s.repo.DeleteChannel(ctx, channelID); err != nil {
+		return dbgen.Channel{}, domain.Internal(err)
+	}
+	s.permissionsChanged(ctx, going.GuildID)
+	return going, nil
+}
+
+func (s *Service) mayManageChannel(ctx context.Context, userID, channelID uuid.UUID) error {
+	ch, err := s.Channel(ctx, channelID)
+	if err != nil {
+		return err
+	}
+	perms, err := s.PermissionsInGuild(ctx, userID, ch.GuildID)
+	if err != nil {
+		return err
+	}
+	if !perms.Has(domain.PermManageChannels) {
+		return domain.Forbidden("missing ManageChannels permission")
+	}
+	return nil
 }
 
 func (s *Service) MoveChannel(
