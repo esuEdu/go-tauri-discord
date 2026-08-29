@@ -249,11 +249,19 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    return gateway.on("GUILD_UPDATE", (payload) => {
+    const forgetUser = gateway.on("USER_UPDATE", (payload) => {
+      const who = payload as User;
+      setUser((held) => (held && held.id === who.id ? { ...held, ...who } : held));
+    });
+    const forgetGuild = gateway.on("GUILD_UPDATE", (payload) => {
       const changed = payload as Guild;
       setGuilds((prev) => prev.map((g) => (g.id === changed.id ? changed : g)));
       setActiveGuild((held) => (held?.id === changed.id ? changed : held));
     });
+    return () => {
+      forgetUser();
+      forgetGuild();
+    };
   }, [user]);
 
   useEffect(() => {

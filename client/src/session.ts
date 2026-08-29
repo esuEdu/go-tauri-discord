@@ -8,6 +8,7 @@ import type {
   Message,
   PresenceUpdate,
   Ready,
+  User,
   VoiceStateUpdate,
   VoiceQuality,
 } from "./types/events.gen";
@@ -69,6 +70,14 @@ class SessionStore {
       this.tags = { ...this.tags, [member.user.id]: member.user.discriminator };
       this.avatars = { ...this.avatars, [member.user.id]: member.user.avatar_key ?? null };
       this.remember(member.guild_id, member.user.id);
+      this.emit();
+    });
+    gateway.on("USER_UPDATE", (payload) => {
+      const who = payload as User;
+      if (!(who.id in this.names)) return;
+      this.names = { ...this.names, [who.id]: who.username };
+      this.tags = { ...this.tags, [who.id]: who.discriminator };
+      this.avatars = { ...this.avatars, [who.id]: who.avatar_key ?? null };
       this.emit();
     });
     gateway.on("GUILD_CREATE", (payload) => {
