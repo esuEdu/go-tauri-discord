@@ -91,11 +91,6 @@ func Recover(next http.Handler) http.Handler {
 	})
 }
 
-// AllowedMethods is every method the API registers a route for. A browser
-// refuses a request whose method is absent here without ever sending it, so a
-// method missing from this list disables those routes entirely for any client
-// on another origin -- and only for those clients, which is why it survives
-// both the test suite and development against a proxied dev server.
 var AllowedMethods = []string{
 	http.MethodGet, http.MethodPost, http.MethodPut,
 	http.MethodPatch, http.MethodDelete, http.MethodOptions,
