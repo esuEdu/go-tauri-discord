@@ -29,6 +29,10 @@ export function apiBase(): string {
   return DESKTOP_FALLBACK;
 }
 
+export function mediaURL(path: string): string {
+  return path.startsWith("/") ? apiBase() + path : path;
+}
+
 export function gatewayURL(): string {
   const base = apiBase();
   if (base) return base.replace(/^http/, "ws") + "/gateway";

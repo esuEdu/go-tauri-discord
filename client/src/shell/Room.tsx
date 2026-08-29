@@ -7,6 +7,7 @@ import {
   type MouseEvent,
 } from "react";
 import { api } from "../api";
+import { mediaURL } from "../server";
 import type { Attachment, Channel, Message } from "../types/events.gen";
 import { Avatar } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
@@ -469,13 +470,13 @@ function MessageRow({
                   className="attachment-image"
                   onClick={() => onOpenImage(file, message)}
                 >
-                  <img src={file.url} alt={file.filename} />
+                  <img src={mediaURL(file.url)} alt={file.filename} />
                 </button>
               ) : (
                 <a
                   key={file.id}
                   className="attachment-file"
-                  href={file.url}
+                  href={mediaURL(file.url)}
                   download={file.filename}
                 >
                   {file.filename}

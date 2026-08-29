@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Attachment } from "../types/events.gen";
+import { mediaURL } from "../server";
 import { Avatar } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
 import { Menu, MenuItem } from "../ui/Menu";
@@ -35,13 +36,13 @@ export function Lightbox({
 
   async function copyImage() {
     setMenuOpen(false);
-    const blob = await fetch(attachment.url).then((r) => r.blob());
+    const blob = await fetch(mediaURL(attachment.url)).then((r) => r.blob());
     await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
   }
 
   async function copyLink() {
     setMenuOpen(false);
-    await navigator.clipboard.writeText(attachment.url);
+    await navigator.clipboard.writeText(mediaURL(attachment.url));
   }
 
   return (
@@ -59,7 +60,7 @@ export function Lightbox({
         <div className="lightbox-actions">
           <a
             className="lightbox-action"
-            href={attachment.url}
+            href={mediaURL(attachment.url)}
             download={attachment.filename}
             aria-label="Download"
             title="Download"
@@ -88,7 +89,7 @@ export function Lightbox({
                     onClick={() => {
                       setMenuOpen(false);
                       const link = document.createElement("a");
-                      link.href = attachment.url;
+                      link.href = mediaURL(attachment.url);
                       link.download = attachment.filename;
                       link.click();
                     }}
@@ -112,7 +113,7 @@ export function Lightbox({
 
       <img
         className="lightbox-picture"
-        src={attachment.url}
+        src={mediaURL(attachment.url)}
         alt={attachment.filename}
         onClick={(event) => event.stopPropagation()}
       />
