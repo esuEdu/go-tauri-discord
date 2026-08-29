@@ -21,7 +21,7 @@ services:
   server:
     build:
       context: .
-    image: vocalis:latest
+    image: ${VOCALIS_IMAGE:-vocalis:latest}
     restart: unless-stopped
     network_mode: host
     env_file: .env
