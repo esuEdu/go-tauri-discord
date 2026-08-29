@@ -6,9 +6,7 @@ export type EmojiGroup =
   | "objects"
   | "flags";
 
-export type Emoji = { char: string; name: string; group: EmojiGroup; tones?: boolean };
-
-export const TONES = ["", "\u{1F3FB}", "\u{1F3FC}", "\u{1F3FD}", "\u{1F3FE}", "\u{1F3FF}"];
+export type Emoji = { char: string; name: string; group: EmojiGroup };
 
 export const TONE_SWATCHES = ["#f7d94c", "#f3d3a0", "#d9a76a", "#a9713f", "#7d5030", "#5a3a22"];
 
@@ -100,46 +98,46 @@ export const EMOJI: Emoji[] = [
   { char: "😯", name: "hushed face", group: "smileys" },
   { char: "🥱", name: "yawning face", group: "smileys" },
 
-  { char: "👍", name: "thumbs up", group: "smileys", tones: true },
-  { char: "👎", name: "thumbs down", group: "smileys", tones: true },
-  { char: "👌", name: "OK hand", group: "smileys", tones: true },
-  { char: "🤌", name: "pinched fingers", group: "smileys", tones: true },
-  { char: "🤏", name: "pinching hand", group: "smileys", tones: true },
-  { char: "✌️", name: "victory hand", group: "smileys", tones: true },
-  { char: "🤞", name: "crossed fingers", group: "smileys", tones: true },
-  { char: "🫰", name: "hand with finger and thumb crossed", group: "smileys", tones: true },
-  { char: "🤟", name: "love-you gesture", group: "smileys", tones: true },
-  { char: "🤘", name: "sign of the horns", group: "smileys", tones: true },
-  { char: "🤙", name: "call me hand", group: "smileys", tones: true },
-  { char: "👈", name: "backhand index pointing left", group: "smileys", tones: true },
-  { char: "👉", name: "backhand index pointing right", group: "smileys", tones: true },
-  { char: "👆", name: "backhand index pointing up", group: "smileys", tones: true },
-  { char: "👇", name: "backhand index pointing down", group: "smileys", tones: true },
-  { char: "☝️", name: "index pointing up", group: "smileys", tones: true },
-  { char: "✋", name: "raised hand", group: "smileys", tones: true },
-  { char: "🤚", name: "raised back of hand", group: "smileys", tones: true },
-  { char: "🖐️", name: "hand with fingers splayed", group: "smileys", tones: true },
-  { char: "🖖", name: "vulcan salute", group: "smileys", tones: true },
-  { char: "👋", name: "waving hand", group: "smileys", tones: true },
+  { char: "👍", name: "thumbs up", group: "smileys" },
+  { char: "👎", name: "thumbs down", group: "smileys" },
+  { char: "👌", name: "OK hand", group: "smileys" },
+  { char: "🤌", name: "pinched fingers", group: "smileys" },
+  { char: "🤏", name: "pinching hand", group: "smileys" },
+  { char: "✌️", name: "victory hand", group: "smileys" },
+  { char: "🤞", name: "crossed fingers", group: "smileys" },
+  { char: "🫰", name: "hand with finger and thumb crossed", group: "smileys" },
+  { char: "🤟", name: "love-you gesture", group: "smileys" },
+  { char: "🤘", name: "sign of the horns", group: "smileys" },
+  { char: "🤙", name: "call me hand", group: "smileys" },
+  { char: "👈", name: "backhand index pointing left", group: "smileys" },
+  { char: "👉", name: "backhand index pointing right", group: "smileys" },
+  { char: "👆", name: "backhand index pointing up", group: "smileys" },
+  { char: "👇", name: "backhand index pointing down", group: "smileys" },
+  { char: "☝️", name: "index pointing up", group: "smileys" },
+  { char: "✋", name: "raised hand", group: "smileys" },
+  { char: "🤚", name: "raised back of hand", group: "smileys" },
+  { char: "🖐️", name: "hand with fingers splayed", group: "smileys" },
+  { char: "🖖", name: "vulcan salute", group: "smileys" },
+  { char: "👋", name: "waving hand", group: "smileys" },
   { char: "🤝", name: "handshake", group: "smileys" },
-  { char: "🙏", name: "folded hands", group: "smileys", tones: true },
-  { char: "✍️", name: "writing hand", group: "smileys", tones: true },
-  { char: "💅", name: "nail polish", group: "smileys", tones: true },
-  { char: "🤳", name: "selfie", group: "smileys", tones: true },
-  { char: "💪", name: "flexed biceps", group: "smileys", tones: true },
+  { char: "🙏", name: "folded hands", group: "smileys" },
+  { char: "✍️", name: "writing hand", group: "smileys" },
+  { char: "💅", name: "nail polish", group: "smileys" },
+  { char: "🤳", name: "selfie", group: "smileys" },
+  { char: "💪", name: "flexed biceps", group: "smileys" },
   { char: "🦾", name: "mechanical arm", group: "smileys" },
-  { char: "👏", name: "clapping hands", group: "smileys", tones: true },
-  { char: "🙌", name: "raising hands", group: "smileys", tones: true },
-  { char: "👐", name: "open hands", group: "smileys", tones: true },
-  { char: "🤲", name: "palms up together", group: "smileys", tones: true },
-  { char: "🫶", name: "heart hands", group: "smileys", tones: true },
+  { char: "👏", name: "clapping hands", group: "smileys" },
+  { char: "🙌", name: "raising hands", group: "smileys" },
+  { char: "👐", name: "open hands", group: "smileys" },
+  { char: "🤲", name: "palms up together", group: "smileys" },
+  { char: "🫶", name: "heart hands", group: "smileys" },
   { char: "👀", name: "eyes", group: "smileys" },
   { char: "👁️", name: "eye", group: "smileys" },
   { char: "🧠", name: "brain", group: "smileys" },
   { char: "🫀", name: "anatomical heart", group: "smileys" },
   { char: "🦴", name: "bone", group: "smileys" },
-  { char: "👂", name: "ear", group: "smileys", tones: true },
-  { char: "👃", name: "nose", group: "smileys", tones: true },
+  { char: "👂", name: "ear", group: "smileys" },
+  { char: "👃", name: "nose", group: "smileys" },
 
   { char: "🐶", name: "dog face", group: "animals" },
   { char: "🐱", name: "cat face", group: "animals" },
@@ -442,7 +440,6 @@ export const EMOJI: Emoji[] = [
 ];
 
 const RECENT_KEY = "emoji_recent";
-const TONE_KEY = "emoji_tone";
 const MOST_KEY = "emoji_counts";
 
 function read<T>(key: string, fallback: T): T {
@@ -458,20 +455,6 @@ function write(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
-}
-
-export function chosenTone(): number {
-  const at = Number(localStorage.getItem(TONE_KEY));
-  return Number.isInteger(at) && at >= 0 && at < TONES.length ? at : 0;
-}
-
-export function chooseTone(at: number) {
-  localStorage.setItem(TONE_KEY, String(at));
-}
-
-export function withTone(emoji: Emoji, at: number): string {
-  if (!emoji.tones || at === 0) return emoji.char;
-  return emoji.char.replace(/️$/, "") + TONES[at];
 }
 
 export function recent(): string[] {
