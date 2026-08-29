@@ -49,6 +49,7 @@ const (
 	EventUserUpdate        EventType = "USER_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
 	EventGuildMemberAdd    EventType = "GUILD_MEMBER_ADD"
+	EventGuildMemberUpdate EventType = "GUILD_MEMBER_UPDATE"
 	EventGuildMemberRemove EventType = "GUILD_MEMBER_REMOVE"
 	EventGuildRemove       EventType = "GUILD_REMOVE"
 	EventVoiceStateUpdate  EventType = "VOICE_STATE_UPDATE"
@@ -103,8 +104,9 @@ type Channel struct {
 }
 
 type Member struct {
-	GuildID uuid.UUID `json:"guild_id"`
-	User    User      `json:"user"`
+	GuildID  uuid.UUID `json:"guild_id"`
+	User     User      `json:"user"`
+	Nickname *string   `json:"nickname"`
 }
 
 type GuildRemoval struct {

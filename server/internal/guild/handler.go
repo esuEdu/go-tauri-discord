@@ -76,6 +76,7 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
 	mux.HandleFunc("PATCH /api/v1/guilds/{guildID}", h.updateGuild)
+	mux.HandleFunc("PATCH /api/v1/guilds/{guildID}/members/{userID}", h.setNickname)
 	mux.HandleFunc("PATCH /api/v1/channels/{channelID}", h.updateChannel)
 	mux.HandleFunc("DELETE /api/v1/channels/{channelID}", h.deleteChannel)
 	mux.HandleFunc("PATCH /api/v1/channels/{channelID}/position", h.moveChannel)
@@ -408,6 +409,44 @@ func (h *Handler) updateGuild(w http.ResponseWriter, r *http.Request) {
 
 	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, PublicGuild(updated))
 	httpx.JSON(w, http.StatusOK, PublicGuild(updated))
+}
+
+func memberTarget(r *http.Request, me uuid.UUID) (uuid.UUID, error) {
+	if r.PathValue("userID") == "@me" {
+		return me, nil
+	}
+	return httpx.PathUUID(r, "userID")
+}
+
+func (h *Handler) setNickname(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	targetID, err := memberTarget(r, auth.MustUserID(r.Context()))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in struct {
+		Nickname *string `json:"nickname"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	member, err := h.svc.SetNickname(
+		r.Context(), auth.MustUserID(r.Context()), guildID, targetID, in.Nickname,
+	)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildMemberUpdate, member)
+	httpx.JSON(w, http.StatusOK, member)
 }
 
 func (h *Handler) updateChannel(w http.ResponseWriter, r *http.Request) {

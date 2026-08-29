@@ -40,6 +40,7 @@ export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventUserUpdate: EventType = "USER_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
+export const EventGuildMemberUpdate: EventType = "GUILD_MEMBER_UPDATE";
 export const EventGuildMemberRemove: EventType = "GUILD_MEMBER_REMOVE";
 export const EventGuildRemove: EventType = "GUILD_REMOVE";
 export const EventVoiceStateUpdate: EventType = "VOICE_STATE_UPDATE";
@@ -87,6 +88,7 @@ export interface Channel {
 export interface Member {
   guild_id: string;
   user: User;
+  nickname?: string;
 }
 export interface GuildRemoval {
   guild_id: string;

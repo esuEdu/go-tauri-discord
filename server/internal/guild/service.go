@@ -44,6 +44,7 @@ type Repository interface {
 	ListMemberRoles(ctx context.Context, arg dbgen.ListMemberRolesParams) ([]dbgen.Role, error)
 	UpsertChannelOverwrite(ctx context.Context, arg dbgen.UpsertChannelOverwriteParams) error
 	UpdateGuild(ctx context.Context, arg dbgen.UpdateGuildParams) (dbgen.Guild, error)
+	SetMemberNickname(ctx context.Context, arg dbgen.SetMemberNicknameParams) (dbgen.GuildMember, error)
 	UpdateChannel(ctx context.Context, arg dbgen.UpdateChannelParams) (dbgen.Channel, error)
 	DeleteChannel(ctx context.Context, id uuid.UUID) error
 	DeleteChannelOverwrite(ctx context.Context, arg dbgen.DeleteChannelOverwriteParams) error
@@ -75,6 +76,8 @@ func (s *Service) permissionsChanged(ctx context.Context, guildID uuid.UUID) {
 }
 
 const maxGuildNameLen = 100
+
+const maxNicknameLen = 32
 
 func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, name string) (dbgen.Guild, error) {
 	name = strings.TrimSpace(name)
@@ -553,13 +556,64 @@ func (s *Service) NewMember(ctx context.Context, guildID, userID uuid.UUID) (eve
 	if err != nil {
 		return events.Member{}, domain.Internal(err)
 	}
+	member, err := s.repo.GetGuildMember(ctx, dbgen.GetGuildMemberParams{
+		GuildID: guildID, UserID: userID,
+	})
+	if err != nil {
+		return events.Member{}, domain.Internal(err)
+	}
 	return events.Member{
 		GuildID: guildID,
 		User: events.User{
 			ID: user.ID, Username: user.Username,
 			Discriminator: user.Discriminator, AvatarKey: user.AvatarKey,
 		},
+		Nickname: member.Nickname,
 	}, nil
+}
+
+func (s *Service) SetNickname(
+	ctx context.Context,
+	actorID, guildID, targetID uuid.UUID,
+	nickname *string,
+) (events.Member, error) {
+	if _, err := s.requireMember(ctx, guildID, targetID); err != nil {
+		return events.Member{}, err
+	}
+
+	if actorID != targetID {
+		perms, err := s.PermissionsInGuild(ctx, actorID, guildID)
+		if err != nil {
+			return events.Member{}, err
+		}
+		if !perms.Has(domain.PermManageGuild) {
+			return events.Member{}, domain.Forbidden("missing ManageGuild permission")
+		}
+	} else if _, err := s.requireMember(ctx, guildID, actorID); err != nil {
+		return events.Member{}, err
+	}
+
+	var wanted *string
+	if nickname != nil {
+		clean := strings.TrimSpace(*nickname)
+		if clean == "" {
+			wanted = nil
+		} else {
+			if n := utf8.RuneCountInString(clean); n > maxNicknameLen {
+				return events.Member{}, domain.Invalid(
+					"nickname must be at most %d characters", maxNicknameLen)
+			}
+			wanted = &clean
+		}
+	}
+
+	if _, err := s.repo.SetMemberNickname(ctx, dbgen.SetMemberNicknameParams{
+		GuildID: guildID, UserID: targetID, Nickname: wanted,
+	}); err != nil {
+		return events.Member{}, domain.Internal(err)
+	}
+
+	return s.NewMember(ctx, guildID, targetID)
 }
 
 func (s *Service) Members(ctx context.Context, userID, guildID uuid.UUID) ([]dbgen.ListGuildMembersRow, error) {

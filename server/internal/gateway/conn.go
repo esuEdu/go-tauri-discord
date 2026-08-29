@@ -171,6 +171,7 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 					ID: m.UserID, Username: m.Username,
 					Discriminator: m.Discriminator, AvatarKey: m.AvatarKey,
 				},
+				Nickname: m.Nickname,
 			})
 		}
 	}

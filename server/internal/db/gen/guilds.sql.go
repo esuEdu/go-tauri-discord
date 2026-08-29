@@ -826,6 +826,31 @@ func (q *Queries) SetGuildPosition(ctx context.Context, arg SetGuildPositionPara
 	return err
 }
 
+const setMemberNickname = `-- name: SetMemberNickname :one
+UPDATE guild_members SET nickname = $1
+WHERE guild_id = $2 AND user_id = $3
+RETURNING guild_id, user_id, nickname, joined_at, position
+`
+
+type SetMemberNicknameParams struct {
+	Nickname *string
+	GuildID  uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) SetMemberNickname(ctx context.Context, arg SetMemberNicknameParams) (GuildMember, error) {
+	row := q.db.QueryRow(ctx, setMemberNickname, arg.Nickname, arg.GuildID, arg.UserID)
+	var i GuildMember
+	err := row.Scan(
+		&i.GuildID,
+		&i.UserID,
+		&i.Nickname,
+		&i.JoinedAt,
+		&i.Position,
+	)
+	return i, err
+}
+
 const transferGuildOwnership = `-- name: TransferGuildOwnership :exec
 UPDATE guilds SET owner_id = $1 WHERE id = $2
 `

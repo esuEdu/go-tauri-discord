@@ -78,6 +78,11 @@ JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = @guild_id
 ORDER BY u.username;
 
+-- name: SetMemberNickname :one
+UPDATE guild_members SET nickname = @nickname
+WHERE guild_id = @guild_id AND user_id = @user_id
+RETURNING *;
+
 -- name: RemoveGuildMember :exec
 DELETE FROM guild_members WHERE guild_id = @guild_id AND user_id = @user_id;
 
