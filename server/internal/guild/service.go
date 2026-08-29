@@ -724,19 +724,20 @@ func (s *Service) Icon(ctx context.Context, guildID uuid.UUID) (*string, error) 
 	return guild.IconKey, nil
 }
 
-func (s *Service) SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) error {
+func (s *Service) SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *string) (events.Guild, error) {
 	perms, err := s.PermissionsInGuild(ctx, actorID, guildID)
 	if err != nil {
-		return err
+		return events.Guild{}, err
 	}
 	if !perms.Has(domain.PermManageGuild) {
-		return domain.Forbidden("missing ManageGuild permission")
+		return events.Guild{}, domain.Forbidden("missing ManageGuild permission")
 	}
 
-	if _, err := s.repo.SetGuildIcon(ctx, dbgen.SetGuildIconParams{
+	updated, err := s.repo.SetGuildIcon(ctx, dbgen.SetGuildIconParams{
 		ID: guildID, IconKey: key,
-	}); err != nil {
-		return domain.Internal(err)
+	})
+	if err != nil {
+		return events.Guild{}, domain.Internal(err)
 	}
-	return nil
+	return PublicGuild(updated), nil
 }

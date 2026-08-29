@@ -93,7 +93,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 		signer := files.NewSigner(cfg.JWTSecret, cfg.AttachmentURLTTL)
 		messageSvc.AttachFiles(store, signer)
 
-		fileHandler := files.NewHandler(store, authSvc, guildSvc)
+		fileHandler := files.NewHandler(store, authSvc, guildSvc, publisher)
 		fileHandler.AttachMessages(messageSvc, signer)
 		fileHandler.Routes(protected)
 		fileHandler.PublicRoutes(mux)
