@@ -1,0 +1,322 @@
+package auth
+
+import (
+	"context"
+	"net/mail"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/esuEdu/go-tauri-discord/internal/db"
+	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
+	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
+)
+
+type Repository interface {
+	CreateUser(ctx context.Context, arg dbgen.CreateUserParams) (dbgen.User, error)
+	TakenDiscriminators(ctx context.Context, username string) ([]string, error)
+	GetUserByEmail(ctx context.Context, email string) (dbgen.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
+	SetUserAvatar(ctx context.Context, arg dbgen.SetUserAvatarParams) (dbgen.User, error)
+	CreateRefreshToken(ctx context.Context, arg dbgen.CreateRefreshTokenParams) (dbgen.RefreshToken, error)
+	GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (dbgen.RefreshToken, error)
+	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
+	RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID) error
+}
+
+type Throttle interface {
+	Allow(key string) (bool, time.Duration)
+}
+
+type TxRunner interface {
+	InTx(ctx context.Context, fn func(q *dbgen.Queries) error) error
+}
+
+type Service struct {
+	repo       Repository
+	tx         TxRunner
+	tokens     *TokenIssuer
+	refreshTTL time.Duration
+	logins     Throttle
+	hashCost   int
+	decoy      []byte
+}
+
+func NewService(repo Repository, tx TxRunner, tokens *TokenIssuer, refreshTTL time.Duration, logins Throttle, hashCost int) *Service {
+	if hashCost < bcrypt.MinCost || hashCost > bcrypt.MaxCost {
+		hashCost = bcrypt.DefaultCost
+	}
+	decoy, err := bcrypt.GenerateFromPassword([]byte("timing-equalizer-not-a-credential"), hashCost)
+	if err != nil {
+		decoy = staticDecoy
+	}
+	return &Service{repo: repo, tx: tx, tokens: tokens, refreshTTL: refreshTTL,
+		logins: logins, hashCost: hashCost, decoy: decoy}
+}
+
+var DeletedUserID = uuid.UUID{}
+
+type TokenPair struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+const (
+	deletedUsername            = "deleted user"
+	discriminatorRaces         = 3
+	usernameDiscriminatorIndex = "users_username_lower_discriminator_key"
+
+	minPasswordLen = 8
+	maxPasswordLen = 72
+	minUsernameLen = 2
+	maxUsernameLen = 32
+)
+
+func (s *Service) Register(ctx context.Context, username, email, password string) (dbgen.User, TokenPair, error) {
+	username = strings.TrimSpace(username)
+	email = strings.TrimSpace(email)
+
+	if n := utf8.RuneCountInString(username); n < minUsernameLen || n > maxUsernameLen {
+		return dbgen.User{}, TokenPair{}, domain.Invalid("username must be %d-%d characters", minUsernameLen, maxUsernameLen)
+	}
+	if strings.EqualFold(strings.ToLower(username), deletedUsername) {
+		return dbgen.User{}, TokenPair{}, domain.Conflict(
+			"that name belongs to the placeholder deleted accounts are reassigned to")
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return dbgen.User{}, TokenPair{}, domain.Invalid("invalid email address")
+	}
+	if len(password) < minPasswordLen || len(password) > maxPasswordLen {
+		return dbgen.User{}, TokenPair{}, domain.Invalid("password must be %d-%d bytes", minPasswordLen, maxPasswordLen)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.hashCost)
+	if err != nil {
+		return dbgen.User{}, TokenPair{}, domain.Internal(err)
+	}
+
+	user, err := s.createWithDiscriminator(ctx, username, email, string(hash))
+	if err != nil {
+		return dbgen.User{}, TokenPair{}, err
+	}
+
+	pair, err := s.issuePair(ctx, user.ID)
+	if err != nil {
+		return dbgen.User{}, TokenPair{}, err
+	}
+	return user, pair, nil
+}
+
+func (s *Service) createWithDiscriminator(ctx context.Context, username, email, hash string) (dbgen.User, error) {
+	for range discriminatorRaces {
+		taken, err := s.repo.TakenDiscriminators(ctx, username)
+		if err != nil {
+			return dbgen.User{}, domain.Internal(err)
+		}
+		discriminator, ok := pickDiscriminator(taken)
+		if !ok {
+			return dbgen.User{}, domain.Conflict(
+				"that name has been taken nine thousand times over; pick another")
+		}
+
+		user, err := s.repo.CreateUser(ctx, dbgen.CreateUserParams{
+			ID:            uuid.Must(uuid.NewV7()),
+			Username:      username,
+			Email:         email,
+			PasswordHash:  hash,
+			Discriminator: discriminator,
+		})
+		if err == nil {
+			return user, nil
+		}
+		if !db.IsUniqueViolation(err) {
+			return dbgen.User{}, domain.Internal(err)
+		}
+		if db.ViolatedConstraint(err) != usernameDiscriminatorIndex {
+			return dbgen.User{}, domain.Conflict("that email already has an account")
+		}
+	}
+	return dbgen.User{}, domain.Conflict("could not find a free number for that name; try again")
+}
+
+func (s *Service) Login(ctx context.Context, email, password string) (dbgen.User, TokenPair, error) {
+	email = strings.TrimSpace(email)
+
+	if s.logins != nil {
+		if allowed, _ := s.logins.Allow(strings.ToLower(email)); !allowed {
+			return dbgen.User{}, TokenPair{}, domain.RateLimited("too many sign-in attempts for this account")
+		}
+	}
+
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		if db.IsNoRows(err) {
+
+			_ = bcrypt.CompareHashAndPassword(s.decoy, []byte(password))
+			return dbgen.User{}, TokenPair{}, domain.Unauthorized("invalid credentials")
+		}
+		return dbgen.User{}, TokenPair{}, domain.Internal(err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return dbgen.User{}, TokenPair{}, domain.Unauthorized("invalid credentials")
+	}
+
+	pair, err := s.issuePair(ctx, user.ID)
+	if err != nil {
+		return dbgen.User{}, TokenPair{}, err
+	}
+	return user, pair, nil
+}
+
+func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
+	stored, err := s.repo.GetActiveRefreshToken(ctx, hashRefreshToken(refreshToken))
+	if err != nil {
+		if db.IsNoRows(err) {
+			return TokenPair{}, domain.Unauthorized("invalid or expired refresh token")
+		}
+		return TokenPair{}, domain.Internal(err)
+	}
+
+	if err := s.repo.RevokeRefreshToken(ctx, stored.ID); err != nil {
+		return TokenPair{}, domain.Internal(err)
+	}
+	return s.issuePair(ctx, stored.UserID)
+}
+
+func (s *Service) Logout(ctx context.Context, refreshToken string) error {
+	stored, err := s.repo.GetActiveRefreshToken(ctx, hashRefreshToken(refreshToken))
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil
+		}
+		return domain.Internal(err)
+	}
+	if err := s.repo.RevokeRefreshToken(ctx, stored.ID); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) Authenticate(ctx context.Context, accessToken string) (dbgen.User, error) {
+	userID, err := s.tokens.ParseAccess(accessToken)
+	if err != nil {
+		return dbgen.User{}, err
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if db.IsNoRows(err) {
+
+			return dbgen.User{}, domain.Unauthorized("account no longer exists")
+		}
+		return dbgen.User{}, domain.Internal(err)
+	}
+	return user, nil
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, userID uuid.UUID, password string) error {
+	if userID == DeletedUserID {
+		return domain.Forbidden("the deleted-user placeholder cannot be deleted")
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return domain.Unauthorized("account no longer exists")
+		}
+		return domain.Internal(err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return domain.Unauthorized("invalid credentials")
+	}
+
+	err = s.tx.InTx(ctx, func(q *dbgen.Queries) error {
+		owned, err := q.ListGuildsOwnedBy(ctx, userID)
+		if err != nil {
+			return err
+		}
+		for _, g := range owned {
+			heir, err := q.NextGuildOwner(ctx, dbgen.NextGuildOwnerParams{
+				GuildID: g.ID, LeavingID: userID,
+			})
+			if err != nil {
+				if !db.IsNoRows(err) {
+					return err
+				}
+				if err := q.DeleteGuild(ctx, g.ID); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := q.TransferGuildOwnership(ctx, dbgen.TransferGuildOwnershipParams{
+				ID: g.ID, OwnerID: heir,
+			}); err != nil {
+				return err
+			}
+		}
+
+		if err := q.ReassignMessagesToUser(ctx, dbgen.ReassignMessagesToUserParams{
+			AuthorID: userID, NewAuthorID: DeletedUserID,
+		}); err != nil {
+			return err
+		}
+
+		return q.DeleteUser(ctx, userID)
+	})
+	if err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) issuePair(ctx context.Context, userID uuid.UUID) (TokenPair, error) {
+	access, expiresAt, err := s.tokens.IssueAccess(userID)
+	if err != nil {
+		return TokenPair{}, err
+	}
+
+	plain, hash, err := newRefreshToken()
+	if err != nil {
+		return TokenPair{}, err
+	}
+	if _, err := s.repo.CreateRefreshToken(ctx, dbgen.CreateRefreshTokenParams{
+		ID:        uuid.Must(uuid.NewV7()),
+		UserID:    userID,
+		TokenHash: hash,
+		ExpiresAt: time.Now().Add(s.refreshTTL),
+	}); err != nil {
+		return TokenPair{}, domain.Internal(err)
+	}
+
+	return TokenPair{AccessToken: access, RefreshToken: plain, ExpiresAt: expiresAt}, nil
+}
+
+var staticDecoy = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+
+func (s *Service) Avatar(ctx context.Context, userID uuid.UUID) (*string, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, domain.NotFound("user")
+	}
+	return user.AvatarKey, nil
+}
+
+func (s *Service) SetAvatar(ctx context.Context, userID uuid.UUID, key *string) (events.User, error) {
+	updated, err := s.repo.SetUserAvatar(ctx, dbgen.SetUserAvatarParams{
+		ID: userID, AvatarKey: key,
+	})
+	if err != nil {
+		return events.User{}, domain.Internal(err)
+	}
+	return events.User{
+		ID:            updated.ID,
+		Username:      updated.Username,
+		Discriminator: updated.Discriminator,
+		AvatarKey:     updated.AvatarKey,
+	}, nil
+}

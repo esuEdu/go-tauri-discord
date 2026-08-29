@@ -1,0 +1,80 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to build and attach the installers to
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (universal .dmg)
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - os: windows-latest
+            label: Windows (.msi and .exe)
+            targets: x86_64-pc-windows-msvc
+            args: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri -> target
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Which server the installed app talks to. Without this it would ship
+          # pointing at localhost and be useless to anybody but the builder.
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://147-15-15-86.nip.io' }}
+        with:
+          projectPath: client
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: Vocalis ${{ github.event.inputs.tag || github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          releaseBody: |
+            Neither installer is signed, so both operating systems will object
+            the first time.
+
+            **macOS** — the .dmg opens, but the app is refused on first launch.
+            Right-click it in Applications and choose Open, then Open again in
+            the dialog. Only needed once. If macOS calls it damaged instead,
+            run: `xattr -dr com.apple.quarantine /Applications/Vocalis.app`
+
+            **Windows** — SmartScreen shows a blue box. Click *More info*, then
+            *Run anyway*.
+
+            Signing removes both, and needs a paid certificate from Apple and
+            from a Windows CA.

@@ -1,1 +1,1121 @@
 # go-tauri-discord
+
+> A modern, ultra-lightweight, and high-performance communication platform featuring real-time text chat, crystal-clear voice channels, and high-framerate screen sharing. Built natively for desktop.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Tauri Version](https://img.shields.io/badge/Tauri-v2-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
+[![React Version](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+
+---
+
+## 🌟 Overview
+
+**go-tauri-discord** is an open-source, resource-efficient alternative to traditional chat platforms. By leveraging **Tauri (Rust)** for native desktop webviews and **Go** for concurrent real-time networking, Vocalis delivers a full-featured voice, text, and screen sharing experience while using up to **80% less memory** than Electron-based applications.
+
+---
+
+## ✨ Key Features
+
+- 💬 **Real-time Text Channels:** Low-latency chat powered by Go WebSocket goroutine hubs, supporting markdown formatting and channel rooms.
+- 🎙️ **Voice Channels:** Crystal-clear multi-party audio powered by WebRTC and low-overhead audio encoding.
+- 🖥️ **Screen Sharing:** Ultra-low latency system and window capture via WebRTC media streams with customizable framerates and resolutions.
+- ⚡ **Minimal Memory Footprint:** Idles at ~30MB–50MB RAM compared to 300MB+ in typical web-wrapped desktop apps.
+- ⌨️ **Global Push-to-Talk:** _Planned._ Native system keybindings and global hotkeys accessible even while playing full-screen games.
+- 🛡️ **Self-Hostable Architecture:** Run your own server node using a single lightweight Go executable.
+
+---
+
+## 🏗️ Tech Stack
+
+```
++-------------------------------------------------------------------+
+|                        Vocalis Client App                         |
+|  +-------------------------------------------------------------+  |
+|  | Tauri v2 (Rust Shell + Webview UI: React/TypeScript)        |  |
+|  | - Low-overhead native UI rendering                          |  |
+|  | - System tray, screen picker, global hotkeys                |  |
+|  +------------------------------+------------------------------+  |
++---------------------------------|---------------------------------+
+                                  | (HTTPS / WSS / WebRTC)
+                                  v
++-------------------------------------------------------------------+
+|                       Vocalis Server Node                         |
+|  +-----------------------+ +-----------------+ +---------------+  |
+|  | REST API              | | WebSocket Hub   | | WebRTC        |  |
+|  | (Auth, Guilds, DB)    | | (Text Chat)     | | Signaling/SFU |  |
+|  +-----------------------+ +-----------------+ +---------------+  |
++-------------------------------------------------------------------+
+```
+
+### **Client (Desktop)**
+
+- **Framework:** [Tauri v2](https://tauri.app/) (Rust)
+- **UI / Frontend:** React, TypeScript, Tailwind CSS
+- **Media Capture:** WebRTC APIs, OS Desktop Duplication
+
+### **Server (Backend)**
+
+- **Language:** Go (1.26+)
+- **Architecture:** Modular monolith — one binary, feature packages, interfaces only at the seams that will actually be cut later
+- **Text Networking:** One multiplexed WebSocket per client (`/gateway`), goroutine-based fanout routed per topic
+- **Voice/Video Routing:** Pion WebRTC SFU with WebSocket signalling
+- **Database:** PostgreSQL 17 with `pgx` + [`sqlc`](https://sqlc.dev) (compile-time checked SQL, no ORM)
+- **Migrations:** [`goose`](https://github.com/pressly/goose), pinned as a Go tool dependency
+
+**Why Postgres and not SQLite:** a chat server issues many small concurrent
+writes (messages, presence, read state, voice state) and SQLite serialises
+every writer. Postgres additionally provides `LISTEN/NOTIFY`, `JSONB`,
+full-text search, and partitioning for when `messages` grows. Supporting both
+dialects would double the migration and query surface for no user-visible
+gain.
+
+**Why no ORM:** the hot path is keyset pagination over messages joined to
+authors and attachments — exactly where an ORM produces N+1 queries. `sqlc`
+generates type-safe Go from the same SQL that ships, so schema drift is a
+build failure rather than a runtime one.
+
+---
+
+## 📁 Repository Structure
+
+Vocalis is organized as a monorepo for streamlined local development and synchronized API releases:
+
+```
+go-tauri-discord/
+├── client/                       # Desktop application
+│   └── src/types/events.gen.ts   # Generated from server/pkg/events — do not edit
+│
+├── server/
+│   ├── cmd/api/                  # The one binary: REST API + gateway
+│   ├── internal/
+│   │   ├── config/               # Env -> typed config, loaded once
+│   │   ├── domain/               # Entities, error kinds, permission bitfield
+│   │   ├── auth/                 # Register/login, JWT + refresh rotation
+│   │   ├── guild/                # Guilds, channels, members, roles, permissions
+│   │   ├── message/              # History, keyset pagination
+│   │   ├── gateway/              # WebSocket hub: sessions, replay, fanout
+│   │   ├── db/
+│   │   │   ├── migrations/       # goose SQL migrations
+│   │   │   ├── queries/          # sqlc source SQL
+│   │   │   └── gen/              # sqlc output — do not edit
+│   │   └── platform/
+│   │       ├── httpx/            # Router, middleware, error mapping
+│   │       ├── bus/              # Event publish side
+│   │       └── pubsub/           # Broker interface + in-memory impl
+│   ├── pkg/events/               # Wire contract — source of truth for both sides
+│   ├── sqlc.yaml
+│   └── tygo.yaml
+│
+├── docker-compose.yml            # Postgres (+ MinIO behind a profile)
+├── Makefile                      # Unified development task runner
+└── README.md
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+Ensure you have the following tools installed on your development machine:
+
+1. **Go** (v1.22 or higher) – [Download](https://go.dev/dl/)
+2. **Node.js** (v18+ / pnpm or npm) – [Download](https://nodejs.org/)
+3. **Rust Toolchain** (required by Tauri) – [Install Rust](https://www.rust-lang.org/tools/install)
+4. System dependencies for Tauri (Linux only: `libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `file`, `libssl-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`).
+
+---
+
+### Quick Start (Development)
+
+1. **Clone and configure:**
+
+    ```bash
+    git clone https://github.com/esuEdu/go-tauri-discord.git
+    cd go-tauri-discord
+    cp .env.example .env
+    ```
+
+2. **Start Postgres, run migrations, and boot the server:**
+
+    ```bash
+    make dev
+    ```
+
+    This starts the `postgres` container, waits for it to become healthy,
+    applies migrations, and runs the API on `:8080`. Check it with
+    `curl localhost:8080/healthz`.
+
+3. **Run the desktop client** (separate terminal):
+
+    ```bash
+    cd client && npm install
+    make dev-client
+    ```
+
+### Common tasks
+
+Run `make help` for the full list.
+
+| Command | What it does |
+| --- | --- |
+| `make dev` | Postgres + migrations + server |
+| `make migration name=add_reactions` | Scaffold a new migration |
+| `make migrate` / `make migrate-down` | Apply / roll back migrations |
+| `make db-reset` | Drop the volume and rebuild the schema |
+| `make sqlc` | Regenerate the query layer from SQL |
+| `make types` | Regenerate client TypeScript from `pkg/events` |
+| `make check` | Vet, format check, and `go test -race` |
+| `make e2e` | Drive the real API and gateway against Postgres, no client needed |
+
+`goose`, `tygo` and `sqlc` need no global install — the first two are pinned
+as Go tool dependencies in `server/go.mod`.
+
+---
+
+## 🔌 Architecture Notes
+
+### Authentication
+
+Two tokens. The **access token** is a short-lived HS256 JWT verified locally
+on every request, so the hot path never touches the database. The **refresh
+token** is opaque random bytes stored only as a SHA-256 hash and rotated on
+every use; presenting a revoked token is treated as theft. The desktop client
+keeps the refresh token in the OS keychain, never in `localStorage`.
+
+### Account deletion
+
+`DELETE /api/v1/users/@me` asks for the password again. An access token is
+enough to read an account and should not be enough to destroy one, and the
+request is irreversible.
+
+**Messages survive; authorship does not.** They are reassigned to a reserved
+`Deleted User` row seeded by migration, which is why `messages.author_id` can
+keep its `ON DELETE RESTRICT`: nothing is deleted, so nothing has to be
+weakened. Erasing the content instead would take half of every conversation
+away from the people still in the channel, who did not ask to be forgotten.
+That row is real but unusable: its password hash is empty, so no password can
+ever match it.
+
+Nobody can register as it, which used to be a free consequence of usernames
+being unique. Shared usernames took that guarantee away, so registration now
+refuses the name `Deleted User` outright — the one name in the system that
+cannot be shared, because it is the one name that would be an impersonation.
+`0000` is reserved for the same reason and never allocated to a person.
+
+A guild owned by the account is handed to its highest-ranked remaining member,
+earliest joined breaking the tie. If nobody is left it is deleted rather than
+left ownerless and unreachable. Everything else that points at the account —
+refresh tokens, memberships, roles, read states, invites — is `ON DELETE
+CASCADE`, so the row disappearing is the erasure. All of it is one transaction:
+a half-deleted account is worse than either outcome.
+
+Live gateway sessions are dropped explicitly. A session authenticates once at
+identify and is never checked again, so without that the deleted account would
+keep receiving messages until its socket happened to close.
+
+### The gateway
+
+One WebSocket per client at `GET /gateway`, multiplexing every event that
+client may see — not one connection per channel. Frames share an envelope:
+
+```jsonc
+{ "op": 0, "t": "MESSAGE_CREATE", "s": 42, "d": { /* payload */ } }
+```
+
+| Op | Direction | Meaning |
+| --- | --- | --- |
+| 0 | server → client | Dispatch (carries `t` and `s`) |
+| 1 | client → server | Heartbeat |
+| 2 | client → server | Identify (authenticate a new session) |
+| 3 | server → client | Hello (sent immediately on connect) |
+| 4 | server → client | Heartbeat ack |
+| 5 | client → server | Resume (replay missed events) |
+| 6 | server → client | Invalid session — re-identify from scratch |
+
+Handshake: the server sends **HELLO**, the client replies **IDENTIFY** (or
+**RESUME**), and the server answers with **READY** — always the first
+dispatch — followed by live events.
+
+`s` is a per-session sequence number. Sessions outlive their connection by 90
+seconds, keeping a 256-frame replay buffer, so a brief network drop is
+recovered with **RESUME** rather than a full refetch. Clients must ignore any
+frame whose `s` is not greater than the last one processed.
+
+A session waiting out that window **gives up its seat to a fresh IDENTIFY**.
+It used to count against `MAX_SESSIONS_PER_USER` like a live connection, and
+those two rules fed each other: each reconnect left a ghost holding a slot,
+five quick reconnects filled the account's allowance with ghosts, and every
+retry after that was refused in milliseconds — which triggered another retry.
+The client locked itself out for 90 seconds and showed "connecting…" the whole
+time. Now only genuinely live connections can exhaust the limit, and evicting
+a detached session to admit a real one costs nothing that mattered: a session
+evicted this way answers any late RESUME with invalid-session, which sends
+that client through a fresh IDENTIFY exactly as if the window had expired.
+
+A session subscribes to its guilds when it identifies, **and to any guild it
+joins afterwards**. Without the second half a member who accepted an invite
+while already connected was subscribed to nothing for that guild: no messages,
+no new channels, no voice states, no permission re-resolution. The server was
+behaving correctly and the app looked dead, until a reload.
+
+Subscribing is not the same as being told. A guild joined afterwards still
+arrived as a bare **GUILD_CREATE**: the session heard everything published from
+then on and knew nothing of what already existed, because `READY` is the only
+event that ever seeds a roster or a permission set. The member list read *1
+members*, and the composer read *You cannot post in this channel* for a channel
+the server would have accepted the message in. Creating a server had the same
+hole, and there it was worse — the owner could not post in the `general` their
+own request had just made. Joining now resolves permissions the way a role
+change does and sends **PERMISSIONS_UPDATE** to the sessions that just joined,
+which also hands them the hidden-channel set they were otherwise missing. The
+roster stays a fetch, since no event carries one: the client asks for the
+members of a guild it has no roster for, and `GET /guilds/{id}/members` reports
+`online` per member so that list does not arrive with everyone shown as away.
+
+Fanout is routed **per topic, not per session**: one broker subscription and
+one forwarding goroutine exist per active topic regardless of how many
+sessions listen. A client that falls more than 256 frames behind is
+disconnected on purpose — it reconnects and resumes, which is far cheaper
+than letting one slow client stall delivery for everyone else.
+
+#### What a member may do
+
+`READY` carries the member's **resolved permissions**, per guild and per channel,
+and `PERMISSIONS_UPDATE` carries them again whenever they change — which is the
+same moment the gateway already re-resolves what that member may see, so it costs
+no extra query.
+
+Without this the client could only discover what it was allowed to do by trying
+and being refused, which is why a permission granted to a connected member
+appeared to do nothing: the change was real, and nothing told the app. Resolution
+happens per channel anyway to decide visibility; the full bitfield was being
+computed and thrown away.
+
+#### What READY carries
+
+Enough to paint a sidebar without a request per channel: the account, its
+guilds, the channels it can see, the members of those guilds, the member's own
+read states, and the set of members currently online.
+
+Two of those are less obvious than they look:
+
+- Each channel carries a **`last_message_id`**. Without it unread is not merely
+  expensive to compute, it is impossible — nothing else exposes the newest
+  message in a channel. A channel is unread when that id differs from the
+  member's `last_read_message_id`, which is a plain comparison because message
+  ids are UUIDv7 and therefore sort by time. One `DISTINCT ON` query covers
+  every channel in the payload and rides the index that history paging already
+  needs.
+- Presence is an **`online` list rather than a status per member**, because
+  connected or not is the only thing the server knows. It becomes a list of
+  statuses on the day there is a third one.
+
+The snapshot follows the same presence rule as `PRESENCE_UPDATE`, including the
+part that reads oddly: a member stays online while their session is still
+resumable. Counting live sockets instead would contradict the events for the
+whole 90-second window and flicker every member through offline on each
+reconnect.
+
+Members are sent because presence against a user id nobody can name is not
+something a UI can draw. What is *not* sent is message history — that stays a
+paged fetch, since it is the one part that grows without bound.
+
+### Scaling past one node
+
+`internal/platform/pubsub.Broker` is the seam. Today it is an in-process
+implementation; swapping in NATS (whose server embeds into this binary,
+preserving the single-executable story) is the only change needed — nothing
+in the feature packages moves.
+
+### Permissions
+
+A 64-bit bitfield on roles, plus per-channel allow/deny overwrites, resolved
+in `domain.ResolvePermissions` in this order: guild owner and Administrator
+short-circuit to everything; role permissions are unioned; role overwrites
+apply denies before allows; the member-specific overwrite wins last.
+
+Every send, edit, delete, typing indicator and history read is authorised
+first, so the resolution is **one query**: `ResolveChannelAccess` fetches the
+channel, the guild's owner, the membership and both the role and overwrite sets
+together, aggregating the two variable-length sets as JSON so they survive in a
+single row. Caching them instead would have been faster still and wrong more
+often — a revoked role has to be denied on the next request, not at the end of
+a TTL, and invalidating a cache across nodes is the harder half of a problem
+this design does not have.
+
+#### Writing them
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `GET` | `/api/v1/guilds/{guild}/roles` | membership |
+| `POST` | `/api/v1/guilds/{guild}/roles` | `ManageRoles` |
+| `PATCH` `DELETE` | `/api/v1/roles/{role}` | `ManageRoles` |
+| `GET` | `/api/v1/guilds/{guild}/members/{user}/roles` | membership |
+| `PUT` `DELETE` | `/api/v1/guilds/{guild}/members/{user}/roles/{role}` | `ManageRoles` |
+| `GET` | `/api/v1/channels/{channel}/overwrites` | membership |
+| `PUT` `DELETE` | `/api/v1/channels/{channel}/overwrites/{target}` | `ManageRoles` |
+
+Two rules hold every one of these together, and `ManageRoles` is worthless
+without both:
+
+**Position.** You may only touch a role *strictly below* your own highest one.
+Equal is not below, so a moderator cannot edit, move, delete or hand out the
+role that makes them a moderator. `@everyone` sits at position 0 and every
+other role starts at 1.
+
+**Subset.** You may only grant, revoke or overwrite a permission you hold
+yourself. Without this the position rule alone would be theatre: create a role
+at position 1, give it Administrator, assign it to yourself, and the hierarchy
+you were just under no longer exists. Editing a role compares the bits that
+*changed*, so someone may reword a role they could not have created.
+
+The guild owner is exempt from both. `@everyone` cannot be renamed, moved,
+deleted or assigned — only its permissions can change, which is how the guild's
+baseline is set. Channel overwrites additionally refuse to carry Administrator,
+refuse to allow and deny the same bit, and refuse bits that do not exist.
+
+#### Kicking and banning
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `DELETE` | `/api/v1/guilds/{guild}/members/{user}` | `KickMembers` |
+| `GET` | `/api/v1/guilds/{guild}/bans` | `BanMembers` |
+| `PUT` `DELETE` | `/api/v1/guilds/{guild}/bans/{user}` | `BanMembers` |
+
+The position rule above is exactly the check moderation needs, so both reuse it:
+you may only remove somebody strictly below your own highest role. The owner is
+exempt from it and can never be removed by anybody; you cannot remove yourself,
+which is a separate feature — leaving — that does not exist yet.
+
+Removing somebody is three things at once, and only the first is a database
+write:
+
+1. The `guild_members` row goes. `member_roles` is keyed on it with
+   `ON DELETE CASCADE`, so their roles go with it. That matters: a kicked
+   administrator who comes back on a fresh invite comes back with nothing.
+2. The gateway unsubscribes their live sessions from the guild's topics and
+   drops them out of any voice channel *in that guild*. Without this a kicked
+   member keeps receiving every message on the socket they already had, which is
+   the part a database delete alone does not fix.
+3. `GUILD_MEMBER_REMOVE` goes to the guild so everyone's member list updates, and
+   `GUILD_REMOVE` goes to the person removed, on their own user topic, after they
+   have been cut off.
+
+**Messages are not touched.** They stay where they are, still attributed to
+whoever wrote them. Account deletion reassigns messages to "Deleted User" because
+the account is gone; a kick or a ban is about access, and rewriting a
+conversation to hide who said what would make the history a worse record than it
+was.
+
+A ban is a row in `guild_bans` — who, by whom, an optional reason of up to 500
+characters, when — checked on invite redemption. Somebody can be banned before
+they ever join, which is why the endpoint does not require them to be a member.
+Unban is a `DELETE`, and 404s when there was no ban, so lifting one twice is
+visibly not the same as lifting one.
+
+**A ban here is weak, and should be described as weak.** It is by user id, and
+nothing verifies an email address, so a banned person can register a new account
+in seconds and use a fresh invite. Anything stronger needs an identity worth
+banning — verified email at the least — which is a different feature than this
+one.
+
+#### When a change takes effect
+
+Nothing is cached, so **HTTP is immediate**: the request after a revocation is
+already refused, which `TestRevokingViewChannelTakesEffectOnTheNextRequest`
+pins down.
+
+The gateway is immediate too, on the same connection, without a reconnect.
+
+Sessions still subscribe to a topic *per guild* — one subscription per member
+rather than one per member per channel — so fanout filters instead. Each
+session carries the set of channels it may **not** see, seeded at IDENTIFY from
+the same resolution that builds `READY`. `MESSAGE_CREATE`, `MESSAGE_UPDATE`,
+`MESSAGE_DELETE`, `TYPING_START`, `VOICE_STATE_UPDATE` and
+`VOICE_SCREEN_UPDATE` carry a channel id and are dropped per session; events
+that belong to the guild rather than a channel — `PRESENCE_UPDATE`,
+`GUILD_CREATE`, `CHANNEL_CREATE`, `GUILD_MEMBER_ADD`, `GUILD_MEMBER_REMOVE` —
+are never filtered.
+
+The set is *hidden* channels, not visible ones, because the default has to be
+open: a channel created a moment ago is in nobody's set and must still be
+delivered. A `VOICE_STATE_UPDATE` with a null channel means the member left
+voice and is delivered for the same reason — there is no channel to hide.
+
+Every endpoint that can change what a member sees — the seven role and
+overwrite mutations, plus channel creation — publishes on an internal
+`guildctl:` topic that only the gateway subscribes to. Sessions in that guild
+re-resolve their hidden set on the spot, deduplicated per user so one change
+costs one query per member rather than one per connection. A member who loses
+`ViewChannel` stops receiving that channel on their existing socket; a member
+who gains it starts.
+
+The remaining window is the microseconds between the database write and the
+refresh, which no cached design avoids. Anything already delivered stays
+delivered — this retracts nothing, it only stops the next event.
+
+Voice is fixed at join for a different reason: the SFU reserves a member's
+screen transceivers when they connect, so revoking `Stream` mid-call does not
+retract the ones they already have. It applies on rejoin.
+
+### Desktop client
+
+```bash
+make client-install     # once
+make dev                # terminal 1: Postgres, migrations, API on :8080
+make dev-client         # terminal 2: native window (needs Rust)
+```
+
+No Rust yet? `make dev-web` serves the same UI at http://localhost:1420 in a
+browser. The Tauri shell wraps that identical Vite app, so nothing is wasted
+by starting there. Install Rust with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+`make client-build` produces `Vocalis.app` and a `.dmg` under
+`client/src-tauri/target/release/bundle/` — around 3 MB.
+
+The packaged app serves its frontend from `tauri://localhost`, so it cannot
+use the page origin to find the API the way the browser build does. It falls
+back to `http://localhost:8080`. Point it elsewhere with `VITE_API_URL` at
+build time, or by setting `server_url` in local storage at runtime.
+
+The client covers registration and login, creating and joining servers,
+channel switching, message history with scroll-back paging, sending and
+deleting, and live updates over the gateway with a connection indicator in the
+status bar.
+
+`src/gateway.ts` owns the socket and hides reconnection from the UI: it tracks
+the sequence number, RESUMEs after a drop, discards replayed duplicates, and
+backs off exponentially with jitter so a server restart does not produce a
+retry storm.
+
+**Adding a friend to a server** uses invite links. *Invite a friend* copies a
+link carrying an 8-character code; opening it previews the server and joins
+automatically after registration. Invites can be limited by use count and
+expiry, and revoked without removing anyone who already joined.
+
+### Pictures
+
+Uploaded images go through a three-method `Store`, so where the bytes live is a
+deployment choice rather than a code one. **`STORAGE=disk` is the default and
+needs nothing** — it keeps the one-binary, one-database promise, at the cost of
+being single-replica and losing everything if a container runs without a mounted
+volume. `STORAGE=s3` talks to MinIO or anything S3-compatible for deployments
+that have outgrown that; `docker compose --profile storage up` brings MinIO up
+locally.
+
+**Every upload is decoded, cropped square, resized and re-encoded.** The bytes
+that arrive are never the bytes that get served, which matters three times over:
+it is the only real proof the file is an image rather than a script wearing an
+image's content type, it strips metadata — a phone photo carries the GPS
+coordinates of where it was taken — and it bounds what a member list costs to
+load. The result is JPEG unless the image has transparency, in which case PNG,
+because a 256px PNG of a photograph is roughly ten times the bytes of the JPEG
+and a member list renders fifty of them.
+
+Files are served from `GET /api/v1/files/{key}` **without authentication**, on
+unguessable keys. A browser cannot send an `Authorization` header on `<img src>`,
+and avatars are seen by anyone sharing a server with you in any case. Message
+attachments will be different — those can sit in a private channel, and
+`Attachment.URL` exists so they can be handed out as signed, expiring URLs.
+
+#### Files on messages
+
+A message carries up to **10 files of 25 MB each**, sent as one multipart
+request alongside its text — so a message and its files either both exist or
+neither does. A message may be files with no text.
+
+**Attachments are stored exactly as sent.** Unlike avatars they are not
+re-encoded, because re-encoding a file somebody deliberately shared damages it,
+and most files cannot be re-encoded at all. Two consequences follow, both
+deliberate:
+
+- **Image metadata survives**, so a phone photo carries the coordinates of where
+  it was taken. This matches what Discord does and not what Signal does. If that
+  is the wrong trade for a given deployment, the place to change it is
+  `storeUploads`.
+- Arbitrary content types get served, so they are served defensively:
+  `nosniff`, a `default-src 'none'; sandbox` CSP, and
+  `Content-Disposition: attachment` for anything that is not an image. Nobody
+  gets to host a web page on your domain by uploading one.
+
+Unlike avatars, an attachment can sit in a private channel, so its URL is
+**signed and expires** — HMAC over the path and expiry, 24 hours by default via
+`ATTACHMENT_URL_TTL`. That is what buys a URL an `<img src>` can load without an
+`Authorization` header, without making the file world-readable forever. A TTL of
+zero falls back to the default rather than minting URLs that are already dead.
+
+Deleting a message deletes its files. Uploads are stored before the message row
+exists, so a failure part way through removes what was already written rather
+than leaving objects nothing points at.
+
+Keys are validated before they reach a filesystem, since the serve endpoint
+takes one straight from the URL. Replacing a picture writes a new key and
+deletes the old object, so caches never have to be told anything, and a
+half-finished upload is written to a temporary file and renamed, so a dropped
+connection cannot leave a truncated image under a real name.
+
+#### Replies
+
+A nullable `reply_to_message_id` on `messages`, set at creation and validated
+to be **a live message in the same channel**. Both send paths take it: a
+`reply_to` field in the JSON body, or a `reply_to` form field alongside the
+files.
+
+**A deleted parent gives up its text and its author**, and it does so in the
+query rather than in Go. Messages are soft-deleted — the row and every word of
+it survive — so the obvious join would resurrect, inside every reply that
+pointed at it, exactly the text somebody chose to remove. `ListMessagePreviews`
+returns `''` for a deleted parent and the join that fetches the author only
+matches while the parent is live, so there is no code path that can forget.
+What comes back is `deleted: true` and nothing else; the client renders
+"Original message was deleted".
+
+The preview is **one level deep and truncated to 120 characters**, with a
+`truncated` flag and a `has_attachments` flag rather than the attachments
+themselves. A reply to a reply shows its immediate parent and never walks a
+chain — otherwise a page of fifty messages could fetch fifty chains, and the
+chains are the thing that turns replies into threads.
+
+Parents are fetched **once per page**, keyed by the distinct set of parent ids,
+the same join-and-attach shape as attachments and reactions. `MESSAGE_CREATE`
+and `MESSAGE_UPDATE` both carry the resolved preview, so a reply arriving live
+renders without a second request.
+
+Replying **does not notify anybody**, because nothing notifies anybody yet
+(#48). When notifications exist, this is where the first one belongs.
+
+**Replies are not threads and are not a step towards them.** A reply is a
+pointer; a thread is a container with its own membership, read state and
+archival. #46 argues the app is for small groups and may never need the second
+thing — replies are the cheap answer to the same confusion, and they do not
+partition the conversation.
+
+#### Reactions
+
+| Method | Path | Needs |
+| --- | --- | --- |
+| `PUT` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` + `AddReactions` |
+| `DELETE` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` |
+| `GET` | `/api/v1/messages/{message}/reactions/{emoji}` | `ViewChannel` |
+
+A row per `(message, user, emoji)` and that triple is the primary key, so
+reacting twice with the same emoji is a no-op rather than an error — and,
+because nothing changed, it publishes no event. **Taking a reaction back needs
+only `ViewChannel`**: revoking `AddReactions` stops new ones, but it must not
+trap a reaction somebody left while they still had the permission.
+
+`AddReactions` is bit 13, the first permission added after the initial set. New
+guilds get it in `@everyone`; existing databases get it in the migration, which
+grants it to every role that already had `SendMessages`, so nobody's server
+changes behaviour on upgrade.
+
+**Unicode emoji only.** Custom per-server emoji is a much larger feature —
+upload, storage, a registry, a picker — and it is not this one. What the server
+enforces is not "is this an emoji" but "is this not text": at most 8 runes, no
+letters, no whitespace, no control characters. Flags, skin tones, keycaps and
+ZWJ sequences all pass; `lol` does not.
+
+Two limits, for two different reasons. **A message holds at most 20 distinct
+emoji**, because every one of them is a row in the history payload and 50
+messages of unbounded reactions is a page nobody can load; the cap is on kinds,
+not on people, so any number of members can pile onto the same emoji. The rate
+limiter treats reacting like posting rather than like an ordinary read, because
+each one fans out to every member of the guild exactly as a message does.
+
+**History carries counts, not names.** Each message comes back with
+`{emoji, count, mine}` per emoji — `mine` resolved for the person asking, which
+is why a reaction summary never appears in a broadcast event; a payload sent to
+everybody cannot answer a per-viewer question. The names behind a count are a
+second request, made when somebody hovers, and only for the one emoji they
+hovered.
+
+A reaction does **not** mark a channel unread. Read state is a pointer at the
+last message read, and a reaction is not a message, so this is what falls out of
+the design — but it was also the intended answer: an emoji is meant to be the
+cheap alternative to a reply, and a badge would make it cost the same.
+
+`MESSAGE_REACTION_ADD` and `MESSAGE_REACTION_REMOVE` carry a `channel_id` for
+the same reason message events do: `scopedChannel` in the gateway is what keeps
+a private channel private, and an event without one is fanned out to the whole
+guild.
+
+### Voice
+
+Voice channels carry audio through a Pion SFU. Each participant holds one peer
+connection to the server, which forwards their audio to everyone else, so a
+channel of N members costs N connections rather than N squared.
+
+The server is always the offerer, which removes SDP glare entirely: clients
+only ever answer. Joining requires the `Connect` permission on the channel.
+`VOICE_DISABLED=true` turns voice off.
+
+#### Deafening is enforced, not requested
+
+Muting is a client-side courtesy: the microphone track is disabled and everyone
+is told. Deafening is not. The SFU withholds every voice and screen-sound track
+from a deafened peer and renegotiates, so it costs them nothing to receive
+rather than costing them everything and being thrown away on arrival.
+
+It leaves screen **video** alone on purpose — deafening is about hearing, and
+somebody who cannot hear can still watch — and it takes the microphone down
+with it, because somebody who cannot hear the room should not be broadcasting
+into it.
+
+#### Who is in a call, before you are in it
+
+`READY` carries a voice state for every voice channel the member may see, and
+the same list is sent when somebody joins a guild while already connected. The
+SFU always knew who was in a room; until this existed, a client could only find
+out by joining, so a call in progress was invisible to anyone who opened the app
+after it started.
+
+A member who cannot see a voice channel is told nothing about it. That is not
+incidental: without it a hidden channel becomes a way to watch a private call
+from outside.
+
+#### Connection quality
+
+Every five seconds the SFU grades each peer from what the receiver reports back
+— fraction lost and round trip time — and the gateway broadcasts the grade only
+when it changes. Three values: good under 2% loss and 200ms, weak to 8% or
+400ms, bad beyond that.
+
+Grades rather than numbers, because nobody can act on 3.4% loss and everybody
+can act on "their connection is dropping audio". A broadcast is safe here
+because quality is a property of that person's link and is the same for every
+listener; per-viewer state, like a reaction summary, could never ride a fanout
+event this way. `VOICE_QUALITY` is registered in `scopedChannel`, without which
+it would tell a whole guild who is struggling in a call they cannot see.
+
+#### Getting out of a strict network
+
+STUN only tells a client what its own address looks like from outside. Where
+that is not enough — symmetric NAT, or a firewall that drops the media — the
+call needs a **TURN relay**, and without one it does not degrade: it simply
+never connects, which looks exactly like a broken microphone.
+
+`ICE_SERVERS` is a comma-separated list, each entry either a bare url or
+`url|username|credential`. A `turn:` entry given without credentials of its own
+is signed with **`TURN_SECRET`**, using the TURN REST convention that coturn
+implements as `use-auth-secret`: the username is `<expiry>:<user id>` and the
+credential is the base64 HMAC-SHA1 of it. `TURN_TTL` sets how long one lasts,
+12 hours by default.
+
+Credentials are therefore **minted per person and expire on their own**, which
+matters because anything handed to a browser is public — a static password in
+the client is a password everybody has. A `turn:` entry with neither its own
+credentials nor a `TURN_SECRET` is **dropped rather than sent**, since pion
+rejects a relay without credentials, and the server logs which one and why.
+
+The client is told what to use in `READY` and no longer decides for itself. It
+used to carry a hardcoded STUN server, so a correctly configured deployment
+still had a client that ignored it. When a connection does fail, the client now
+distinguishes a microphone that was refused from a network it could not get out
+of, and says which — and if no relay is configured, it says that too.
+
+Vocalis does not ship a TURN server. Relaying media costs real bandwidth, which
+makes it the most expensive thing here to self-host, so the choice of whether to
+run one — coturn alongside, or a hosted relay — stays with whoever runs the
+server.
+
+Every forwarded track is renamed by the SFU as `source-owner-ssrc` before it
+leaves — `mic-<user>-<ssrc>`, `screen-<user>-<ssrc>`, `screenaudio-<user>-<ssrc>`.
+What a publisher calls its own tracks is whatever its browser invented, which
+tells a listener nothing; the alternative is a gateway message per track saying
+who it belongs to. The name travels inside the SDP that has to be sent anyway,
+so a listener knows the owner of a stream the moment it arrives rather than one
+round trip later.
+
+That is what makes **per-person volume** possible. Each remote stream runs
+through its own Web Audio gain node, so a listener can push a quiet friend above
+100% as readily as turn a loud one down. The setting is the listener's alone —
+kept in `localStorage`, keyed by user rather than by stream so it survives the
+other person reconnecting, and sent nowhere. The stream is also held by a muted
+audio element, because Chrome will not pump a remote stream into Web Audio
+unless a media element holds it too; that element is the fallback path when a
+browser refuses to build the graph at all, and there volume stops at 100%.
+
+The same graph answers **who is talking**. An analyser taps each remote stream
+where it arrives, ahead of the gain node, and the client decides locally who is
+loud — nothing is negotiated, nothing is sent, and no server work was needed for
+it. Tapping before the gain matters: someone you have turned down to nothing
+still lights up, because the question is who is speaking rather than what you
+chose to hear. A muted microphone produces silence, so it reads as not speaking
+without being told anything.
+
+**Muting says so out loud**, on an opcode of its own. The obvious route —
+re-sending the voice state — would have gone through `Join`, which begins by
+leaving, so every mute would have torn the call down and rebuilt it. The SFU
+also remembers the flag per participant, because a listener who arrives after
+somebody muted has to be told: otherwise mute would only become visible the next
+time that person happened to toggle it. Without this, silence is ambiguous —
+the speaking indicator above cannot tell a deliberate mute from a pause.
+
+A person and **what that person is showing you are two different sounds**, so
+they get two sliders. Someone narrating over a film they are sharing can be
+turned down without silencing the film, and the film can be turned down without
+losing the narration. Both are keyed by user, and the source segment of the
+track name is what tells them apart on arrival — a mic stream is voice, a
+`screenaudio` stream is screen. The second slider appears only while that
+person's share is actually making sound, because a control for silence is
+furniture rather than a control.
+
+### Screen sharing
+
+A screen rides as a second track on the same peer connection, so sharing costs
+no extra ICE negotiation and stops when the call does.
+
+Starting or stopping a share sends `VOICE_SCREEN`, and the server answers with a
+fresh offer that adds or withdraws the forwarded track.
+
+The sharer has to say it in words because the transport never does. A browser
+that stops sharing calls `replaceTrack(null)` and simply stops sending on the
+same SSRC: the track does not end, so the server's read blocks forever and
+would go on believing the share is live. Viewers would keep the last frame on
+screen for the rest of the call. Nothing in the media path distinguishes a
+stopped share from a screen that has not changed, which is why saying so is a
+message rather than an inference.
+
+Withdrawing does not throw the forwarded track away, because the browser
+resumes on the same SSRC when the member shares again — the SFU would never see
+a new track to forward. The track is taken out of the room and put back, and
+viewers see it appear and disappear.
+
+Sharing needs the `Stream` permission, checked when the publishing connection is
+offered. That check used to be the shape of the SDP itself — without the
+permission there was no video section to send on — which was pleasingly hard to
+forget. Moving the screen to its own connection means the refusal is now an
+ordinary check, so it is written down here: **`PublishScreen` is the only thing
+standing between a member and sharing a screen they may not share.**
+
+Sound from the shared screen goes up the same connection, so it joins and leaves
+with the picture.
+
+`VOICE_SCREEN_UPDATE` announces who is sharing, keyed by stream id, so a viewer
+can name a tile before any media arrives and can drop the tile when the share
+stops. Joiners are told about shares already in progress.
+
+Capture uses `getDisplayMedia`, so the window and display picker is the
+browser's. Webviews that do not implement it cannot share; the browser build
+can. Audio is asked for and retried without on refusal, since a browser offers
+the sound of a **tab** and little else — on macOS, picking a window or a whole
+screen returns video with no audio track at all, and it does so silently. The
+packaged WebKit app offers none under any circumstances.
+
+That silence used to be indistinguishable from a bug: sound played on the
+sharer's machine, nobody heard it, and nothing said why. A share running
+without an audio track now says so, and says what to do about it. `systemAudio:
+"include"` is asked for as well, which buys whole-screen sound on the platforms
+that have it and is ignored where it does not exist.
+
+Capture runs to a budget the sharer picks, because the right trade depends on
+what is on the screen and on the link carrying it. Each preset fixes a
+resolution, a framerate, a bitrate ceiling, a `contentHint` and a
+`degradationPreference` together, since setting any one of them without the
+others just moves where the encoder cheats:
+
+| Preset | Capture | Ceiling | Under pressure |
+| --- | --- | --- | --- |
+| Light | 720p 30fps | 1.2 Mbps | keeps resolution |
+| **Smooth** (default) | 720p 60fps | 3 Mbps | keeps framerate |
+| Sharp | 1080p 30fps | 4 Mbps | keeps resolution |
+| High | 1080p 60fps | 8 Mbps | keeps resolution |
+
+A ceiling is not a floor. WebRTC's own bandwidth estimate decides what actually
+goes out, so raising these lets a good link spend more without obliging a bad
+one to try; Light stays low on purpose, for the link that cannot.
+
+The default is smooth rather than sharp because a share that stutters reads as
+broken, while one that is slightly soft only reads as a screen share. Changing
+the preset mid-share needs no renegotiation: `applyConstraints` retunes the
+capture and `setParameters` the encoder, both on a track already flowing. The
+choice is remembered in `localStorage`.
+
+A screen goes up a **connection of its own**, offered by the client and answered
+by the server. That is the only way a browser will publish more than one size: it
+does so only for a transceiver created with `sendEncodings`, and only an offerer
+can do that. Rather than give up being the offerer everywhere — the thing that
+removes glare — the screen gets its own connection and the rest is untouched.
+Both Chrome and the packaged WebKit app publish two sizes this way.
+
+The SFU keeps every size and **sends each viewer exactly one**, so a viewer who
+asks for the smaller one genuinely receives less rather than being sent a large
+picture to shrink. A screen published in one size still reaches everybody, so a
+browser that will not do this is left where it was.
+
+Which size is **chosen rather than guessed**. The obvious design drives it from
+the bandwidth estimates, and those are a floor rather than a ceiling — they
+cannot tell a viewer on a fast link watching a cheap stream from one that is
+struggling. A person clicking *smaller* carries no such ambiguity, and there is
+no switching policy, so nothing can flap. Automatic selection can sit on top of
+this later, once there is something to select between.
+
+A viewer who is not watching can **say so and stop receiving**. The SFU keeps a
+set of screens each peer has dropped and leaves them out when it builds that
+peer's offer, so the bytes stop rather than being decoded and discarded. Only
+the picture goes: the microphone of the person sharing is untouched, and so is
+the sound of the share, which is cheap and already has a volume of its own.
+Resuming asks the publisher for a keyframe, so the picture returns immediately
+instead of waiting for the next natural one.
+
+This is not the per-viewer quality adaptation that issue #16 is about, and does
+not pretend to be. It is the honest version of the same sentence: a viewer who
+cannot afford a share can decline it, rather than being handed a stream they
+have no way to refuse.
+
+Keyframes are only sent when somebody needs one — when a viewer's answer is
+applied, and when a viewer's own decoder asks, which the SFU relays to the
+publisher no more than twice a second. A screen that nobody has just subscribed
+to costs nothing, which is where a static share's bitrate goes into detail.
+
+#### What every viewer gets, and what that costs
+
+The same stream. The SFU copies one incoming track and forwards those packets
+to everybody, so what a share costs is fixed at the publisher by whichever
+preset the sharer picked. A viewer on a weak link cannot ask for less, and one
+on a good link cannot get more.
+
+The fix for that is simulcast, and it is **not reachable from the current
+signalling model**. A browser only sends multiple encodings if it created the
+transceiver with `sendEncodings`, which only an offerer can do; the other route,
+a server offer carrying `a=simulcast:recv`, does not exist in pion — the rids
+that would generate it are read from the *remote* description, so an offer that
+nothing has answered yet cannot declare them. Simulcast means letting the client
+offer for its screen, which means giving up the no-glare property above. That is
+a real trade, not an oversight.
+
+So the server measures before anyone decides. Each subscriber peer connection
+carries a send-side bandwidth estimator, and while a share is live the SFU
+records, every five seconds, how much its viewers can take:
+
+```
+voice: screen bandwidth channel_id=… viewers=3 lowest_bps=420000
+    highest_bps=6100000 spread=14.5 one_stream_fits_all=false
+```
+
+`spread` is the ratio between the best-off viewer and the worst-off one, and it
+is the number that settles the argument. Near 1 and the cheap fix works: relay
+the minimum estimate to the publisher and everyone is served by one stream. Far
+from 1 and that same fix means the person on hotel wifi decides what everyone
+else watches, and only simulcast will do. Nothing has been built on top of this
+yet on purpose — the estimates are the evidence, and there is not enough of it.
+
+The estimator is given an explicit **no-op pacer**, and that one line is the
+difference between an instrument and a throttle. pion's `NewSendSideBWE`
+installs a leaky-bucket pacer unless told otherwise, and `AddStream` returns
+that pacer as the writer for the stream — so every forwarded packet drains
+through a queue metered at the current estimate. Adding a *measurement* would
+therefore have quietly started rationing the media, and when an estimate
+collapses the queue grows without bound: the picture falls further behind every
+second and never catches up, because nothing drops. A share is not paced here.
+It is measured, and the number is written down.
+
+### Sharing a running instance
+
+The Go server can serve the built UI, so the whole app lives on one port and
+one tunnel exposes it:
+
+```bash
+make share
+```
+
+That builds the UI, serves it with the API on one port, opens a Cloudflare
+tunnel, and prints the public link:
+
+```
+  Send this to your friends:
+      https://classroom-asthma-carried-ascii.trycloudflare.com
+```
+
+Send that URL to anyone. No CORS configuration and no rebuild are needed: the
+client talks to whatever origin it was served from, and the gateway authorises
+a websocket whose `Origin` matches the request `Host`. Ctrl-C stops the server
+and the tunnel together. `make serve` does the same without exposing anything.
+
+The URL is random and changes on every restart, so send the current one. A
+stable hostname needs a named tunnel and a free Cloudflare account.
+
+Your friends open the link, register, and they are in. Click **Invite a
+friend** in the sidebar to copy a link like
+`https://<host>/?invite=LBJJqars` — opening it shows which server they have
+been invited to, and joining happens automatically once they have an account.
+An invite code can also be pasted directly into the **invite code** box.
+
+Requires `cloudflared` (`brew install cloudflared`).
+
+`make share` creates `.env` with a generated `JWT_SECRET` on first run. That
+matters — the development fallback secret is committed to this public
+repository, so an instance exposed with the default would let anyone forge a
+token for any account.
+
+Registration, login, messages and typing are rate limited, so a shared link is
+no longer wide open. It is still an instance on your laptop behind a tunnel
+that terminates TLS at Cloudflare — fine among friends, not fine in public.
+
+### Testing without the desktop client
+
+`make e2e` starts the real server in-process against Postgres and drives it
+over HTTP and a genuine websocket — registration, guild creation, keyset
+pagination, permission boundaries, gateway IDENTIFY/READY, live fanout, and
+RESUME replay. It brings the database up and migrates first, so a single
+command is enough:
+
+```bash
+make e2e
+```
+
+The suite is behind the `e2e` build tag, so `make test` stays fast and
+database-free. Usernames are randomised per run, so repeated runs against the
+same database do not collide.
+
+### Testing the desktop client
+
+CI builds the macOS app on every change (`make desktop-check`) and then starts
+it (`make desktop-smoke`). The second step is the one that matters, and the
+reason is specific.
+
+`enable_media_capture` in `client/src-tauri/src/lib.rs` turns on camera,
+microphone and screen capture by setting two **private** `WKPreferences` keys,
+`mediaDevicesEnabled` and `screenCaptureEnabled`. They are not API. They are
+looked up by name at runtime through `setValue:forKey:`, so if a future WebKit
+renames one, the Rust still compiles and the bundle still builds — a compile
+check sees nothing wrong at all.
+
+What actually happens is an `NSUnknownKeyException`, which crosses the FFI
+boundary as a non-unwinding panic and aborts the process. The app dies on
+launch. So the guard is to start the binary, wait, and fail if it is gone:
+
+```bash
+make desktop-check && make desktop-smoke
+```
+
+Both directions are verified: with the real keys the app stays up, and with a
+deliberately renamed key the build still passes and the smoke step is what
+fails. A build alone would have caught nothing.
+
+This covers macOS only, which is where the private keys are used —
+`enable_media_capture` is behind `#[cfg(target_os = "macos")]`.
+
+### Rate limiting
+
+Token buckets, keyed by account for authenticated routes and by client IP for
+public ones. Exceeding a limit returns `429` with `Retry-After`.
+
+Keying public routes on IP only works if the server knows the real client
+address. Behind `make share`, cloudflared connects from loopback, so without
+trusted-proxy handling every visitor would share one bucket and the first few
+registrations would lock out everyone else. `TRUSTED_PROXIES` defaults to
+loopback and the client address is read from `CF-Connecting-IP` or the
+rightmost untrusted hop of `X-Forwarded-For`. Peers outside that list have
+their headers ignored, so the limit cannot be bypassed by claiming a different
+address.
+
+Failed attempts consume tokens. Wrong passwords and rejected registrations are
+exactly what an attacker generates, so making them free would defeat the
+limit. Login is additionally throttled per account, because throttling by IP
+alone does not stop guessing distributed across many addresses.
+
+Limits are set with `REGISTER_PER_HOUR`, `LOGIN_PER_MINUTE`,
+`MESSAGES_PER_MINUTE` and `MAX_SESSIONS_PER_USER`; `RATE_LIMIT_DISABLED=true`
+turns the whole thing off for local work.
+
+Buckets live in memory, which shares the single-node constraint of the event
+broker — both move to a shared backend together when a second node appears.
+
+### Preventing client/server drift
+
+Wire types are defined once in `server/pkg/events` and generated into
+`client/src/types/events.gen.ts` by `make types`. `make verify-generated`
+fails CI when the checked-in output is stale.
+
+---
+
+## 📦 Building for Production
+
+### Build Desktop Client (`.msi`, `.exe`, `.dmg`, `.AppImage`)
+
+```bash
+cd client
+npm run tauri build
+```
+
+Built installers and binaries will be output to `client/src-tauri/target/release/bundle/`.
+
+### Build Backend Server Binary
+
+```bash
+make build   # -> server/bin/vocalis-server
+```
+
+`JWT_SECRET` (32+ bytes) is required when `ENV=production`; the server
+refuses to start without it. Generate one with `openssl rand -base64 48`.
+
+### Deploying it somewhere
+
+```bash
+make deploy-env    # .env with a generated database password and JWT_SECRET
+make deploy-up     # image, Postgres, server and Caddy with automatic TLS
+```
+
+`docker-compose.prod.yml` runs one image holding the Go binary and the built
+client, so the app is one origin on one port. The server applies pending
+migrations at boot under an advisory lock, which is why there is no migrate
+step in that sequence.
+
+Two things decide whether voice works and neither is TLS: **UDP 50000–50999
+must be open**, and `WEBRTC_PUBLIC_IP` must be set anywhere the public address
+belongs to a NAT rather than to the interface — EC2, GCP, Docker without host
+networking. On a plain VPS, leave it empty.
+
+The runbook, including backups, upgrades, what to do when voice connects but
+nobody can hear anybody, and what this deployment deliberately does not have,
+is **[docs/deploy.md](docs/deploy.md)**.
+
+For an evening rather than a deployment, `make share` is still the answer.
+
+---
+
+## 📋 Roadmap
+
+- [x] Initial project structure & monorepo design
+- [x] Postgres schema, migrations, and type-safe query layer
+- [x] Auth: registration, login, JWT access + rotating refresh tokens
+- [x] Guilds, channels, members, roles, permission resolution
+- [x] Role and overwrite management, with a hierarchy that cannot be climbed
+- [x] Gateway fanout filtered per channel, so a private channel really is
+- [x] WebSocket gateway: identify, heartbeat, resume, per-topic fanout
+- [x] Text messages with keyset-paginated history
+- [x] Emoji reactions, counted in history and fanned out per channel
+- [x] Replies, one level deep, and a deleted parent that keeps its words
+- [x] READY carries read states, members and presence, so a client paints once
+- [x] Account deletion: authorship reassigned, guilds inherited, sessions cut
+- [ ] Attachments and avatars on S3-compatible storage
+- [x] SFU WebRTC voice channels
+- [x] Screen sharing with window selection and picked quality presets
+- [x] Screen share carries its own sound, on a transceiver of its own
+- [x] A volume slider per person, kept by the listener and able to exceed 100%
+- [x] Deafening, enforced by the server, and connection quality per person
+- [x] Channel order that somebody chose, announced and kept
+- [x] Upload progress, microphone choice, and joining muted
+- [x] Four digits after a name, so two people can share one
+- [x] Who is in a voice channel before you join it, seeded by READY
+- [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
+- [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
+- [ ] Screen capture proven on the Windows and Linux desktop builds
+- [ ] Per-viewer quality adaptation, so one weak link is only their problem
+- [ ] Push-to-Talk with native global shortcuts
+- [x] Echo cancellation and noise suppression as the browser provides them
+- [ ] Dedicated noise suppression that beats what the browser does
+- [ ] End-to-end encrypted direct messaging
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

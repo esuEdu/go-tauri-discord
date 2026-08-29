@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: vocalis-postgres
+    environment:
+      POSTGRES_USER: vocalis
+      POSTGRES_PASSWORD: vocalis
+      POSTGRES_DB: vocalis
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U vocalis -d vocalis"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  minio:
+    image: minio/minio:latest
+    container_name: vocalis-minio
+    profiles: ["storage"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: vocalis
+      MINIO_ROOT_PASSWORD: vocalis-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  postgres-data:
+  minio-data:

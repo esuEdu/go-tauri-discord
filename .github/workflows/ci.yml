@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [developer, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: vocalis
+          POSTGRES_PASSWORD: vocalis
+          POSTGRES_DB: vocalis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vocalis -d vocalis"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgres://vocalis:vocalis@localhost:5432/vocalis?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: "1.30.0"
+
+      - name: Apply migrations
+        run: make migrate
+
+      - name: Vet, format and test
+        run: make check
+
+      - name: End-to-end against the real API and gateway
+        run: cd server && go test -tags=e2e -race -count=1 ./internal/app/
+
+      - name: Verify generated code is current
+        run: make verify-generated
+
+  client:
+    name: client
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Typecheck and build
+        run: make client-check
+
+  image:
+    name: image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the deployable image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: vocalis:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot it against a throwaway Postgres, which is what catches a bad migration
+        run: make image-smoke
+
+  desktop:
+    name: desktop
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Compile and bundle the desktop app
+        run: make desktop-check
+
+      - name: Launch it, which is what catches a WebKit preference rename
+        run: make desktop-smoke
