@@ -601,6 +601,10 @@
   opacity: 0.45;
 }
 
+.profile-choice[data-active="true"]:disabled {
+  opacity: 1;
+}
+
 .place-picture {
   display: flex;
   flex-direction: column;
