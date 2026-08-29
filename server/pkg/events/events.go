@@ -37,6 +37,7 @@ const (
 	EventGuildCreate       EventType = "GUILD_CREATE"
 	EventChannelCreate     EventType = "CHANNEL_CREATE"
 	EventChannelUpdate     EventType = "CHANNEL_UPDATE"
+	EventChannelDelete     EventType = "CHANNEL_DELETE"
 	EventMessageCreate     EventType = "MESSAGE_CREATE"
 	EventMessageUpdate     EventType = "MESSAGE_UPDATE"
 	EventMessageDelete     EventType = "MESSAGE_DELETE"

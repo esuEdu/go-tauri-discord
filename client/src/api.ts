@@ -338,6 +338,20 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
   }
 
+  updateChannel(
+    channelID: string,
+    patch: { name?: string; topic?: string | null },
+  ): Promise<Channel> {
+    const body: Record<string, unknown> = {};
+    if (patch.name !== undefined) body.name = patch.name;
+    if (patch.topic !== undefined) body.topic = patch.topic;
+    return this.request<Channel>("PATCH", `/api/v1/channels/${channelID}`, body);
+  }
+
+  deleteChannel(channelID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/channels/${channelID}`);
+  }
+
   moveChannel(
     channelID: string,
     position: number,

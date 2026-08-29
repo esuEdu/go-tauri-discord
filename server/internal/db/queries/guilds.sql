@@ -32,6 +32,13 @@ UPDATE channels SET position = @position WHERE id = @id AND guild_id = @guild_id
 -- name: SetChannelParent :exec
 UPDATE channels SET parent_id = @parent_id WHERE id = @id AND guild_id = @guild_id;
 
+-- name: UpdateChannel :one
+UPDATE channels SET
+    name  = COALESCE(sqlc.narg('name'), name),
+    topic = CASE WHEN @clear_topic::bool THEN NULL ELSE COALESCE(sqlc.narg('topic'), topic) END
+WHERE id = @id
+RETURNING *;
+
 -- name: DeleteChannel :exec
 DELETE FROM channels WHERE id = @id;
 
