@@ -13,6 +13,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 type Repository interface {
@@ -305,11 +306,17 @@ func (s *Service) Avatar(ctx context.Context, userID uuid.UUID) (*string, error)
 	return user.AvatarKey, nil
 }
 
-func (s *Service) SetAvatar(ctx context.Context, userID uuid.UUID, key *string) error {
-	if _, err := s.repo.SetUserAvatar(ctx, dbgen.SetUserAvatarParams{
+func (s *Service) SetAvatar(ctx context.Context, userID uuid.UUID, key *string) (events.User, error) {
+	updated, err := s.repo.SetUserAvatar(ctx, dbgen.SetUserAvatarParams{
 		ID: userID, AvatarKey: key,
-	}); err != nil {
-		return domain.Internal(err)
+	})
+	if err != nil {
+		return events.User{}, domain.Internal(err)
 	}
-	return nil
+	return events.User{
+		ID:            updated.ID,
+		Username:      updated.Username,
+		Discriminator: updated.Discriminator,
+		AvatarKey:     updated.AvatarKey,
+	}, nil
 }
