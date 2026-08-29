@@ -1,0 +1,16 @@
+[Unit]
+Description=Vocalis observability: Prometheus, Grafana, Loki and the exporters
+Requires=docker.service
+After=docker.service vocalis.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__DIR__
+ExecStart=/usr/bin/docker compose -f docker-compose.observe.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.observe.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
