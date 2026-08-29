@@ -254,6 +254,17 @@ deploy-up: ## Build and start Postgres, the server and Caddy
 		exit 1; }
 	$(COMPOSE_PROD) --profile tls up -d --build
 
+.PHONY: deploy-pull
+deploy-pull: ## Deploy the image built by CI, instead of building here
+	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
+	@grep -q '^VOCALIS_IMAGE=' .env || { \
+		echo "no VOCALIS_IMAGE in .env. Add the published image:"; \
+		echo "  echo 'VOCALIS_IMAGE=ghcr.io/esuEdu/vocalis:latest' >> .env"; \
+		exit 1; }
+	$(COMPOSE_PROD) pull server
+	$(COMPOSE_PROD) --profile tls up -d --no-build
+	@echo "running $$(grep '^VOCALIS_IMAGE=' .env | cut -d= -f2-)"
+
 .PHONY: deploy-down
 deploy-down: ## Stop the deployment; volumes and their data are preserved
 	$(COMPOSE_PROD) --profile tls down
