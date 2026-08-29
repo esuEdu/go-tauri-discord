@@ -289,7 +289,7 @@
   border-radius: var(--radius-md);
   background: none;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .member-row:hover {

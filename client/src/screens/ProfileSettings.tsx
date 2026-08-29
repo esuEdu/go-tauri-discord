@@ -317,7 +317,7 @@ function LookTab() {
   return (
     <>
       <div className="profile-choice-row">
-        <button type="button" className="profile-choice" data-active="true">
+        <button type="button" className="profile-choice" data-active="true" disabled>
           Dark
         </button>
         <button type="button" className="profile-choice" disabled>
@@ -325,7 +325,7 @@ function LookTab() {
         </button>
       </div>
       <div className="profile-choice-row">
-        <button type="button" className="profile-choice" data-active="true">
+        <button type="button" className="profile-choice" data-active="true" disabled>
           Comfortable
         </button>
         <button type="button" className="profile-choice" disabled>
