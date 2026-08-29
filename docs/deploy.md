@@ -258,6 +258,15 @@ If the `host` target reads *down* in Prometheus, node-exporter did not get the
 mount propagation it needs -- that is a Linux host detail and the reason this
 part cannot be tested on a Mac.
 
+If the per-container panels are empty while cAdvisor looks healthy and its
+Prometheus target reads *up*, check the cAdvisor version before anything else.
+Docker 29 keeps images in containerd, which has no `image/<driver>/layerdb`
+directory; cAdvisor before v0.55 looks one up for every container it finds,
+treats the miss as fatal, and ends up registering none of them. Its logs say
+`failed to identify the read-write layer ID`. Nothing about the failure is
+visible from Prometheus, which sees a target that scrapes fine and simply
+returns no container series.
+
 ---
 
 ## What is running

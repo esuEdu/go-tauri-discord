@@ -2,7 +2,12 @@ name: vocalis
 
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    # Not below v0.55: Docker 29 stores images through containerd, which has no
+    # image/<driver>/layerdb directory. Older cAdvisor looks one up per
+    # container, treats the miss as fatal, and registers no containers at all --
+    # so every per-container panel reads empty while cadvisor itself looks
+    # healthy and Prometheus reports the target up.
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     restart: unless-stopped
     command:
       - --housekeeping_interval=15s
