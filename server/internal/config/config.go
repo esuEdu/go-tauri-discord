@@ -86,7 +86,8 @@ func Load() (Config, error) {
 		WebRTCUDPPortMin: envInt("WEBRTC_UDP_PORT_MIN", 50000),
 		WebRTCUDPPortMax: envInt("WEBRTC_UDP_PORT_MAX", 50999),
 		CORSOrigins: strings.Split(
-			env("CORS_ORIGINS", "http://localhost:1420,tauri://localhost"), ","),
+			env("CORS_ORIGINS",
+				"http://localhost:1420,tauri://localhost,http://tauri.localhost"), ","),
 	}
 
 	servers, err := ice.ParseServers(env("ICE_SERVERS", "stun:stun.l.google.com:19302"))

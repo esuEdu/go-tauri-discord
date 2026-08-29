@@ -103,7 +103,7 @@ a real name, so Caddy can get a real certificate for it:
 
 ```
 DOMAIN=203-0-113-45.nip.io
-CORS_ORIGINS=https://203-0-113-45.nip.io,tauri://localhost
+CORS_ORIGINS=https://203-0-113-45.nip.io,tauri://localhost,http://tauri.localhost
 ```
 
 Swap in your own domain later by editing those two lines and restarting; the
@@ -356,8 +356,20 @@ cd client && VITE_API_URL=https://your-domain npm run tauri build
 ```
 
 Without `VITE_API_URL` the app expects a server on the same origin, which is
-right for the browser and wrong for a packaged app. Keep `tauri://localhost` in
-`CORS_ORIGINS` or the desktop build is refused at the gateway.
+right for the browser and wrong for a packaged app.
+
+The packaged app's origin depends on the platform, and `CORS_ORIGINS` needs
+both: **`tauri://localhost`** on macOS and Linux, **`http://tauri.localhost`**
+on Windows, whose webview is WebView2. Miss the Windows one and the failure is
+worse than a rejection -- the preflight is answered without a matching
+allow-origin, so the webview never sends the real request, the client never
+receives a response, and it reports that the server did not answer. The server
+log shows the shape of it plainly: an `OPTIONS` with no method behind it.
+
+```
+{"msg":"http","method":"OPTIONS","path":"/api/v1/auth/register","status":204}
+    ... and no POST
+```
 
 ---
 
