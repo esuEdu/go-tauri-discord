@@ -59,6 +59,7 @@ type GuildMember struct {
 	UserID   uuid.UUID
 	Nickname *string
 	JoinedAt time.Time
+	Position int32
 }
 
 type Invite struct {
