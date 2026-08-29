@@ -144,6 +144,43 @@ there is a second host rather than before.
 
 ---
 
+## Coming back after a reboot
+
+Every container is declared `restart: unless-stopped`, so Docker brings them
+back when the machine boots. That covers a reboot and it does not cover much
+else: a `docker compose down` removes the containers, and nothing then recreates
+them.
+
+`make deploy-autostart` installs a systemd unit that does:
+
+```bash
+make deploy-autostart
+```
+
+It enables `docker` as well, because the restart policy is worth nothing if the
+daemon is not started at boot, and writes a second unit for the observability
+stack which it installs but leaves disabled -- enable it with
+`sudo systemctl enable --now vocalis-observe` if you want the dashboards up
+without asking.
+
+After that the deployment is an ordinary service:
+
+```bash
+sudo systemctl status vocalis
+sudo systemctl restart vocalis
+```
+
+Worth testing the thing you are relying on, rather than assuming it: reboot,
+wait, and check that the site answers.
+
+```bash
+sudo reboot
+# then, once it is back
+curl -sI https://your-domain | head -1
+```
+
+---
+
 ## Watching it run
 
 `make observe-up` starts Prometheus, Grafana, Loki and two exporters beside the

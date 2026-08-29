@@ -295,6 +295,24 @@ observe-down: ## Stop the observability stack; its data is preserved
 observe-logs: ## Follow the observability stack's own logs
 	$(COMPOSE_OBSERVE) logs -f
 
+.PHONY: deploy-autostart
+deploy-autostart: ## Install systemd units so the deployment comes back after a reboot
+	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
+	@command -v systemctl >/dev/null || { echo "no systemd here; this target is for the deployment host."; exit 1; }
+	@for unit in vocalis vocalis-observe; do \
+		sed "s|__DIR__|$$PWD|" deploy/$$unit.service | sudo tee /etc/systemd/system/$$unit.service > /dev/null; \
+	done
+	sudo systemctl daemon-reload
+	sudo systemctl enable docker vocalis
+	@echo ""
+	@echo "  vocalis is enabled: it starts on boot and can be managed with"
+	@echo "    sudo systemctl status|start|stop vocalis"
+	@echo ""
+	@echo "  The observability stack is installed but not enabled. To have it"
+	@echo "  start on boot as well:"
+	@echo "    sudo systemctl enable --now vocalis-observe"
+	@echo ""
+
 .PHONY: deploy-backup
 deploy-backup: ## Dump the database and the uploaded files into backups/
 	@mkdir -p backups
