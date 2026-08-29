@@ -117,7 +117,7 @@ certificate is fetched again and nothing else changes.
 compiling Go and bundling the client every time, so the workflow in
 `.github/workflows/publish.yml` does it instead: every push to `developer`
 builds `linux/arm64` on GitHub's ARM runners and pushes to
-`ghcr.io/esuEdu/vocalis:latest`.
+`ghcr.io/esuedu/vocalis:latest`.
 
 Nothing is stored in GitHub for this and nothing reaches in. The workflow signs
 in with the token Actions already has, and the host only pulls a public image.
@@ -130,7 +130,7 @@ one-time setting.
 Then on the host:
 
 ```bash
-echo 'VOCALIS_IMAGE=ghcr.io/esuEdu/vocalis:latest' >> .env
+echo 'VOCALIS_IMAGE=ghcr.io/esuedu/vocalis:latest' >> .env
 make deploy-pull
 ```
 

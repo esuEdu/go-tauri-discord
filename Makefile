@@ -259,7 +259,7 @@ deploy-pull: ## Deploy the image built by CI, instead of building here
 	@test -f .env || { echo "no .env. Run: make deploy-env"; exit 1; }
 	@grep -q '^VOCALIS_IMAGE=' .env || { \
 		echo "no VOCALIS_IMAGE in .env. Add the published image:"; \
-		echo "  echo 'VOCALIS_IMAGE=ghcr.io/esuEdu/vocalis:latest' >> .env"; \
+		echo "  echo 'VOCALIS_IMAGE=ghcr.io/esuedu/vocalis:latest' >> .env"; \
 		exit 1; }
 	$(COMPOSE_PROD) pull server
 	$(COMPOSE_PROD) --profile tls up -d --no-build
