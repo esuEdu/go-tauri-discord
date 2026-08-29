@@ -117,6 +117,8 @@ export default function App() {
   const [newChannel, setNewChannel] = useState<"text" | "voice" | "category" | null>(null);
   const [channelName, setChannelName] = useState("");
   const [privateChannel, setPrivateChannel] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<{ channel: Channel; name: string } | null>(null);
+  const [droppingChannel, setDroppingChannel] = useState<Channel | null>(null);
   const [serverMenu, setServerMenu] = useState<Anchor | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -288,9 +290,20 @@ export default function App() {
       if (channel.guild_id !== activeGuild.id) return;
       setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
     });
+    const forgetDelete = gateway.on("CHANNEL_DELETE", (payload) => {
+      const channel = payload as Channel;
+      if (channel.guild_id !== activeGuild.id) return;
+      setChannels((prev) =>
+        prev
+          .filter((c) => c.id !== channel.id)
+          .map((c) => (c.parent_id === channel.id ? { ...c, parent_id: undefined } : c)),
+      );
+      setActiveChannel((held) => (held?.id === channel.id ? null : held));
+    });
     return () => {
       forgetCreate();
       forgetUpdate();
+      forgetDelete();
     };
   }, [activeGuild]);
 
@@ -897,6 +910,9 @@ export default function App() {
         <ChannelMenu
           at={menu.at}
           channel={menu.channel}
+          canManage={allows(effective, MANAGE_CHANNELS)}
+          onEdit={() => setEditingChannel({ channel: menu.channel, name: menu.channel.name })}
+          onDelete={() => setDroppingChannel(menu.channel)}
           onClose={() => setMenu(null)}
         />
       )}
@@ -1049,6 +1065,72 @@ export default function App() {
             </Button>
             <Button disabled={!channelName.trim()} onClick={() => void makeChannel(activeGuild.id)}>
               Create Channel
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {editingChannel && (
+        <Sheet
+          title="Edit channel"
+          subtitle="The name is what everybody sees in the list."
+          onClose={() => setEditingChannel(null)}
+        >
+          <label className="field">
+            <span className="field-label">Channel name</span>
+            <input
+              className="input"
+              value={editingChannel.name}
+              autoFocus
+              onChange={(event) =>
+                setEditingChannel({ ...editingChannel, name: event.target.value })
+              }
+            />
+          </label>
+          <div className="sheet-actions">
+            <Button kind="quiet" onClick={() => setEditingChannel(null)}>
+              Never mind
+            </Button>
+            <Button
+              disabled={!editingChannel.name.trim()}
+              onClick={async () => {
+                const { channel, name } = editingChannel;
+                setEditingChannel(null);
+                await api.updateChannel(channel.id, { name: name.trim() });
+                if (activeGuild) setChannels(await api.channels(activeGuild.id));
+              }}
+            >
+              Rename it
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {droppingChannel && (
+        <Sheet
+          title={`Delete ${droppingChannel.name}`}
+          subtitle={
+            droppingChannel.kind === "category"
+              ? "The channels inside it come loose rather than going with it."
+              : "Everything written in it goes too. This cannot be undone."
+          }
+          onClose={() => setDroppingChannel(null)}
+        >
+          <div className="sheet-actions">
+            <Button kind="quiet" onClick={() => setDroppingChannel(null)}>
+              Never mind
+            </Button>
+            <Button
+              kind="danger"
+              onClick={async () => {
+                const going = droppingChannel;
+                setDroppingChannel(null);
+                await api.deleteChannel(going.id);
+                if (activeChannel?.id === going.id) setActiveChannel(null);
+                if (activeGuild) setChannels(await api.channels(activeGuild.id));
+              }}
+            >
+              Delete it
             </Button>
           </div>
         </Sheet>

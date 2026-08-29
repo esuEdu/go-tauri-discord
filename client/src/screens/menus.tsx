@@ -161,34 +161,48 @@ export function PersonMenu({
 export function ChannelMenu({
   at,
   channel,
+  canManage,
+  onEdit,
+  onDelete,
   onClose,
 }: {
   at: Anchor;
   channel: Channel;
+  canManage: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   return (
     <ContextMenu at={at} onClose={onClose}>
-      <MenuItem
-        icon="pencil-simple"
-        label="Edit channel"
-        hint="No endpoint yet"
-        disabled
-      />
+      {canManage && (
+        <MenuItem
+          icon="pencil-simple"
+          label="Edit channel"
+          onClick={() => {
+            onClose();
+            onEdit();
+          }}
+        />
+      )}
       <MenuItem
         icon="speaker-high"
         label="Notifications"
         hint="Nothing notifies yet"
         disabled
       />
-      <MenuSeparator />
-      <MenuItem
-        icon="trash"
-        kind="danger"
-        label={`Delete ${channel.name}`}
-        hint="No endpoint yet"
-        disabled
-      />
+      {canManage && <MenuSeparator />}
+      {canManage && (
+        <MenuItem
+          icon="trash"
+          kind="danger"
+          label={`Delete ${channel.name}`}
+          onClick={() => {
+            onClose();
+            onDelete();
+          }}
+        />
+      )}
     </ContextMenu>
   );
 }
