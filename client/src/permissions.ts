@@ -41,6 +41,7 @@ export function summarise(permissions: number): string {
 
 export const VIEW_CHANNEL = 1 << 0;
 export const SEND_MESSAGES = 1 << 1;
+export const MANAGE_MESSAGES = 1 << 2;
 export const MANAGE_CHANNELS = 1 << 3;
 export const MANAGE_ROLES = 1 << 4;
 export const KICK_MEMBERS = 1 << 5;

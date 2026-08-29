@@ -13,10 +13,18 @@ import (
 )
 
 const addGuildMember = `-- name: AddGuildMember :one
-INSERT INTO guild_members (guild_id, user_id, nickname)
-VALUES ($1, $2, $3)
+INSERT INTO guild_members (guild_id, user_id, nickname, position)
+VALUES (
+    $1,
+    $2,
+    $3,
+    COALESCE(
+        (SELECT MAX(position) + 1 FROM guild_members WHERE user_id = $2),
+        0
+    )
+)
 ON CONFLICT (guild_id, user_id) DO UPDATE SET nickname = EXCLUDED.nickname
-RETURNING guild_id, user_id, nickname, joined_at
+RETURNING guild_id, user_id, nickname, joined_at, position
 `
 
 type AddGuildMemberParams struct {
@@ -33,6 +41,7 @@ func (q *Queries) AddGuildMember(ctx context.Context, arg AddGuildMemberParams) 
 		&i.UserID,
 		&i.Nickname,
 		&i.JoinedAt,
+		&i.Position,
 	)
 	return i, err
 }
@@ -52,6 +61,17 @@ type AssignRoleParams struct {
 func (q *Queries) AssignRole(ctx context.Context, arg AssignRoleParams) error {
 	_, err := q.db.Exec(ctx, assignRole, arg.GuildID, arg.UserID, arg.RoleID)
 	return err
+}
+
+const countGuildsForUser = `-- name: CountGuildsForUser :one
+SELECT count(*) FROM guild_members WHERE user_id = $1
+`
+
+func (q *Queries) CountGuildsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countGuildsForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createChannel = `-- name: CreateChannel :one
@@ -251,7 +271,7 @@ func (q *Queries) GetGuild(ctx context.Context, id uuid.UUID) (Guild, error) {
 }
 
 const getGuildMember = `-- name: GetGuildMember :one
-SELECT guild_id, user_id, nickname, joined_at FROM guild_members WHERE guild_id = $1 AND user_id = $2
+SELECT guild_id, user_id, nickname, joined_at, position FROM guild_members WHERE guild_id = $1 AND user_id = $2
 `
 
 type GetGuildMemberParams struct {
@@ -267,6 +287,7 @@ func (q *Queries) GetGuildMember(ctx context.Context, arg GetGuildMemberParams) 
 		&i.UserID,
 		&i.Nickname,
 		&i.JoinedAt,
+		&i.Position,
 	)
 	return i, err
 }
@@ -377,7 +398,7 @@ func (q *Queries) ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]
 }
 
 const listGuildMembers = `-- name: ListGuildMembers :many
-SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, u.username, u.discriminator, u.avatar_key
+SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, m.position, u.username, u.discriminator, u.avatar_key
 FROM guild_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = $1
@@ -389,6 +410,7 @@ type ListGuildMembersRow struct {
 	UserID        uuid.UUID
 	Nickname      *string
 	JoinedAt      time.Time
+	Position      int32
 	Username      string
 	Discriminator string
 	AvatarKey     *string
@@ -408,6 +430,7 @@ func (q *Queries) ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]Li
 			&i.UserID,
 			&i.Nickname,
 			&i.JoinedAt,
+			&i.Position,
 			&i.Username,
 			&i.Discriminator,
 			&i.AvatarKey,
@@ -458,7 +481,7 @@ const listGuildsForUser = `-- name: ListGuildsForUser :many
 SELECT g.id, g.name, g.owner_id, g.icon_key, g.created_at FROM guilds g
 JOIN guild_members m ON m.guild_id = g.id
 WHERE m.user_id = $1
-ORDER BY g.created_at
+ORDER BY m.position, g.created_at, g.id
 `
 
 func (q *Queries) ListGuildsForUser(ctx context.Context, userID uuid.UUID) ([]Guild, error) {
@@ -733,6 +756,21 @@ func (q *Queries) ResolveGuildAccess(ctx context.Context, arg ResolveGuildAccess
 	return i, err
 }
 
+const setChannelParent = `-- name: SetChannelParent :exec
+UPDATE channels SET parent_id = $1 WHERE id = $2 AND guild_id = $3
+`
+
+type SetChannelParentParams struct {
+	ParentID *uuid.UUID
+	ID       uuid.UUID
+	GuildID  uuid.UUID
+}
+
+func (q *Queries) SetChannelParent(ctx context.Context, arg SetChannelParentParams) error {
+	_, err := q.db.Exec(ctx, setChannelParent, arg.ParentID, arg.ID, arg.GuildID)
+	return err
+}
+
 const setChannelPosition = `-- name: SetChannelPosition :exec
 UPDATE channels SET position = $1 WHERE id = $2 AND guild_id = $3
 `
@@ -770,6 +808,22 @@ func (q *Queries) SetGuildIcon(ctx context.Context, arg SetGuildIconParams) (Gui
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const setGuildPosition = `-- name: SetGuildPosition :exec
+UPDATE guild_members SET position = $1
+WHERE user_id = $2 AND guild_id = $3
+`
+
+type SetGuildPositionParams struct {
+	Position int32
+	UserID   uuid.UUID
+	GuildID  uuid.UUID
+}
+
+func (q *Queries) SetGuildPosition(ctx context.Context, arg SetGuildPositionParams) error {
+	_, err := q.db.Exec(ctx, setGuildPosition, arg.Position, arg.UserID, arg.GuildID)
+	return err
 }
 
 const transferGuildOwnership = `-- name: TransferGuildOwnership :exec

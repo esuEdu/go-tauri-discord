@@ -7,10 +7,10 @@ function woff2Only(): Plugin {
     enforce: "pre",
     transform(code, id) {
       if (!id.includes("@phosphor-icons/web")) return null;
-      return code.replace(
-        /src:[\s\S]*?;/,
-        'src: url("./Phosphor.woff2") format("woff2");',
-      );
+      return code.replace(/src:[\s\S]*?;/, (block) => {
+        const woff2 = block.match(/url\("([^"]+\.woff2)"\)/);
+        return woff2 ? `src: url("${woff2[1]}") format("woff2");` : block;
+      });
     },
   };
 }

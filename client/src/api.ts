@@ -60,6 +60,7 @@ export class ApiError extends Error {
 export class Api {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  private endedListeners = new Set<() => void>();
 
   constructor() {
     this.accessToken = localStorage.getItem("access_token");
@@ -79,6 +80,15 @@ export class Api {
     this.refreshToken = tokens.refresh_token;
     localStorage.setItem("access_token", tokens.access_token);
     localStorage.setItem("refresh_token", tokens.refresh_token);
+  }
+
+  onSessionEnded(fn: () => void): () => void {
+    this.endedListeners.add(fn);
+    return () => this.endedListeners.delete(fn);
+  }
+
+  private sessionEnded() {
+    for (const fn of this.endedListeners) fn();
   }
 
   clear() {
@@ -109,10 +119,12 @@ export class Api {
       throw new ApiError(0, `could not reach the server at ${serverURL()}`);
     }
 
-    if (res.status === 401 && retryOn401 && this.refreshToken) {
-      if (await this.tryRefresh()) {
+    if (res.status === 401 && retryOn401) {
+      if (this.refreshToken && (await this.tryRefresh())) {
         return this.request<T>(method, path, body, false);
       }
+      this.clear();
+      this.sessionEnded();
     }
 
     if (!res.ok) {
@@ -137,6 +149,7 @@ export class Api {
       });
       if (!res.ok) {
         this.clear();
+        this.sessionEnded();
         return false;
       }
       this.store(await res.json());
@@ -185,6 +198,12 @@ export class Api {
 
   guilds(): Promise<Guild[]> {
     return this.request<Guild[]>("GET", "/api/v1/guilds");
+  }
+
+  reorderGuilds(guildIDs: string[]): Promise<Guild[]> {
+    return this.request<Guild[]>("PUT", "/api/v1/guilds/order", {
+      guild_ids: guildIDs,
+    });
   }
 
   createGuild(name: string): Promise<Guild> {
@@ -319,10 +338,19 @@ export class Api {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
   }
 
-  moveChannel(channelID: string, position: number): Promise<Channel[]> {
-    return this.request<Channel[]>("PATCH", `/api/v1/channels/${channelID}/position`, {
-      position,
-    });
+  moveChannel(
+    channelID: string,
+    position: number,
+    parentID?: string | null,
+    reparent = false,
+  ): Promise<Channel[]> {
+    const body: Record<string, unknown> = { position };
+    if (reparent) body.parent_id = parentID ?? null;
+    return this.request<Channel[]>(
+      "PATCH",
+      `/api/v1/channels/${channelID}/position`,
+      body,
+    );
   }
 
   members(guildID: string): Promise<GuildMember[]> {
@@ -331,6 +359,10 @@ export class Api {
 
   kick(guildID: string, userID: string): Promise<void> {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/members/${userID}`);
+  }
+
+  leaveGuild(guildID: string): Promise<void> {
+    return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/members/@me`);
   }
 
   ban(guildID: string, userID: string, reason?: string): Promise<Ban> {

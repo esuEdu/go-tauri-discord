@@ -1,6 +1,7 @@
 package guild
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -54,11 +55,13 @@ func (h *Handler) removed(r *http.Request, guildID, userID uuid.UUID, banned boo
 func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("POST /api/v1/guilds", h.create)
 	mux.HandleFunc("GET /api/v1/guilds", h.list)
+	mux.HandleFunc("PUT /api/v1/guilds/order", h.reorder)
 	mux.HandleFunc("POST /api/v1/guilds/{guildID}/invites", h.createInvite)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/invites", h.listInvites)
 	mux.HandleFunc("POST /api/v1/invites/{code}", h.redeemInvite)
 	mux.HandleFunc("DELETE /api/v1/invites/{code}", h.revokeInvite)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members", h.members)
+	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/@me", h.leave)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}", h.kick)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/bans", h.listBans)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/bans/{userID}", h.ban)
@@ -230,6 +233,45 @@ func (h *Handler) kick(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusNoContent, nil)
 }
 
+func (h *Handler) reorder(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		GuildIDs []uuid.UUID `json:"guild_ids"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	userID := auth.MustUserID(r.Context())
+	if err := h.svc.Reorder(r.Context(), userID, in.GuildIDs); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	guilds, err := h.svc.ListForUser(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mapSlice(guilds, PublicGuild))
+}
+
+func (h *Handler) leave(w http.ResponseWriter, r *http.Request) {
+	guildID, err := httpx.PathUUID(r, "guildID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	userID := auth.MustUserID(r.Context())
+	if err := h.svc.Leave(r.Context(), userID, guildID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.removed(r, guildID, userID, false)
+	httpx.JSON(w, http.StatusNoContent, nil)
+}
+
 func (h *Handler) ban(w http.ResponseWriter, r *http.Request) {
 	guildID, memberID, err := guildAndMember(r)
 	if err != nil {
@@ -322,6 +364,25 @@ func (h *Handler) createChannel(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, PublicChannel(ch))
 }
 
+type optionalParent struct {
+	given bool
+	id    *uuid.UUID
+}
+
+func (o *optionalParent) UnmarshalJSON(b []byte) error {
+	o.given = true
+	if string(b) == "null" {
+		o.id = nil
+		return nil
+	}
+	var id uuid.UUID
+	if err := json.Unmarshal(b, &id); err != nil {
+		return domain.Invalid("parent_id must be a channel id or null")
+	}
+	o.id = &id
+	return nil
+}
+
 func (h *Handler) moveChannel(w http.ResponseWriter, r *http.Request) {
 	channelID, err := httpx.PathUUID(r, "channelID")
 	if err != nil {
@@ -329,14 +390,18 @@ func (h *Handler) moveChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Position int `json:"position"`
+		Position int            `json:"position"`
+		ParentID optionalParent `json:"parent_id"`
 	}
 	if err := httpx.Decode(w, r, &in); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 
-	moved, err := h.svc.MoveChannel(r.Context(), auth.MustUserID(r.Context()), channelID, in.Position)
+	moved, err := h.svc.MoveChannel(
+		r.Context(), auth.MustUserID(r.Context()), channelID,
+		in.Position, in.ParentID.id, in.ParentID.given,
+	)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

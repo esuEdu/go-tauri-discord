@@ -74,28 +74,18 @@ export type ScreenQuality = {
 
 export const SCREEN_QUALITIES: ScreenQuality[] = [
   {
-    id: "light",
-    label: "Light — 720p 30fps",
-    width: 1280,
-    height: 720,
-    frameRate: 30,
-    maxBitrate: 1_200_000,
+    id: "high",
+    label: "1080p · 60fps",
+    width: 1920,
+    height: 1080,
+    frameRate: 60,
+    maxBitrate: 8_000_000,
     contentHint: "detail",
     degradation: "maintain-resolution",
   },
   {
-    id: "smooth",
-    label: "Smooth — 720p 60fps",
-    width: 1280,
-    height: 720,
-    frameRate: 60,
-    maxBitrate: 3_000_000,
-    contentHint: "motion",
-    degradation: "maintain-framerate",
-  },
-  {
     id: "sharp",
-    label: "Sharp — 1080p 30fps",
+    label: "1080p · 30fps",
     width: 1920,
     height: 1080,
     frameRate: 30,
@@ -104,12 +94,22 @@ export const SCREEN_QUALITIES: ScreenQuality[] = [
     degradation: "maintain-resolution",
   },
   {
-    id: "high",
-    label: "High — 1080p 60fps",
-    width: 1920,
-    height: 1080,
+    id: "smooth",
+    label: "720p · 60fps",
+    width: 1280,
+    height: 720,
     frameRate: 60,
-    maxBitrate: 8_000_000,
+    maxBitrate: 3_000_000,
+    contentHint: "motion",
+    degradation: "maintain-framerate",
+  },
+  {
+    id: "light",
+    label: "720p · 30fps",
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+    maxBitrate: 1_200_000,
     contentHint: "detail",
     degradation: "maintain-resolution",
   },
@@ -136,7 +136,11 @@ function storedQuality(): ScreenQuality {
 }
 
 function qualityOf(id: ScreenQualityID): ScreenQuality {
-  return SCREEN_QUALITIES.find((q) => q.id === id) ?? SCREEN_QUALITIES[1];
+  return (
+    SCREEN_QUALITIES.find((q) => q.id === id) ??
+    SCREEN_QUALITIES.find((q) => q.id === DEFAULT_QUALITY) ??
+    SCREEN_QUALITIES[0]
+  );
 }
 
 function usableLevels(saved: unknown): Record<string, number> {
@@ -204,7 +208,7 @@ class VoiceClient {
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
   private dropped = new Set<string>();
-  private deafened = false;
+  private silent = false;
   private sizes: Record<string, ScreenSize> = {};
   private screenListeners = new Set<(s: ScreenState) => void>();
 
@@ -390,6 +394,14 @@ class VoiceClient {
     return this.mixer;
   }
 
+  get deafened(): boolean {
+    return this.silent;
+  }
+
+  get inCall(): boolean {
+    return this.status === "connected" || this.status === "connecting";
+  }
+
   get muted(): boolean {
     const track = this.microphone?.getAudioTracks()[0];
     return track ? !track.enabled : false;
@@ -401,30 +413,30 @@ class VoiceClient {
 
     track.enabled = !track.enabled;
     const muted = !track.enabled;
-    if (!muted) this.deafened = false;
+    if (!muted) this.silent = false;
     this.announceListening(muted);
     return muted;
   }
 
   get deaf(): boolean {
-    return this.deafened;
+    return this.silent;
   }
 
   toggleDeafen(): boolean {
-    this.deafened = !this.deafened;
+    this.silent = !this.silent;
 
     const track = this.microphone?.getAudioTracks()[0];
-    if (track) track.enabled = !this.deafened;
+    if (track) track.enabled = !this.silent;
 
     for (const output of this.outputs.values()) this.applySilence(output);
-    this.announceListening(this.deafened || this.muted);
-    return this.deafened;
+    this.announceListening(this.silent || this.muted);
+    return this.silent;
   }
 
   private announceListening(muted: boolean) {
     gateway.sendRaw({
       op: OpVoiceMute,
-      d: { self_mute: muted, self_deaf: this.deafened } satisfies VoiceMuteRequest,
+      d: { self_mute: muted, self_deaf: this.silent } satisfies VoiceMuteRequest,
     });
   }
 
@@ -589,10 +601,6 @@ class VoiceClient {
     gateway.sendRaw({ op: OpVoiceScreen, d: { active } satisfies VoiceScreenRequest });
   }
 
-
-
-
-
   private captureConstraints(): MediaTrackConstraints {
     const { width, height, frameRate } = this.quality;
     return {
@@ -601,7 +609,6 @@ class VoiceClient {
       height: { max: height },
     };
   }
-
 
   setScreenQuality(id: ScreenQualityID) {
     this.quality = qualityOf(id);
@@ -696,7 +703,7 @@ class VoiceClient {
     if (!this.pc && !this.channelID) return;
 
     gateway.sendRaw({ op: OpVoiceState, d: { channel_id: null, self_mute: false, self_deaf: false } });
-    this.deafened = false;
+    this.silent = false;
 
     for (const off of this.unsubscribe) off();
     this.unsubscribe = [];

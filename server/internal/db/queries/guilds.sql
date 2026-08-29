@@ -10,7 +10,7 @@ SELECT * FROM guilds WHERE id = @id;
 SELECT g.* FROM guilds g
 JOIN guild_members m ON m.guild_id = g.id
 WHERE m.user_id = @user_id
-ORDER BY g.created_at;
+ORDER BY m.position, g.created_at, g.id;
 
 -- name: DeleteGuild :exec
 DELETE FROM guilds WHERE id = @id;
@@ -29,14 +29,32 @@ SELECT * FROM channels WHERE guild_id = @guild_id ORDER BY position, id;
 -- name: SetChannelPosition :exec
 UPDATE channels SET position = @position WHERE id = @id AND guild_id = @guild_id;
 
+-- name: SetChannelParent :exec
+UPDATE channels SET parent_id = @parent_id WHERE id = @id AND guild_id = @guild_id;
+
 -- name: DeleteChannel :exec
 DELETE FROM channels WHERE id = @id;
 
 -- name: AddGuildMember :one
-INSERT INTO guild_members (guild_id, user_id, nickname)
-VALUES (@guild_id, @user_id, @nickname)
+INSERT INTO guild_members (guild_id, user_id, nickname, position)
+VALUES (
+    @guild_id,
+    @user_id,
+    @nickname,
+    COALESCE(
+        (SELECT MAX(position) + 1 FROM guild_members WHERE user_id = @user_id),
+        0
+    )
+)
 ON CONFLICT (guild_id, user_id) DO UPDATE SET nickname = EXCLUDED.nickname
 RETURNING *;
+
+-- name: SetGuildPosition :exec
+UPDATE guild_members SET position = @position
+WHERE user_id = @user_id AND guild_id = @guild_id;
+
+-- name: CountGuildsForUser :one
+SELECT count(*) FROM guild_members WHERE user_id = @user_id;
 
 -- name: GetGuildMember :one
 SELECT * FROM guild_members WHERE guild_id = @guild_id AND user_id = @user_id;

@@ -293,3 +293,87 @@ func TestBanningSomebodyInVoiceDisconnectsThem(t *testing.T) {
 		t.Errorf("left = %+v, want the banned member out of voice", left)
 	}
 }
+
+func TestLeavingTakesYouOutAndCutsYouOff(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Leave")
+	text, _ := owner.textAndVoice(guild.ID)
+	member := owner.inviteMember(guild.ID)
+	memberID, _ := memberIdentity(t, member)
+
+	messages := "/api/v1/channels/" + text.String() + "/messages"
+	member.mustDo(http.MethodPost, messages, http.StatusCreated,
+		map[string]string{"content": "before I go"}, nil)
+
+	theirs := member.dial()
+	theirs.identify(member.token)
+	ours := owner.dial()
+	ours.identify(owner.token)
+
+	leave := "/api/v1/guilds/" + guild.ID.String() + "/members/@me"
+	member.mustDo(http.MethodDelete, leave, http.StatusNoContent, nil, nil)
+
+	var departure events.GuildRemoval
+	decode(t, theirs.readEvent(events.EventGuildRemove).D, &departure)
+	if departure.UserID != memberID || departure.Banned {
+		t.Errorf("GUILD_REMOVE = %+v, want an unbanned %s", departure, memberID)
+	}
+
+	var seen events.GuildRemoval
+	decode(t, ours.readEvent(events.EventGuildMemberRemove).D, &seen)
+	if seen.UserID != memberID {
+		t.Errorf("the people still here were told %s left, want %s", seen.UserID, memberID)
+	}
+
+	if member.inGuild(guild.ID) {
+		t.Error("somebody who left still lists the guild")
+	}
+	member.mustDo(http.MethodPost, messages, http.StatusNotFound,
+		map[string]string{"content": "still talking"}, nil)
+
+	owner.mustDo(http.MethodPost, messages, http.StatusCreated,
+		map[string]string{"content": "after they left"}, nil)
+	quiet := theirs.quietFor(500*time.Millisecond, func(f events.Frame) bool {
+		return f.T == events.EventMessageCreate
+	})
+	if !quiet {
+		t.Error("the socket of somebody who left is still receiving the guild's messages")
+	}
+
+	kept := false
+	for _, m := range owner.history(text, "") {
+		if m.Content == "before I go" {
+			kept = true
+			if m.Author.ID != memberID {
+				t.Errorf("author = %s, want %s: leaving deletes nothing", m.Author.ID, memberID)
+			}
+		}
+	}
+	if !kept {
+		t.Error("what they wrote is gone; leaving must not delete messages")
+	}
+}
+
+func TestTheOwnerCannotLeaveTheirOwnServer(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Mine")
+
+	leave := "/api/v1/guilds/" + guild.ID.String() + "/members/@me"
+	owner.mustDo(http.MethodDelete, leave, http.StatusForbidden, nil, nil)
+
+	if !owner.inGuild(guild.ID) {
+		t.Error("the owner left a server that would then belong to nobody")
+	}
+}
+
+func TestLeavingAServerYouAreNotInIsNotFound(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Strangers")
+
+	outsider := owner.newUser()
+	leave := "/api/v1/guilds/" + guild.ID.String() + "/members/@me"
+	outsider.mustDo(http.MethodDelete, leave, http.StatusNotFound, nil, nil)
+}

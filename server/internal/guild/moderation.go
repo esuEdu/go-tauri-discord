@@ -40,6 +40,30 @@ func (s *Service) Kick(ctx context.Context, actorID, guildID, targetID uuid.UUID
 	return nil
 }
 
+func (s *Service) Leave(ctx context.Context, userID, guildID uuid.UUID) error {
+	guild, err := s.repo.GetGuild(ctx, guildID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return domain.NotFound("guild")
+		}
+		return domain.Internal(err)
+	}
+	if guild.OwnerID == userID {
+		return domain.Forbidden("the owner of a server cannot leave it")
+	}
+
+	if _, err := s.actorInGuild(ctx, userID, guildID); err != nil {
+		return err
+	}
+
+	if err := s.repo.RemoveGuildMember(ctx, dbgen.RemoveGuildMemberParams{
+		GuildID: guildID, UserID: userID,
+	}); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
 func (s *Service) Ban(ctx context.Context, actorID, guildID, targetID uuid.UUID, reason *string) (BanView, error) {
 	clean, err := validBanReason(reason)
 	if err != nil {
