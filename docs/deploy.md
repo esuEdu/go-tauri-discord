@@ -228,7 +228,27 @@ ssh -N -L 3000:127.0.0.1:3000 ubuntu@your-host
 ```
 
 Then <http://localhost:3000>, user `admin`, password from `GRAFANA_PASSWORD` in
-`.env`. Both datasources are already configured.
+`.env`. Both datasources are already configured, and a dashboard named
+*Vocalis* is provisioned: host CPU, memory, disk and uptime along the top, then
+CPU and memory broken out per container, disk throughput per container, host
+network, and the server's logs at the bottom with the errors filtered out of
+them. The *Container* dropdown narrows every panel at once.
+
+The dashboard is a file, not something to edit in the browser -- Grafana
+reloads `deploy/observe/grafana/dashboards/vocalis.json` every 30 seconds, and
+overwrites whatever you changed in the UI. Edit the file.
+
+If panels read *No data*, ask which ones:
+
+```bash
+make observe-check
+```
+
+It runs every query the dashboard draws and names the exporter behind each
+empty one, which is the difference between a metric that moved and an exporter
+that never started. Note that it cannot be run from a Mac usefully: cAdvisor
+and node-exporter both need real Linux cgroups, so on a developer machine every
+container and host panel reports empty and only the Loki panels answer.
 
 The stack costs roughly 400MB of memory and keeps 15 days or 2GB of metrics,
 whichever comes first. On a 1GB instance run the deployment without it and use

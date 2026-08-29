@@ -1,13 +1,25 @@
 apiVersion: 1
 
+# Grafana matches a provisioned datasource by uid once one is declared, so an
+# install that predates these uids has two it cannot find and refuses to start
+# at all. Dropping them by name first makes the upgrade survivable; both are
+# recreated below on the same startup.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Prometheus
+    uid: vocalis-prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
 
   - name: Loki
+    uid: vocalis-loki
     type: loki
     access: proxy
     url: http://loki:3100
