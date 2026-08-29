@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { Toggle } from "../ui/Toggle";
 import { Avatar, initialsOf } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
 import { IconButton } from "../ui/IconButton";
@@ -28,6 +30,8 @@ export function YourBar({
   onOpenSettings,
   onToggleShare,
   onHangUp,
+  suppressing,
+  onSuppression,
   onStopWatching,
 }: {
   me: string;
@@ -42,6 +46,8 @@ export function YourBar({
   onOpenSettings: () => void;
   onToggleShare: () => void;
   onHangUp: () => void;
+  suppressing: boolean;
+  onSuppression: (on: boolean) => void;
   onStopWatching: () => void;
 }) {
   return (
@@ -76,6 +82,7 @@ export function YourBar({
             <span className="bar-status">{call.status}</span>
           </div>
           <div className="bar-actions">
+            <NoiseButton suppressing={suppressing} onSuppression={onSuppression} />
             <button
               type="button"
               className="bar-icon"
@@ -127,5 +134,62 @@ export function YourBar({
         </div>
       </div>
     </div>
+  );
+}
+
+function NoiseButton({
+  suppressing,
+  onSuppression,
+}: {
+  suppressing: boolean;
+  onSuppression: (on: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function away(event: PointerEvent) {
+      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  return (
+    <span className="noise-anchor" ref={anchor}>
+      <button
+        type="button"
+        className="bar-icon"
+        aria-label="Noise suppression"
+        title="Noise suppression"
+        aria-expanded={open}
+        data-active={suppressing}
+        onClick={() => setOpen((was) => !was)}
+      >
+        <Icon name={suppressing ? "waveform" : "waveform-slash"} size={16} />
+      </button>
+
+      {open && (
+        <div className="noise-popover">
+          <div className="noise-head">
+            <span className="noise-title">Noise suppression</span>
+            <Toggle on={suppressing} label="Noise suppression" onChange={onSuppression} />
+          </div>
+          <p className="noise-text">
+            Keeps your voice and drops the rest — keys, fans, the room behind you.
+            Everybody else hears the difference, so try it while you type.
+          </p>
+          <span className="noise-credit">Powered by RNNoise</span>
+        </div>
+      )}
+    </span>
   );
 }

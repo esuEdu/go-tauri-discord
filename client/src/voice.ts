@@ -1,5 +1,5 @@
 import { gateway } from "./gateway";
-import { audioConstraints, joinsMuted } from "./audioPrefs";
+import { audioConstraints, joinsMuted, setSuppressesNoise, suppressesNoise } from "./audioPrefs";
 import { clean, RNNOISE_RATE, type Cleaned } from "./noise";
 import { iceServers } from "./ice";
 import { screenPublisher } from "./simulcast";
@@ -413,6 +413,43 @@ class VoiceClient {
     return track ? !track.enabled : false;
   }
 
+  get suppressing(): boolean {
+    return suppressesNoise();
+  }
+
+  async setSuppression(on: boolean): Promise<boolean> {
+    setSuppressesNoise(on);
+    if (!this.pc || !this.microphone) return on;
+
+    const sender = this.pc.getSenders().find((s) => s.track?.kind === "audio");
+    if (!sender) return on;
+
+    const raw = this.microphone.getAudioTracks()[0];
+    if (!raw) return on;
+
+    if (!on) {
+      if (!this.cleaned) return false;
+      raw.enabled = this.cleaned.track.enabled;
+      await sender.replaceTrack(raw).catch(() => undefined);
+      this.cleaned.stop();
+      this.cleaned = null;
+      return false;
+    }
+
+    if (this.cleaned) return true;
+    const mixer = this.context();
+    if (!mixer) return false;
+    const made = await clean(mixer, this.microphone).catch(() => null);
+    if (!made) {
+      setSuppressesNoise(false);
+      return false;
+    }
+    made.track.enabled = raw.enabled;
+    await sender.replaceTrack(made.track).catch(() => undefined);
+    this.cleaned = made;
+    return true;
+  }
+
   toggleMute(): boolean {
     const track = this.microphone?.getAudioTracks()[0];
     if (!track) return false;
@@ -471,7 +508,9 @@ class VoiceClient {
 
     const mixer = this.context();
     if (mixer) {
-      this.cleaned = await clean(mixer, this.microphone).catch(() => null);
+      if (suppressesNoise()) {
+        this.cleaned = await clean(mixer, this.microphone).catch(() => null);
+      }
       try {
         this.watchLevel(
           selfID,
