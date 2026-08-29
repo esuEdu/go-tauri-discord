@@ -115,7 +115,7 @@ certificate is fetched again and nothing else changes.
 
 `make deploy-up` builds the image on the host. On two cores that means
 compiling Go and bundling the client every time, so the workflow in
-`.github/workflows/publish.yml` does it instead: every push to `developer`
+`.github/workflows/publish.yml` does it instead: every push to `main`
 builds `linux/arm64` on GitHub's ARM runners and pushes to
 `ghcr.io/esuedu/vocalis:latest`.
 
@@ -141,6 +141,36 @@ building locally -- useful when you are testing a change that is not pushed.
 The image is arm64 only, because that is the host it is for. Building for amd64
 as well means a second runner and a manifest merge, and is worth adding the day
 there is a second host rather than before.
+
+---
+
+## Releasing the desktop app
+
+Tagging `v*` builds the installers and attaches them to a draft release:
+a universal `.dmg` for macOS, an `.msi` and an `.exe` for Windows.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The build pins the server the installed app talks to, through `VITE_API_URL`.
+Without it the app ships pointing at `localhost:8080`, which works only on the
+machine that built it. It defaults to this deployment; to point a release
+somewhere else, set a repository variable called `VITE_API_URL` rather than
+editing the workflow. A pinned build also hides the server field in the app,
+so nobody has to be told what to type.
+
+Neither installer is signed, and both systems say so on first launch. macOS
+refuses the app until it is opened once from the right-click menu, or its
+quarantine flag is removed with
+`xattr -dr com.apple.quarantine /Applications/Vocalis.app`. Windows shows a
+SmartScreen box that takes *More info* then *Run anyway*. Removing those needs a
+paid certificate from Apple and one from a Windows CA, which is a decision about
+money rather than about code.
+
+The release is a draft, so nothing is public until you look at the artifacts
+and press publish.
 
 ---
 
