@@ -14,15 +14,6 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
 )
 
-// CORS is enforced by browsers and ignored by Go's http.Client, so no test that
-// makes a request can notice a method missing from Access-Control-Allow-Methods
-// -- and the harness allows every origin anyway. The list has to be checked
-// against the routes themselves.
-//
-// PUT was absent for as long as reactions, avatars and guild icons have
-// existed. Nothing broke until a packaged client talked to a server on another
-// origin, because a proxied dev server makes the request same-origin and the
-// preflight never happens.
 func TestEveryRegisteredMethodSurvivesAPreflight(t *testing.T) {
 	found := registeredMethods(t)
 	if len(found) == 0 {
@@ -38,8 +29,6 @@ func TestEveryRegisteredMethodSurvivesAPreflight(t *testing.T) {
 	}
 }
 
-// registeredMethods reads the method prefix out of every route pattern passed to
-// a HandleFunc or Handle call anywhere under internal/.
 func registeredMethods(t *testing.T) []string {
 	t.Helper()
 

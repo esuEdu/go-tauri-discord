@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Run every query the dashboard draws and report which ones came back empty.
-
-cAdvisor and node-exporter both need real Linux cgroups, so the container and
-host panels cannot be exercised on a developer's Mac -- they can only be
-checked here, against the deployment. A panel that reads "No data" looks the
-same whether the metric name is wrong or the exporter is down; this separates
-the two by naming the exporter behind each empty result.
-"""
-
 import json
 import os
 import re
