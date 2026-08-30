@@ -188,10 +188,10 @@ make deploy-autostart
 ```
 
 It enables `docker` as well, because the restart policy is worth nothing if the
-daemon is not started at boot, and writes a second unit for the observability
-stack which it installs but leaves disabled -- enable it with
-`sudo systemctl enable --now vocalis-observe` if you want the dashboards up
-without asking.
+daemon is not started at boot, and a second unit, `vocalis-observe`, that keeps
+Prometheus, Loki and Grafana up on the same terms. That one needs
+`GRAFANA_PASSWORD` in `.env`; without it the stack refuses to start and the unit
+fails, which leaves the deployment itself untouched.
 
 After that the deployment is an ordinary service:
 
