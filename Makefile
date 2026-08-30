@@ -307,14 +307,14 @@ deploy-autostart: ## Install systemd units so the deployment comes back after a 
 		sed "s|__DIR__|$$PWD|" deploy/$$unit.service | sudo tee /etc/systemd/system/$$unit.service > /dev/null; \
 	done
 	sudo systemctl daemon-reload
-	sudo systemctl enable docker vocalis
+	sudo systemctl enable docker vocalis vocalis-observe
 	@echo ""
-	@echo "  vocalis is enabled: it starts on boot and can be managed with"
+	@echo "  vocalis and vocalis-observe are enabled: both start on boot and can"
+	@echo "  be managed with"
 	@echo "    sudo systemctl status|start|stop vocalis"
+	@echo "    sudo systemctl status|start|stop vocalis-observe"
 	@echo ""
-	@echo "  The observability stack is installed but not enabled. To have it"
-	@echo "  start on boot as well:"
-	@echo "    sudo systemctl enable --now vocalis-observe"
+	@echo "  vocalis-observe needs GRAFANA_PASSWORD in .env before it will start."
 	@echo ""
 
 .PHONY: deploy-backup
