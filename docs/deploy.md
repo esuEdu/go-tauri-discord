@@ -228,7 +228,25 @@ ssh -N -L 3000:127.0.0.1:3000 ubuntu@your-host
 ```
 
 Then <http://localhost:3000>, user `admin`, password from `GRAFANA_PASSWORD` in
-`.env`. Both datasources are already configured, and a dashboard named
+`.env`.
+
+If a tunnel every time is too much friction, the `tls` profile can serve Grafana
+on its own subdomain instead. It stays on loopback -- Caddy runs with
+`network_mode: host`, so it reaches `127.0.0.1:3000` without the port being
+published anywhere. Nothing new is opened on either firewall, and the
+certificate comes over 443, which is already in use:
+
+```bash
+echo 'GRAFANA_ROOT_URL=https://grafana.your-domain/' >> .env
+make deploy-up   # or deploy-pull; reloads Caddy with the new site
+```
+
+`GRAFANA_ROOT_URL` is what makes Grafana build its own links against the
+subdomain rather than `localhost`; leave it unset and the tunnel is still the
+only way in. The admin login is then reachable from anywhere, so it is worth a
+real `GRAFANA_PASSWORD` rather than a memorable one.
+
+Both datasources are already configured, and a dashboard named
 *Vocalis* is provisioned: host CPU, memory, disk and uptime along the top, then
 CPU and memory broken out per container, disk throughput per container, host
 network, and the server's logs at the bottom with the errors filtered out of
