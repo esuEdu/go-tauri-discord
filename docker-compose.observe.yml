@@ -74,6 +74,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?unset - add GRAFANA_PASSWORD to .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000/}
     volumes:
       - ./deploy/observe/grafana/datasources:/etc/grafana/provisioning/datasources:ro
       - ./deploy/observe/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
