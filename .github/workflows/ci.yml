@@ -125,3 +125,33 @@ jobs:
 
       - name: Launch it, which is what catches a WebKit preference rename
         run: make desktop-smoke
+
+  desktop-windows:
+    name: desktop (windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Build the frontend the Rust crate embeds
+        run: npm run build
+        working-directory: client
+
+      - name: Compile the desktop app, which nothing else does before a release tag
+        run: cargo build --manifest-path client/src-tauri/Cargo.toml
