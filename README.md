@@ -804,18 +804,53 @@ with the picture.
 can name a tile before any media arrives and can drop the tile when the share
 stops. Joiners are told about shares already in progress.
 
-Capture uses `getDisplayMedia`, so the window and display picker is the
-browser's. Webviews that do not implement it cannot share; the browser build
-can. Audio is asked for and retried without on refusal, since a browser offers
-the sound of a **tab** and little else — on macOS, picking a window or a whole
-screen returns video with no audio track at all, and it does so silently. The
-packaged WebKit app offers none under any circumstances.
+Capture is **native, and the desktop app is the only thing that can share**. The
+browser build can still watch a share; its Share button is gone. That is a
+deliberate trade, made because `getDisplayMedia` cannot be asked for a
+particular window, and cannot be asked for one application's sound at all — the
+picker belongs to the engine, it ignores the app's design, and on macOS WebKit
+it returns video with no audio track under any circumstances.
 
-That silence used to be indistinguishable from a bug: sound played on the
-sharer's machine, nobody heard it, and nothing said why. A share running
-without an audio track now says so, and says what to do about it. `systemAudio:
-"include"` is asked for as well, which buys whole-screen sound on the platforms
-that have it and is ignored where it does not exist.
+So the picker in `GoLive` is ours, listing what Rust enumerates, and capture
+runs through **ScreenCaptureKit** into a **VideoToolbox** H.264 encoder. The
+frames never enter the webview. Only the SDP does: Rust emits an offer as a
+Tauri event, `screen.ts` relays it over the gateway socket the client already
+holds, and the answer comes back the same way. **The server did not change** —
+the screen already went up a client-offered connection of its own, and
+`SFU.PublishScreen` never cared who made the offer.
+
+Choosing an application scopes the **audio** to that application, which is the
+whole reason the native path exists. The scoping is real and was measured:
+capturing one app while another played sound gives a peak amplitude of `0.0000`
+across 250 chunks, where capturing the whole display gives `0.36`. Counting
+audio frames proves nothing here — ScreenCaptureKit delivers a continuous 20 ms
+stream whether or not anything is making noise, so silence and sound have
+identical frame counts.
+
+Scoping to an application also means an app share is the **app**, not one of its
+windows. The picker lists one entry per application for that reason, rather than
+one per window.
+
+ScreenCaptureKit only emits a frame when the content changes, so a still screen
+can go minutes without producing one — and a viewer who joins during that
+silence would sit on a blank tile. Every two idle seconds the last frame is
+re-encoded as a keyframe, which is what puts a picture on a late joiner's
+screen. Forcing it was verified rather than assumed: the same five seconds
+yields one keyframe normally and three with the heartbeat forced on.
+
+Video is **H.264**, not the VP8 the browser used to send, because VideoToolbox
+cannot encode VP8 at all and hardware encoding is the point. The SFU registers
+pion's default codecs, so it needed no change. VideoToolbox hands back AVCC and
+the RTP payloader wants Annex-B, so length prefixes become start codes and the
+parameter sets are prepended to every keyframe — that conversion is the one part
+of this cheap enough to unit-test, and it is.
+
+Two things this does not yet do. The publisher **ignores RTCP**, so a viewer's
+keyframe request is answered only by the two-second heartbeat rather than
+immediately. And it sends **one layer**: the viewer's full/smaller choice
+collapses to full-only, which the server already tolerates since `publish.go`
+defaults an empty rid to `DefaultLayer`. `RTCRtpCodingParameters` carries a
+`rid`, so restoring simulcast is a follow-up rather than a rewrite.
 
 Capture runs to a budget the sharer picks, because the right trade depends on
 what is on the screen and on the link carrying it. Each preset fixes a
@@ -876,6 +911,11 @@ Keyframes are only sent when somebody needs one — when a viewer's answer is
 applied, and when a viewer's own decoder asks, which the SFU relays to the
 publisher no more than twice a second. A screen that nobody has just subscribed
 to costs nothing, which is where a static share's bitrate goes into detail.
+
+The SFU still relays those requests, but **the native publisher does not act on
+them yet**: it ignores RTCP, so a keyframe arrives on the two-second heartbeat
+described above rather than on demand. Wiring the request through is the
+follow-up that makes this paragraph true again.
 
 #### What every viewer gets, and what that costs
 
