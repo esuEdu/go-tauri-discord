@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { onDesktop } from "../capture";
 import { Toggle } from "../ui/Toggle";
 import { Avatar, initialsOf } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
@@ -83,16 +84,18 @@ export function YourBar({
           </div>
           <div className="bar-actions">
             <NoiseButton suppressing={suppressing} onSuppression={onSuppression} />
-            <button
-              type="button"
-              className="bar-icon"
-              aria-label={call.sharing ? "Stop sharing your screen" : "Share your screen"}
-              title={call.sharing ? "Stop sharing your screen" : "Share your screen"}
-              data-active={call.sharing}
-              onClick={onToggleShare}
-            >
-              <Icon name={call.sharing ? "monitor-x" : "monitor-arrow-up"} size={16} />
-            </button>
+            {onDesktop() && (
+              <button
+                type="button"
+                className="bar-icon"
+                aria-label={call.sharing ? "Stop sharing your screen" : "Share your screen"}
+                title={call.sharing ? "Stop sharing your screen" : "Share your screen"}
+                data-active={call.sharing}
+                onClick={onToggleShare}
+              >
+                <Icon name={call.sharing ? "monitor-x" : "monitor-arrow-up"} size={16} />
+              </button>
+            )}
             <button
               type="button"
               className="bar-icon bar-icon-bad"

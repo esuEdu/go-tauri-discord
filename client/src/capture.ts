@@ -3,14 +3,11 @@ export type CaptureSource = {
   kind: "screen" | "app";
   title: string;
   thumbnail: string | null;
+  pid: number | null;
 };
 
 export function onDesktop(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-export function ownPicker(): boolean {
-  return onDesktop() && !/Mac/i.test(navigator.userAgent);
 }
 
 export async function captureSources(): Promise<CaptureSource[]> {

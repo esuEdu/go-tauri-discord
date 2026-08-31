@@ -29,7 +29,6 @@ import type {
 import { Auth } from "./screens/Auth";
 import { EmojiPalette } from "./screens/EmojiPalette";
 import { ReactionPalette } from "./screens/ReactionPalette";
-import { ownPicker } from "./capture";
 import { GoLive } from "./screens/GoLive";
 import { Lightbox } from "./screens/Lightbox";
 import { NewServer } from "./screens/NewServer";
@@ -84,7 +83,6 @@ export default function App() {
   const [screens, setScreens] = useState<ScreenState>({
     sharing: false,
     sound: false,
-    local: null,
     remote: [],
     audible: [],
     dropped: [],
@@ -434,13 +432,7 @@ export default function App() {
   }
 
   function startShare() {
-    if (ownPicker()) {
-      setGoLive(true);
-      return;
-    }
-    void voice.startScreenShare().then((started) => {
-      if (!started) setNotice("Nothing was shared.");
-    });
+    setGoLive(true);
   }
 
   async function joinVoice(channel: Channel) {
@@ -891,10 +883,10 @@ export default function App() {
         <GoLive
           quality={screens.quality}
           onQuality={(id: ScreenQualityID) => voice.setScreenQuality(id)}
-          onStart={() => {
+          onStart={(sourceID: string, audio: boolean) => {
             setGoLive(false);
-            void voice.startScreenShare().then((started) => {
-              if (!started) setNotice("Nothing was shared.");
+            void voice.startScreenShare(sourceID, audio).then((started) => {
+              if (!started) setNotice("That could not be shared.");
             });
           }}
           onClose={() => setGoLive(false)}
