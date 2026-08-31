@@ -845,6 +845,19 @@ the RTP payloader wants Annex-B, so length prefixes become start codes and the
 parameter sets are prepended to every keyframe — that conversion is the one part
 of this cheap enough to unit-test, and it is.
 
+The whole path is exercised by `cargo run --example sfu_probe`, which speaks the
+gateway protocol directly: it identifies, joins a voice channel, answers the
+server's voice offer, then publishes a real captured screen and applies the
+answer. Run a second copy with `VOCALIS_WATCH_ONLY=1` as a different member and
+it counts what comes back. That is what proved the forwarding rather than the
+signalling: a watcher sees `screen-<user>-<ssrc>` as `video/H264` and
+`screenaudio-<user>-<ssrc>` as `audio/opus`, and receives payloads on both. The
+server log agrees, printing `screen layer arrived rid=(none) codec=video/H264`.
+
+Counting the two separately matters. Audio arrives on a 20 ms timer regardless of
+content, so a combined total can be entirely audio while video never moved — the
+same trap that made per-app audio look broken three times.
+
 Two things this does not yet do. The publisher **ignores RTCP**, so a viewer's
 keyframe request is answered only by the two-second heartbeat rather than
 immediately. And it sends **one layer**: the viewer's full/smaller choice
