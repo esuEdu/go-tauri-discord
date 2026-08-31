@@ -1,6 +1,23 @@
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine;
-use serde::Serialize;
+pub mod capture;
+pub mod encode;
+pub mod publish;
+pub mod sources;
+
+use std::sync::Arc;
+
+use serde::Deserialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::mpsc::channel;
+use tokio::sync::Mutex;
+
+use capture::{Options, Quality, Sink};
+use publish::{IceServer, Publisher};
+use sources::CaptureSource;
+
+const OFFER: &str = "screen://offer";
+const ENDED: &str = "screen://ended";
+
+const FRAME_QUEUE: usize = 120;
 
 #[cfg(target_os = "macos")]
 fn enable_media_capture(window: &tauri::WebviewWindow) {
@@ -24,90 +41,151 @@ fn enable_media_capture(window: &tauri::WebviewWindow) {
     });
 }
 
-#[derive(Serialize)]
-pub struct CaptureSource {
-    id: String,
-    kind: &'static str,
-    title: String,
-    thumbnail: Option<String>,
+#[derive(Deserialize)]
+struct IceServerInput {
+    urls: Vec<String>,
+    username: Option<String>,
+    credential: Option<String>,
 }
 
-fn thumbnail_of(image: xcap::image::RgbaImage) -> Option<String> {
-    let small = xcap::image::DynamicImage::ImageRgba8(image).thumbnail(320, 200);
-    let mut bytes = std::io::Cursor::new(Vec::new());
-    small
-        .write_to(&mut bytes, xcap::image::ImageFormat::Png)
-        .ok()?;
-    Some(format!(
-        "data:image/png;base64,{}",
-        STANDARD.encode(bytes.into_inner())
-    ))
+struct Active {
+    capture: capture::Session,
+    publisher: Publisher,
+}
+
+#[derive(Default)]
+struct Screen {
+    active: Mutex<Option<Active>>,
 }
 
 #[tauri::command]
 async fn capture_sources() -> Vec<CaptureSource> {
-    tauri::async_runtime::spawn_blocking(collect_sources)
+    tauri::async_runtime::spawn_blocking(sources::collect)
         .await
         .unwrap_or_default()
 }
 
-fn collect_sources() -> Vec<CaptureSource> {
-    let mut sources = Vec::new();
+#[tauri::command]
+async fn start_screen_share(
+    app: AppHandle,
+    screen: State<'_, Arc<Screen>>,
+    source_id: String,
+    quality: Quality,
+    audio: bool,
+    ice_servers: Vec<IceServerInput>,
+) -> Result<(), String> {
+    let target = sources::parse_target(&source_id).ok_or("that is not something we can share")?;
 
-    if let Ok(monitors) = xcap::Monitor::all() {
-        for (index, monitor) in monitors.iter().enumerate() {
-            let title = monitor
-                .name()
-                .ok()
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| format!("Screen {}", index + 1));
-            sources.push(CaptureSource {
-                id: format!("screen:{}", monitor.id().unwrap_or(index as u32)),
-                kind: "screen",
-                title,
-                thumbnail: monitor.capture_image().ok().and_then(thumbnail_of),
-            });
+    stop(&screen).await;
+
+    let (video_tx, video_rx) = channel(FRAME_QUEUE);
+    let (audio_tx, audio_rx) = channel(FRAME_QUEUE);
+
+    let session = capture::start(
+        Options {
+            target,
+            quality,
+            audio,
+        },
+        Sink {
+            video: video_tx,
+            audio: audio_tx,
+        },
+    )?;
+
+    let servers = ice_servers
+        .into_iter()
+        .map(|server| IceServer {
+            urls: server.urls,
+            username: server.username,
+            credential: server.credential,
+        })
+        .collect();
+
+    let started = match publish::start(servers, video_rx, audio.then_some(audio_rx)).await {
+        Ok(started) => started,
+        Err(reason) => {
+            session.stop();
+            return Err(reason);
         }
-    }
+    };
 
-    if let Ok(windows) = xcap::Window::all() {
-        for window in windows.iter() {
-            if window.is_minimized().unwrap_or(false) {
-                continue;
-            }
-            let title = window.title().unwrap_or_default();
-            let app = window.app_name().unwrap_or_default();
-            if title.is_empty() && app.is_empty() {
-                continue;
-            }
-            let id = match window.id() {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
-            sources.push(CaptureSource {
-                id: format!("window:{id}"),
-                kind: "app",
-                title: if title.is_empty() { app } else { title },
-                thumbnail: None,
-            });
-        }
-    }
+    app.emit(OFFER, started.offer)
+        .map_err(|error| error.to_string())?;
 
-    sources
+    *screen.active.lock().await = Some(Active {
+        capture: session,
+        publisher: started.publisher,
+    });
+
+    let watcher = app.clone();
+    let held = Arc::clone(&screen);
+    tauri::async_runtime::spawn(async move {
+        let _ = started.ended.await;
+        stop(&held).await;
+        let _ = watcher.emit(ENDED, ());
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn screen_answer(screen: State<'_, Arc<Screen>>, sdp: String) -> Result<(), String> {
+    let guard = screen.active.lock().await;
+    let Some(active) = guard.as_ref() else {
+        return Ok(());
+    };
+    active.publisher.set_answer(sdp).await
+}
+
+#[tauri::command]
+async fn screen_candidate(
+    screen: State<'_, Arc<Screen>>,
+    candidate: String,
+    sdp_mid: Option<String>,
+    sdp_mline_index: Option<u16>,
+) -> Result<(), String> {
+    let guard = screen.active.lock().await;
+    let Some(active) = guard.as_ref() else {
+        return Ok(());
+    };
+    active
+        .publisher
+        .add_candidate(candidate, sdp_mid, sdp_mline_index)
+        .await
+}
+
+#[tauri::command]
+async fn stop_screen_share(screen: State<'_, Arc<Screen>>) -> Result<(), String> {
+    stop(&screen).await;
+    Ok(())
+}
+
+async fn stop(screen: &Screen) {
+    let taken = screen.active.lock().await.take();
+    if let Some(active) = taken {
+        active.capture.stop();
+        active.publisher.close().await;
+    }
 }
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![capture_sources])
+        .invoke_handler(tauri::generate_handler![
+            capture_sources,
+            start_screen_share,
+            screen_answer,
+            screen_candidate,
+            stop_screen_share
+        ])
         .setup(|app| {
+            app.manage(Arc::new(Screen::default()));
+
             #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    enable_media_capture(&window);
-                }
+            if let Some(window) = app.get_webview_window("main") {
+                enable_media_capture(&window);
             }
-            let _ = app;
+
             Ok(())
         })
         .run(tauri::generate_context!())
