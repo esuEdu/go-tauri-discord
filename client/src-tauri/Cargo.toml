@@ -1,6 +1,6 @@
 [package]
 name = "vocalis"
-version = "0.2.1"
+version = "0.3.0"
 description = "Vocalis desktop client"
 edition = "2021"
 rust-version = "1.77.2"
@@ -18,10 +18,41 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 xcap = "0.9.8"
 base64 = "0.23.1"
+webrtc = "0.20.4"
+rtc = "0.20.4"
+opus = "0.4"
+bytes = "1"
+tokio = { version = "1", features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
+log = "0.4"
+async-trait = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = "0.3"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSString", "NSError", "NSValue", "NSObject", "NSEnumerator"] }
+objc2-core-foundation = { version = "0.3", features = ["CFDictionary", "CFString", "CFNumber", "CFArray", "CFBase"] }
+objc2-core-media = { version = "0.3", features = ["CMSampleBuffer", "CMFormatDescription", "CMTime", "CMBlockBuffer", "CMBase", "CMSync", "objc2-core-video", "objc2-core-audio-types", "block2"] }
+objc2-core-video = { version = "0.3", features = ["CVPixelBuffer", "CVImageBuffer", "CVBuffer", "CVBase", "CVReturn", "CVPixelBufferPool"] }
+objc2-screen-capture-kit = { version = "0.3", features = ["SCStream", "SCShareableContent", "SCError", "objc2-core-media", "objc2-core-graphics", "objc2-core-foundation", "block2", "dispatch2", "libc"] }
+objc2-video-toolbox = { version = "0.3", features = ["VTCompressionSession", "VTCompressionProperties", "VTErrors", "VTBase", "VTSession", "objc2-core-media", "objc2-core-video", "block2"] }
+objc2-core-audio-types = { version = "0.3", features = ["CoreAudioBaseTypes"] }
+block2 = "0.6"
+dispatch2 = "0.3"
+libc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-capture = "2.0"
+openh264 = { version = "0.9", features = ["source"] }
+wasapi = "0.24"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.30"
+async-trait = "0.1"
+futures-util = "0.3"
 
 [profile.release]
 codegen-units = 1

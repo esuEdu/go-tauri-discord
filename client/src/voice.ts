@@ -8,7 +8,7 @@ import {
 } from "./audioPrefs";
 import { clean, RNNOISE_RATE, type Cleaned } from "./noise";
 import { iceServers } from "./ice";
-import { screenPublisher } from "./simulcast";
+import { screenPublisher } from "./screen";
 import {
   EventVoiceScreenUpdate,
   OpVoiceAnswer,
@@ -125,7 +125,6 @@ export const SCREEN_QUALITIES: ScreenQuality[] = [
 export type ScreenState = {
   sharing: boolean;
   sound: boolean;
-  local: MediaStream | null;
   remote: RemoteScreen[];
   audible: string[];
   dropped: string[];
@@ -212,7 +211,7 @@ class VoiceClient {
   private channelID: string | null = null;
   private statusListeners = new Set<(s: VoiceStatus, channelID: string | null) => void>();
 
-  private display: MediaStream | null = null;
+  private display: { sourceID: string; audio: boolean } | null = null;
   private quality: ScreenQuality = storedQuality();
   private videoStreams = new Map<string, MediaStream>();
   private owners = new Map<string, string>();
@@ -249,8 +248,7 @@ class VoiceClient {
     }
     return {
       sharing: this.display !== null,
-      sound: (this.display?.getAudioTracks().length ?? 0) > 0,
-      local: this.display,
+      sound: this.display?.audio ?? false,
       remote,
       audible: this.audibleShares(),
       dropped: [...this.dropped],
@@ -659,55 +657,29 @@ class VoiceClient {
     });
   }
 
-  async startScreenShare(): Promise<boolean> {
+  async startScreenShare(sourceID: string, audio: boolean): Promise<boolean> {
     if (!this.pc) return false;
-    if (this.display) return true;
 
-    const capture = (audio: boolean) =>
-      navigator.mediaDevices.getDisplayMedia({
-        video: this.captureConstraints(),
-        audio,
-        systemAudio: "include",
-      } as DisplayMediaStreamOptions);
+    await this.stopScreenShare();
 
-    let stream: MediaStream;
     try {
-      stream = await capture(true);
+      await screenPublisher.publish(sourceID, this.quality, audio);
     } catch (error) {
-      if ((error as DOMException | undefined)?.name === "NotAllowedError") return false;
-      try {
-        stream = await capture(false);
-      } catch {
-        return false;
-      }
-    }
-
-    const track = stream.getVideoTracks()[0];
-    if (!track) {
-      stream.getTracks().forEach((t) => t.stop());
+      console.error("screen share did not start", error);
       return false;
     }
 
-    track.contentHint = this.quality.contentHint;
-    track.onended = () => void this.stopScreenShare();
-
-    this.display = stream;
+    this.display = { sourceID, audio };
     this.announceScreen(true);
     this.emitScreens();
-
-    void screenPublisher
-      .publish(stream, this.quality.maxBitrate, this.quality.degradation)
-      .catch(() => undefined);
-
     return true;
   }
 
   async stopScreenShare() {
     if (!this.display) return;
 
-    this.display.getTracks().forEach((t) => t.stop());
     this.display = null;
-    void screenPublisher.stop();
+    await screenPublisher.stop();
     this.announceScreen(false);
     this.emitScreens();
   }
@@ -716,24 +688,13 @@ class VoiceClient {
     gateway.sendRaw({ op: OpVoiceScreen, d: { active } satisfies VoiceScreenRequest });
   }
 
-  private captureConstraints(): MediaTrackConstraints {
-    const { width, height, frameRate } = this.quality;
-    return {
-      frameRate: { ideal: frameRate, max: frameRate },
-      width: { max: width },
-      height: { max: height },
-    };
-  }
-
   setScreenQuality(id: ScreenQualityID) {
     this.quality = qualityOf(id);
     localStorage.setItem(QUALITY_KEY, this.quality.id);
 
-    const track = this.display?.getVideoTracks()[0];
-    if (track) {
-      track.contentHint = this.quality.contentHint;
-      void track.applyConstraints(this.captureConstraints()).catch(() => undefined);
-      void screenPublisher.retune(this.quality.maxBitrate, this.quality.degradation);
+    const sharing = this.display;
+    if (sharing) {
+      void this.startScreenShare(sharing.sourceID, sharing.audio);
     }
     this.emitScreens();
   }
@@ -838,7 +799,7 @@ class VoiceClient {
     void this.mixer?.close().catch(() => undefined);
     this.mixer = null;
 
-    this.display?.getTracks().forEach((t) => t.stop());
+    void screenPublisher.stop();
     this.display = null;
     this.videoStreams.clear();
     this.owners.clear();

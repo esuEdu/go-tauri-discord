@@ -14,12 +14,14 @@ export function GoLive({
 }: {
   quality: ScreenQualityID;
   onQuality: (id: ScreenQualityID) => void;
-  onStart: () => void;
+  onStart: (sourceID: string, audio: boolean) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("screens");
   const [sources, setSources] = useState<CaptureSource[] | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [audio, setAudio] = useState(true);
 
   useEffect(() => {
     let dropped = false;
@@ -48,6 +50,7 @@ export function GoLive({
   );
 
   const current = SCREEN_QUALITIES.find((entry) => entry.id === quality);
+  const chosenSource = (sources ?? []).find((source) => source.id === chosen);
 
   return (
     <div className="scrim" onPointerDown={onClose}>
@@ -85,13 +88,22 @@ export function GoLive({
 
           {sources !== null && shown.length === 0 && (
             <span className="golive-note">
-              Nothing to show here. Vocalis needs permission to record the screen
-              before it can list what you can share.
+              Nothing to show here. Vocalis needs permission to record the
+              screen: System Settings › Privacy &amp; Security › Screen &amp;
+              System Audio Recording.
             </span>
           )}
 
           {shown.map((source) => (
-            <span key={source.id} className="preview-card">
+            <button
+              key={source.id}
+              type="button"
+              className="preview-card"
+              data-chosen={source.id === chosen}
+              aria-pressed={source.id === chosen}
+              onClick={() => setChosen(source.id)}
+              onDoubleClick={() => onStart(source.id, audio)}
+            >
               <span className="preview-picture">
                 {source.thumbnail ? (
                   <img src={source.thumbnail} alt="" />
@@ -107,7 +119,7 @@ export function GoLive({
                 )}
               </span>
               <span className="preview-label">{source.title}</span>
-            </span>
+            </button>
           ))}
         </div>
 
@@ -143,16 +155,29 @@ export function GoLive({
               </div>
             )}
           </div>
-          <span className="quality-aside">
-            Your system asks which screen when you go live.
-          </span>
+          <label className="quality-aside share-sound">
+            <input
+              type="checkbox"
+              checked={audio}
+              onChange={(event) => setAudio(event.target.checked)}
+            />
+            <span>
+              {chosenSource?.kind === "app"
+                ? "Share this app\u2019s sound"
+                : "Share the sound on this screen"}
+            </span>
+          </label>
         </div>
 
         <div className="golive-actions">
           <Button kind="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button className="golive-start" onClick={onStart}>
+          <Button
+            className="golive-start"
+            disabled={!chosen}
+            onClick={() => chosen && onStart(chosen, audio)}
+          >
             Go Live…
           </Button>
         </div>
