@@ -15,7 +15,7 @@ use rtc::rtp_transceiver::rtp_sender::{
     RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
     RtpCodecKind,
 };
-use rtc::rtp_transceiver::PayloadType;
+use rtc::rtp_transceiver::{PayloadType, RTCRtpTransceiverDirection, RTCRtpTransceiverInit};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot;
 use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
@@ -229,16 +229,27 @@ pub async fn start(
 
     let stream_id = format!("vocalis-screen-{}", rand_ssrc());
 
+    let sendonly = RTCRtpTransceiverInit {
+        direction: RTCRtpTransceiverDirection::Sendonly,
+        ..Default::default()
+    };
+
     let (video_track, video_ssrc) = track_for(&video_codec(), RtpCodecKind::Video, &stream_id)?;
-    pc.add_track(Arc::clone(&video_track) as Arc<dyn TrackLocal>)
-        .await
-        .map_err(|error| error.to_string())?;
+    pc.add_transceiver_from_track(
+        Arc::clone(&video_track) as Arc<dyn TrackLocal>,
+        Some(sendonly.clone()),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
 
     let audio_track = if audio.is_some() {
         let (track, ssrc) = track_for(&audio_codec(), RtpCodecKind::Audio, &stream_id)?;
-        pc.add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
-            .await
-            .map_err(|error| error.to_string())?;
+        pc.add_transceiver_from_track(
+            Arc::clone(&track) as Arc<dyn TrackLocal>,
+            Some(sendonly.clone()),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
         Some((track, ssrc))
     } else {
         None
