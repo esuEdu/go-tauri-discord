@@ -256,14 +256,23 @@ Also needed: **your own** microphone on or off, and a way out of the call.
 | **Whether their share has sound** | See below — this matters more than it sounds |
 | **Quality**, four choices | Light · Smooth · Sharp · High. Currently a dropdown reading "Smooth — 720p 60fps", which most people cannot choose between |
 
-**The sound problem.** A screen share is often silent, and legitimately so: on a
-Mac only a browser **tab** can be shared with its audio — a window or a whole
-screen never carries any. People hit this and assume the app is broken. It has
-already happened once here.
+**The sound problem is solved, and the shape of the screen changed with it.**
+Capture is now native, so sharing an application carries **that application's
+sound and nothing else** — the rest of the machine stays out. The picker is
+ours: a grid of screens and applications with live thumbnails, a checkbox for
+whether the share carries sound, and no engine dialog on top of it.
 
-So a share needs to say clearly whether sound is included, and when it is not,
-what would have worked. The current wording is functional and could be much
-better.
+Two consequences for anyone designing this screen:
+
+- An application share is the **whole application**, not one of its windows,
+  because that is what scoping the audio requires. The grid lists one card per
+  application.
+- Sharing is **desktop-only**. In a browser the Share button is not there at
+  all. Watching a share still works everywhere.
+
+The first run needs macOS Screen Recording permission, and until it is granted
+the grid is empty. The empty state has to say that and point at System Settings,
+because an empty grid otherwise reads as a broken app.
 
 ### What a viewer sees
 

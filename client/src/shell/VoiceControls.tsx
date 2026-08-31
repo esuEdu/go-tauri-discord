@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { onDesktop } from "../capture";
 import {
   chosenMicrophone,
   microphones,
@@ -80,16 +81,18 @@ export function VoiceControls({
           {popover === "devices" && <DevicePicker mics={mics} onPick={() => setPopover(null)} />}
         </span>
 
-        <button
-          type="button"
-          className="control"
-          data-active={screens.sharing}
-          aria-label={screens.sharing ? "Stop sharing" : "Share your screen"}
-          title={screens.sharing ? "Stop sharing" : "Share your screen"}
-          onClick={screens.sharing ? onStopSharing : onGoLive}
-        >
-          <Icon name={screens.sharing ? "monitor-x" : "monitor-arrow-up"} size={17} />
-        </button>
+        {onDesktop() && (
+          <button
+            type="button"
+            className="control"
+            data-active={screens.sharing}
+            aria-label={screens.sharing ? "Stop sharing" : "Share your screen"}
+            title={screens.sharing ? "Stop sharing" : "Share your screen"}
+            onClick={screens.sharing ? onStopSharing : onGoLive}
+          >
+            <Icon name={screens.sharing ? "monitor-x" : "monitor-arrow-up"} size={17} />
+          </button>
+        )}
         {screens.sharing && (
           <span className="control-anchor">
             <button
