@@ -874,7 +874,14 @@ which process. An application share captures that process and its children. A
 whole-display share captures **everything except Vocalis**, which is the same
 exclusion ScreenCaptureKit gets from `setExcludesCurrentProcessAudio` and the
 reason a listener's own voice is not sent back to them; before, a display share
-simply carried a silent track. Two smaller things kept even the application case
+simply carried a silent track.
+
+Which process to exclude is not obvious, and getting it wrong is audible. The
+first attempt excluded our own pid and a watcher still heard themselves come
+back, because nothing Vocalis plays comes out of `vocalis.exe` — the voice audio
+is rendered by **WebView2**, in a process tree of its own that excluding ours
+does not cover. The target is now the browser process id `ICoreWebView2` hands
+back, read once at startup, which is the process that actually makes our sound. Two smaller things kept even the application case
 quiet. The buffer duration handed to `IAudioClient::Initialize` is now 20 ms
 rather than zero, which is what wasapi's own example passes and what a
 process-loopback client appears to want. And a wait for the capture event that

@@ -23,6 +23,8 @@ pub struct Options {
     pub target: Target,
     pub quality: Quality,
     pub audio: bool,
+    #[cfg(target_os = "windows")]
+    pub webview: Option<u32>,
 }
 
 pub struct Encoded {

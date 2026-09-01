@@ -56,6 +56,25 @@ struct Active {
 #[derive(Default)]
 struct Screen {
     active: Mutex<Option<Active>>,
+    #[cfg(target_os = "windows")]
+    webview: std::sync::atomic::AtomicU32,
+}
+
+#[cfg(target_os = "windows")]
+fn note_webview_process(window: &tauri::WebviewWindow, screen: Arc<Screen>) {
+    use std::sync::atomic::Ordering;
+
+    let _ = window.with_webview(move |platform| unsafe {
+        let mut pid = 0u32;
+        let Ok(core) = platform.controller().CoreWebView2() else {
+            log::warn!("screen: no webview to take a process id from");
+            return;
+        };
+        if core.BrowserProcessId(&mut pid).is_ok() && pid != 0 {
+            log::info!("screen: our own sound plays from process {pid}");
+            screen.webview.store(pid, Ordering::Relaxed);
+        }
+    });
 }
 
 #[tauri::command]
@@ -94,6 +113,11 @@ async fn start_screen_share(
             target,
             quality,
             audio,
+            #[cfg(target_os = "windows")]
+            webview: match screen.webview.load(std::sync::atomic::Ordering::Relaxed) {
+                0 => None,
+                pid => Some(pid),
+            },
         },
         Sink {
             video: video_tx,
@@ -204,6 +228,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
                 enable_media_capture(&window);
+            }
+
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                let screen = Arc::clone(&*app.state::<Arc<Screen>>());
+                note_webview_process(&window, screen);
             }
 
             Ok(())
