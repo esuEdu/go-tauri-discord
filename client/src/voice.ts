@@ -62,6 +62,14 @@ export type Volumes = Record<VolumeTarget, Record<string, number>>;
 
 export const noVolumes: Volumes = { voice: {}, screen: {} };
 
+async function browserSuppression(stream: MediaStream | null, on: boolean) {
+  const track = stream?.getAudioTracks()[0];
+  if (!track?.applyConstraints) return;
+  await track
+    .applyConstraints({ ...audioConstraints(), noiseSuppression: on })
+    .catch(() => undefined);
+}
+
 function targetOf(source: TrackSource): VolumeTarget {
   return source === "screenaudio" ? "screen" : "voice";
 }
@@ -445,6 +453,7 @@ class VoiceClient {
     if (mixer && suppressesNoise()) {
       this.cleaned = await clean(mixer, fresh).catch(() => null);
     }
+    await browserSuppression(fresh, !this.cleaned);
 
     const sending = this.cleaned?.track ?? fresh.getAudioTracks()[0] ?? null;
     if (sending) {
@@ -490,6 +499,7 @@ class VoiceClient {
       await sender.replaceTrack(raw).catch(() => undefined);
       this.cleaned.stop();
       this.cleaned = null;
+      await browserSuppression(this.microphone, true);
       return false;
     }
 
@@ -499,11 +509,13 @@ class VoiceClient {
     const made = await clean(mixer, this.microphone).catch(() => null);
     if (!made) {
       setSuppressesNoise(false);
+      await browserSuppression(this.microphone, true);
       return false;
     }
     made.track.enabled = raw.enabled;
     await sender.replaceTrack(made.track).catch(() => undefined);
     this.cleaned = made;
+    await browserSuppression(this.microphone, false);
     return true;
   }
 
@@ -579,6 +591,8 @@ class VoiceClient {
         this.forgetLevel(selfID);
       }
     }
+
+    await browserSuppression(this.microphone, !this.cleaned);
 
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     this.pc = pc;
