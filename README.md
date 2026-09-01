@@ -831,6 +831,21 @@ Scoping to an application also means an app share is the **app**, not one of its
 windows. The picker lists one entry per application for that reason, rather than
 one per window.
 
+Getting that list right is mostly about what to leave out, and the first attempt
+left out nearly everything: it kept only windows whose xcap `z()` was zero, on
+the assumption that zero meant *normal window*. It means **bottom of the z-order**,
+so the picker could only ever show one app, and usually showed none. What
+actually needs excluding is furniture — menu-bar extras, the Dock, the menubar
+itself — which a floor on window size and a short list of system process names
+handle between them. `Window::all()` has already dropped the invisible, cloaked
+and tool windows before we see it.
+
+One caveat that makes this hard to test from a terminal: on macOS the window list
+is **gated by Screen Recording permission**, and the grant belongs to the app
+bundle. A probe run from a shell sees only its own windows and the system's, so
+it cannot tell a working picker from a broken one. The app logs what it found
+whenever the picker opens, which is where to look instead.
+
 ScreenCaptureKit only emits a frame when the content changes, so a still screen
 can go minutes without producing one — and a viewer who joins during that
 silence would sit on a blank tile. Every two idle seconds the last frame is
