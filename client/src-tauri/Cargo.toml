@@ -1,6 +1,6 @@
 [package]
 name = "vocalis"
-version = "0.3.1"
+version = "0.3.2"
 description = "Vocalis desktop client"
 edition = "2021"
 rust-version = "1.77.2"
