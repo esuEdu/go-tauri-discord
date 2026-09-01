@@ -384,7 +384,7 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
                 }
             }
             Target::Display(_) => Some(AudioSource {
-                process_id: std::process::id(),
+                process_id: options.webview.unwrap_or_else(std::process::id),
                 include_tree: false,
             }),
         };
