@@ -497,10 +497,24 @@ the sequence number, RESUMEs after a drop, discards replayed duplicates, and
 backs off exponentially with jitter so a server restart does not produce a
 retry storm.
 
-**Adding a friend to a server** uses invite links. *Invite a friend* copies a
-link carrying an 8-character code; opening it previews the server and joins
-automatically after registration. Invites can be limited by use count and
-expiry, and revoked without removing anyone who already joined.
+**Adding a friend to a server** uses invite links. *Invite people* copies a link
+of the form `https://<host>/invite/<code>`; opening it joins that server, after
+registration if the person does not have an account yet. Invites can be limited
+by use count and expiry, and revoked without removing anyone who already joined.
+
+That paragraph described the intended behaviour for a long time before any of it
+was true. What the client actually did was copy the bare **code**, never build a
+link, never read the URL it was opened with, and post whatever was pasted
+straight to `/api/v1/invites/{code}` — so a pasted link 404'd. The three halves
+now exist: `serverURL()` builds the link, which is the same helper attachments
+use and the reason the desktop app does not produce a `tauri.localhost` link;
+the pathname is read once at startup and redeemed after sign-in; and anything
+pasted into the join box is reduced to a code first. The older `?invite=<code>`
+form is still accepted, because this file promised it.
+
+Not done, and worth knowing before it surprises somebody: opening a link
+**joins**, it does not preview. `GET /api/v1/invites/{code}` returns the server
+name and member count for exactly that screen and nothing calls it yet.
 
 ### Pictures
 
@@ -1051,11 +1065,11 @@ and the tunnel together. `make serve` does the same without exposing anything.
 The URL is random and changes on every restart, so send the current one. A
 stable hostname needs a named tunnel and a free Cloudflare account.
 
-Your friends open the link, register, and they are in. Click **Invite a
-friend** in the sidebar to copy a link like
-`https://<host>/?invite=LBJJqars` — opening it shows which server they have
-been invited to, and joining happens automatically once they have an account.
-An invite code can also be pasted directly into the **invite code** box.
+Your friends open the link, register, and they are in. Open the server menu and
+click **Invite people** to copy a link like `https://<host>/invite/LBJJqars` —
+opening it joins that server, once they have an account. The link, the bare code,
+or the older `https://<host>/?invite=LBJJqars` form can all be pasted into the
+**Code or link** box instead.
 
 Requires `cloudflared` (`brew install cloudflared`).
 

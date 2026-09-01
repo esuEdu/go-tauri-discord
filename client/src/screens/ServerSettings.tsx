@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Ban, type GuildMember, type Invite } from "../api";
+import { inviteLink } from "../invites";
 import {
   allows,
   BAN_MEMBERS,
@@ -412,10 +413,10 @@ export function ServerSettings({
           <div className="settings-list">
             {invites.map((invite) => (
               <div className="settings-list-row" key={invite.code}>
-                <span className="settings-list-name">{invite.code}</span>
+                <span className="settings-list-name">{inviteLink(invite.code)}</span>
                 <Button
                   kind="quiet"
-                  onClick={() => void navigator.clipboard.writeText(invite.code)}
+                  onClick={() => void navigator.clipboard.writeText(inviteLink(invite.code))}
                 >
                   Copy
                 </Button>
