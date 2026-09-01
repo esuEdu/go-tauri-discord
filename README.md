@@ -858,6 +858,38 @@ Counting the two separately matters. Audio arrives on a 20 ms timer regardless o
 content, so a combined total can be entirely audio while video never moved — the
 same trap that made per-app audio look broken three times.
 
+Windows reaches the same shape through different parts: **Windows.Graphics.
+Capture** for frames, **OpenH264** for video, and **WASAPI process loopback** for
+sound. One default in that encoder is load-bearing. OpenH264 leaves
+`uiIntraPeriod` at zero, which means the only IDR it ever produces is the first
+one — emitted while the connection is still gathering candidates, and so never
+seen by anybody. What arrived after that could not be decoded without it, and a
+watcher sat on black for as long as the screen kept moving, because the idle
+heartbeat only fires once frames stop. The GOP is now two seconds of frames, the
+same bound macOS gets from `MaxKeyFrameInterval`, and the encoder runs as
+`ScreenContentRealTime` rather than the camera default.
+
+Sound on Windows is process loopback in both cases, and the shares differ only in
+which process. An application share captures that process and its children. A
+whole-display share captures **everything except Vocalis**, which is the same
+exclusion ScreenCaptureKit gets from `setExcludesCurrentProcessAudio` and the
+reason a listener's own voice is not sent back to them; before, a display share
+simply carried a silent track. Two smaller things kept even the application case
+quiet. The buffer duration handed to `IAudioClient::Initialize` is now 20 ms
+rather than zero, which is what wasapi's own example passes and what a
+process-loopback client appears to want. And a wait for the capture event that
+times out now means silence rather than a broken stream: it used to end the audio
+thread for the rest of the share, and a process-loopback client is silent exactly
+when the shared app is.
+
+None of that was visible while it was happening. The desktop app called
+`log::warn!` without ever installing a logger, so a share that failed for a
+reason the code already knew looked exactly like one that worked. It now writes
+`%LOCALAPPDATA%\dev.esuedu.vocalis\logs\vocalis.log` on Windows and
+`~/Library/Logs/dev.esuedu.vocalis/vocalis.log` on macOS, and says on the way in
+what it is sharing, what the encoder settled on, and which process it is taking
+sound from.
+
 Two things this does not yet do. The publisher **ignores RTCP**, so a viewer's
 keyframe request is answered only by the two-second heartbeat rather than
 immediately. And it sends **one layer**: the viewer's full/smaller choice

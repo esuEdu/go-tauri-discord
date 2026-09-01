@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use openh264::encoder::{Encoder, EncoderConfig};
+use openh264::encoder::{BitRate, Encoder, EncoderConfig, FrameRate, IntraFramePeriod, UsageType};
 use openh264::formats::{BgraSliceU8, YUVBuffer};
 use openh264::{OpenH264API, Timestamp};
 use wasapi::{initialize_mta, AudioClient, Direction, SampleType, StreamMode, WaveFormat};
@@ -25,7 +25,10 @@ use super::{Encoded, Options, Quality, Sink};
 
 const AUDIO_BITRATE: u32 = 128_000;
 const HEARTBEAT: Duration = Duration::from_secs(2);
+const KEYFRAME_SECONDS: u32 = 2;
 const AUDIO_CHUNK_FRAMES: usize = 480;
+const AUDIO_BUFFER_HNS: i64 = 200_000;
+const AUDIO_WAIT_MS: u32 = 500;
 
 struct Shared {
     encoder: Mutex<Option<Encoder>>,
@@ -106,13 +109,16 @@ impl GraphicsCaptureApiHandler for VideoHandler {
             .map_err(|_| "the encoder lock was poisoned")?;
 
         if guard.is_none() {
+            let rate = self.shared.quality.frame_rate.max(1);
+            let gop = rate * KEYFRAME_SECONDS;
             let config = EncoderConfig::new()
-                .bitrate(openh264::encoder::BitRate::from_bps(
-                    self.shared.quality.max_bitrate,
-                ))
-                .max_frame_rate(openh264::encoder::FrameRate::from_hz(
-                    self.shared.quality.frame_rate as f32,
-                ));
+                .bitrate(BitRate::from_bps(self.shared.quality.max_bitrate))
+                .max_frame_rate(FrameRate::from_hz(rate as f32))
+                .usage_type(UsageType::ScreenContentRealTime)
+                .intra_frame_period(IntraFramePeriod::from_num_frames(gop));
+            log::info!(
+                "screen: encoding {out_width}x{out_height} at {rate} fps, keyframe every {gop} frames"
+            );
             *guard = Some(Encoder::with_api_config(
                 OpenH264API::from_source(),
                 config,
@@ -204,83 +210,104 @@ fn beat(shared: Arc<Shared>, running: Arc<AtomicBool>) {
     });
 }
 
-fn capture_audio(
+#[derive(Clone, Copy)]
+struct AudioSource {
     process_id: u32,
+    include_tree: bool,
+}
+
+fn capture_audio(
+    source: AudioSource,
     sink: tokio::sync::mpsc::Sender<Encoded>,
     running: Arc<AtomicBool>,
 ) {
     std::thread::spawn(move || {
-        if initialize_mta().is_err() {
-            return;
+        if let Err(reason) = pump_audio(source, sink, &running) {
+            log::warn!("screen: sharing without sound: {reason}");
         }
-
-        let format = WaveFormat::new(
-            32,
-            32,
-            &SampleType::Float,
-            SAMPLE_RATE as usize,
-            CHANNELS,
-            None,
-        );
-
-        let Ok(mut client) = AudioClient::new_application_loopback_client(process_id, true) else {
-            log::warn!("screen: could not open per-application audio");
-            return;
-        };
-
-        let mode = StreamMode::EventsShared {
-            autoconvert: true,
-            buffer_duration_hns: 0,
-        };
-        if client
-            .initialize_client(&format, &Direction::Capture, &mode)
-            .is_err()
-        {
-            return;
-        }
-
-        let Ok(event) = client.set_get_eventhandle() else {
-            return;
-        };
-        let Ok(capture) = client.get_audiocaptureclient() else {
-            return;
-        };
-        let Ok(mut opus) = AudioEncoder::new(AUDIO_BITRATE) else {
-            return;
-        };
-
-        let block = format.get_blockalign() as usize;
-        let chunk = block * AUDIO_CHUNK_FRAMES;
-        let mut queue: VecDeque<u8> = VecDeque::new();
-
-        if client.start_stream().is_err() {
-            return;
-        }
-
-        while running.load(Ordering::Relaxed) {
-            while queue.len() >= chunk {
-                let bytes: Vec<u8> = queue.drain(..chunk).collect();
-                let samples: Vec<f32> = bytes
-                    .chunks_exact(4)
-                    .map(|four| f32::from_le_bytes([four[0], four[1], four[2], four[3]]))
-                    .collect();
-
-                let sink = sink.clone();
-                opus.push(&samples, |data, duration| {
-                    let _ = sink.try_send(Encoded { data, duration });
-                });
-            }
-
-            if capture.read_from_device_to_deque(&mut queue).is_err() {
-                break;
-            }
-            if event.wait_for_event(3000).is_err() {
-                break;
-            }
-        }
-
-        let _ = client.stop_stream();
     });
+}
+
+fn pump_audio(
+    source: AudioSource,
+    sink: tokio::sync::mpsc::Sender<Encoded>,
+    running: &AtomicBool,
+) -> Result<(), String> {
+    if initialize_mta().is_err() {
+        return Err("com would not start on the audio thread".to_owned());
+    }
+
+    let format = WaveFormat::new(
+        32,
+        32,
+        &SampleType::Float,
+        SAMPLE_RATE as usize,
+        CHANNELS,
+        None,
+    );
+
+    let mut client =
+        AudioClient::new_application_loopback_client(source.process_id, source.include_tree)
+            .map_err(|error| format!("no loopback for process {}: {error}", source.process_id))?;
+
+    let mode = StreamMode::EventsShared {
+        autoconvert: true,
+        buffer_duration_hns: AUDIO_BUFFER_HNS,
+    };
+    client
+        .initialize_client(&format, &Direction::Capture, &mode)
+        .map_err(|error| format!("loopback would not initialise: {error}"))?;
+
+    let event = client
+        .set_get_eventhandle()
+        .map_err(|error| format!("no audio event handle: {error}"))?;
+    let capture = client
+        .get_audiocaptureclient()
+        .map_err(|error| format!("no audio capture client: {error}"))?;
+    let mut opus = AudioEncoder::new(AUDIO_BITRATE)?;
+
+    let block = format.get_blockalign() as usize;
+    let chunk = block * AUDIO_CHUNK_FRAMES;
+    let mut queue: VecDeque<u8> = VecDeque::new();
+
+    client
+        .start_stream()
+        .map_err(|error| format!("the loopback stream would not start: {error}"))?;
+
+    let scope = if source.include_tree {
+        "that app"
+    } else {
+        "everything but vocalis"
+    };
+    log::info!(
+        "screen: capturing audio from {scope} (process {})",
+        source.process_id
+    );
+
+    while running.load(Ordering::Relaxed) {
+        while queue.len() >= chunk {
+            let bytes: Vec<u8> = queue.drain(..chunk).collect();
+            let samples: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|four| f32::from_le_bytes([four[0], four[1], four[2], four[3]]))
+                .collect();
+
+            let sink = sink.clone();
+            opus.push(&samples, |data, duration| {
+                let _ = sink.try_send(Encoded { data, duration });
+            });
+        }
+
+        if let Err(error) = capture.read_from_device_to_deque(&mut queue) {
+            let _ = client.stop_stream();
+            return Err(format!("the loopback stream ended: {error}"));
+        }
+
+        let _ = event.wait_for_event(AUDIO_WAIT_MS);
+    }
+
+    let _ = client.stop_stream();
+    Ok(())
 }
 
 pub struct Session {
@@ -342,19 +369,28 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
     beat(Arc::clone(&shared), Arc::clone(&running));
 
     if options.audio {
-        match options.target {
+        let source = match options.target {
             Target::Window(id) => {
                 let window = Window::from_raw_hwnd(id as usize as *mut std::ffi::c_void);
                 match window.process_id() {
-                    Ok(pid) => capture_audio(pid, sink.audio.clone(), Arc::clone(&running)),
-                    Err(_) => {
-                        log::warn!("screen: no process behind that window, sharing without sound")
+                    Ok(process_id) => Some(AudioSource {
+                        process_id,
+                        include_tree: true,
+                    }),
+                    Err(error) => {
+                        log::warn!("screen: no process behind that window ({error}), sharing without sound");
+                        None
                     }
                 }
             }
-            Target::Display(_) => {
-                log::warn!("screen: whole-display audio is not wired on Windows yet");
-            }
+            Target::Display(_) => Some(AudioSource {
+                process_id: std::process::id(),
+                include_tree: false,
+            }),
+        };
+
+        if let Some(source) = source {
+            capture_audio(source, sink.audio.clone(), Arc::clone(&running));
         }
     }
 

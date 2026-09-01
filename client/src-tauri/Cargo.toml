@@ -1,6 +1,6 @@
 [package]
 name = "vocalis"
-version = "0.3.0"
+version = "0.3.1"
 description = "Vocalis desktop client"
 edition = "2021"
 rust-version = "1.77.2"
@@ -25,6 +25,7 @@ bytes = "1"
 tokio = { version = "1", features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
 log = "0.4"
 async-trait = "0.1"
+tauri-plugin-log = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
