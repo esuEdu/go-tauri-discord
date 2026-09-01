@@ -752,6 +752,24 @@ still lights up, because the question is who is speaking rather than what you
 chose to hear. A muted microphone produces silence, so it reads as not speaking
 without being told anything.
 
+**Only one thing suppresses noise at a time.** The microphone is asked for with
+`echoCancellation`, `autoGainControl` and — only when RNNoise is off —
+`noiseSuppression`. For a long time it asked for all three unconditionally and
+then ran the RNNoise worklet on the result, so the default path suppressed twice:
+the browser attenuated everything that was not speech, and RNNoise's own gate
+chewed what survived. Two people described the result as muffled, in both
+directions, which is what stacked suppression sounds like.
+
+The rule is now single: the browser's suppressor is on exactly when ours is not.
+That has to hold on a live track as well as at acquisition, because toggling
+suppression mid-call swaps the worklet in and out of the graph and never
+re-requests the microphone — so the constraint is re-applied to the running track
+each time the answer changes, including when RNNoise fails to load and the
+browser's has to be handed back.
+
+Echo cancellation stays on in both cases. RNNoise does not do it, and cannot: it
+knows nothing about what the speakers are playing.
+
 **Muting says so out loud**, on an opcode of its own. The obvious route —
 re-sending the voice state — would have gone through `Join`, which begins by
 leaving, so every mute would have torn the call down and rebuilt it. The SFU
@@ -1221,7 +1239,8 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [ ] Per-viewer quality adaptation, so one weak link is only their problem
 - [ ] Push-to-Talk with native global shortcuts
 - [x] Echo cancellation and noise suppression as the browser provides them
-- [ ] Dedicated noise suppression that beats what the browser does
+- [x] Dedicated noise suppression (RNNoise), replacing rather than stacking on
+      the browser's
 - [ ] End-to-end encrypted direct messaging
 
 ---
