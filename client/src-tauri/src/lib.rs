@@ -76,6 +76,14 @@ async fn start_screen_share(
 ) -> Result<(), String> {
     let target = sources::parse_target(&source_id).ok_or("that is not something we can share")?;
 
+    log::info!(
+        "screen: sharing {source_id} at {}x{} {} fps, sound {}",
+        quality.width,
+        quality.height,
+        quality.frame_rate,
+        if audio { "on" } else { "off" }
+    );
+
     stop(&screen).await;
 
     let (video_tx, video_rx) = channel(FRAME_QUEUE);
@@ -171,6 +179,17 @@ async fn stop(screen: &Screen) {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("vocalis".to_owned()),
+                    }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                ])
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             capture_sources,
             start_screen_share,
@@ -179,6 +198,7 @@ pub fn run() {
             stop_screen_share
         ])
         .setup(|app| {
+            log::info!("vocalis {} starting", app.package_info().version);
             app.manage(Arc::new(Screen::default()));
 
             #[cfg(target_os = "macos")]
