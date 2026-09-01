@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, ApiError } from "../api";
+import { inviteCodeFrom } from "../invites";
 import type { Guild } from "../types/events.gen";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -124,7 +125,7 @@ export function NewServer({
           onChange={(event) => setCode(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && code.trim()) {
-              void run(() => api.redeemInvite(code.trim()));
+              void run(() => api.redeemInvite(inviteCodeFrom(code)));
             }
           }}
         />
@@ -132,7 +133,7 @@ export function NewServer({
       <Button
         className="wide-button"
         disabled={busy || !code.trim()}
-        onClick={() => void run(() => api.redeemInvite(code.trim()))}
+        onClick={() => void run(() => api.redeemInvite(inviteCodeFrom(code)))}
       >
         Step in
       </Button>

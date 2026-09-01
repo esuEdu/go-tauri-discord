@@ -497,10 +497,24 @@ the sequence number, RESUMEs after a drop, discards replayed duplicates, and
 backs off exponentially with jitter so a server restart does not produce a
 retry storm.
 
-**Adding a friend to a server** uses invite links. *Invite a friend* copies a
-link carrying an 8-character code; opening it previews the server and joins
-automatically after registration. Invites can be limited by use count and
-expiry, and revoked without removing anyone who already joined.
+**Adding a friend to a server** uses invite links. *Invite people* copies a link
+of the form `https://<host>/invite/<code>`; opening it joins that server, after
+registration if the person does not have an account yet. Invites can be limited
+by use count and expiry, and revoked without removing anyone who already joined.
+
+That paragraph described the intended behaviour for a long time before any of it
+was true. What the client actually did was copy the bare **code**, never build a
+link, never read the URL it was opened with, and post whatever was pasted
+straight to `/api/v1/invites/{code}` — so a pasted link 404'd. The three halves
+now exist: `serverURL()` builds the link, which is the same helper attachments
+use and the reason the desktop app does not produce a `tauri.localhost` link;
+the pathname is read once at startup and redeemed after sign-in; and anything
+pasted into the join box is reduced to a code first. The older `?invite=<code>`
+form is still accepted, because this file promised it.
+
+Not done, and worth knowing before it surprises somebody: opening a link
+**joins**, it does not preview. `GET /api/v1/invites/{code}` returns the server
+name and member count for exactly that screen and nothing calls it yet.
 
 ### Pictures
 
@@ -752,6 +766,24 @@ still lights up, because the question is who is speaking rather than what you
 chose to hear. A muted microphone produces silence, so it reads as not speaking
 without being told anything.
 
+**Only one thing suppresses noise at a time.** The microphone is asked for with
+`echoCancellation`, `autoGainControl` and — only when RNNoise is off —
+`noiseSuppression`. For a long time it asked for all three unconditionally and
+then ran the RNNoise worklet on the result, so the default path suppressed twice:
+the browser attenuated everything that was not speech, and RNNoise's own gate
+chewed what survived. Two people described the result as muffled, in both
+directions, which is what stacked suppression sounds like.
+
+The rule is now single: the browser's suppressor is on exactly when ours is not.
+That has to hold on a live track as well as at acquisition, because toggling
+suppression mid-call swaps the worklet in and out of the graph and never
+re-requests the microphone — so the constraint is re-applied to the running track
+each time the answer changes, including when RNNoise fails to load and the
+browser's has to be handed back.
+
+Echo cancellation stays on in both cases. RNNoise does not do it, and cannot: it
+knows nothing about what the speakers are playing.
+
 **Muting says so out loud**, on an opcode of its own. The obvious route —
 re-sending the voice state — would have gone through `Join`, which begins by
 leaving, so every mute would have torn the call down and rebuilt it. The SFU
@@ -830,6 +862,21 @@ identical frame counts.
 Scoping to an application also means an app share is the **app**, not one of its
 windows. The picker lists one entry per application for that reason, rather than
 one per window.
+
+Getting that list right is mostly about what to leave out, and the first attempt
+left out nearly everything: it kept only windows whose xcap `z()` was zero, on
+the assumption that zero meant *normal window*. It means **bottom of the z-order**,
+so the picker could only ever show one app, and usually showed none. What
+actually needs excluding is furniture — menu-bar extras, the Dock, the menubar
+itself — which a floor on window size and a short list of system process names
+handle between them. `Window::all()` has already dropped the invisible, cloaked
+and tool windows before we see it.
+
+One caveat that makes this hard to test from a terminal: on macOS the window list
+is **gated by Screen Recording permission**, and the grant belongs to the app
+bundle. A probe run from a shell sees only its own windows and the system's, so
+it cannot tell a working picker from a broken one. The app logs what it found
+whenever the picker opens, which is where to look instead.
 
 ScreenCaptureKit only emits a frame when the content changes, so a still screen
 can go minutes without producing one — and a viewer who joins during that
@@ -1036,11 +1083,11 @@ and the tunnel together. `make serve` does the same without exposing anything.
 The URL is random and changes on every restart, so send the current one. A
 stable hostname needs a named tunnel and a free Cloudflare account.
 
-Your friends open the link, register, and they are in. Click **Invite a
-friend** in the sidebar to copy a link like
-`https://<host>/?invite=LBJJqars` — opening it shows which server they have
-been invited to, and joining happens automatically once they have an account.
-An invite code can also be pasted directly into the **invite code** box.
+Your friends open the link, register, and they are in. Open the server menu and
+click **Invite people** to copy a link like `https://<host>/invite/LBJJqars` —
+opening it joins that server, once they have an account. The link, the bare code,
+or the older `https://<host>/?invite=LBJJqars` form can all be pasted into the
+**Code or link** box instead.
 
 Requires `cloudflared` (`brew install cloudflared`).
 
@@ -1206,7 +1253,8 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [ ] Per-viewer quality adaptation, so one weak link is only their problem
 - [ ] Push-to-Talk with native global shortcuts
 - [x] Echo cancellation and noise suppression as the browser provides them
-- [ ] Dedicated noise suppression that beats what the browser does
+- [x] Dedicated noise suppression (RNNoise), replacing rather than stacking on
+      the browser's
 - [ ] End-to-end encrypted direct messaging
 
 ---

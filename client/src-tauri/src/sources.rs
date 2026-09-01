@@ -2,6 +2,16 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::Serialize;
 
+const MIN_SIDE: u32 = 160;
+
+const SYSTEM_APPS: [&str; 5] = [
+    "Window Server",
+    "Control Center",
+    "loginwindow",
+    "Dock",
+    "Notification Center",
+];
+
 #[derive(Serialize, Clone)]
 pub struct CaptureSource {
     pub id: String,
@@ -71,12 +81,15 @@ pub fn collect() -> Vec<CaptureSource> {
             if window.is_minimized().unwrap_or(false) {
                 continue;
             }
-            if window.z().unwrap_or(1) != 0 {
+            if window.width().unwrap_or(0) < MIN_SIDE || window.height().unwrap_or(0) < MIN_SIDE {
                 continue;
             }
             let title = window.title().unwrap_or_default();
             let app = window.app_name().unwrap_or_default();
             if title.is_empty() && app.is_empty() {
+                continue;
+            }
+            if SYSTEM_APPS.contains(&app.as_str()) {
                 continue;
             }
             let id = match window.id() {
@@ -101,6 +114,15 @@ pub fn collect() -> Vec<CaptureSource> {
             });
         }
     }
+
+    log::info!(
+        "screen: picker found {} screens and {} apps",
+        sources
+            .iter()
+            .filter(|source| source.kind == "screen")
+            .count(),
+        sources.iter().filter(|source| source.kind == "app").count()
+    );
 
     sources
 }

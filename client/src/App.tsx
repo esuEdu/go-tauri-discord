@@ -31,6 +31,7 @@ import { EmojiPalette } from "./screens/EmojiPalette";
 import { ReactionPalette } from "./screens/ReactionPalette";
 import { GoLive } from "./screens/GoLive";
 import { Lightbox } from "./screens/Lightbox";
+import { inviteLink, takePendingInvite } from "./invites";
 import { NewServer } from "./screens/NewServer";
 import { ProfileSettings } from "./screens/ProfileSettings";
 import { ServerSettings } from "./screens/ServerSettings";
@@ -246,6 +247,19 @@ export default function App() {
     if (!user) return;
     void loadGuilds();
     return gateway.on("GUILD_CREATE", () => void loadGuilds());
+  }, [user, loadGuilds]);
+
+  useEffect(() => {
+    if (!user) return;
+    const code = takePendingInvite();
+    if (!code) return;
+    void api
+      .redeemInvite(code)
+      .then((guild) => {
+        setActiveGuild(guild);
+        void loadGuilds();
+      })
+      .catch(() => setNotice("That invite link did not work."));
   }, [user, loadGuilds]);
 
   useEffect(() => {
@@ -766,18 +780,20 @@ export default function App() {
       {invite && (
         <Sheet
           title="Invite people"
-          subtitle="Anyone with this code can step in. Revoke it from Settings → Links."
+          subtitle="Anyone with this link can step in. Revoke it from Settings → Links."
           onClose={() => setInvite(null)}
         >
           <label className="field">
-            <span className="field-label">Invite code</span>
-            <input className="input" value={invite} readOnly />
+            <span className="field-label">Invite link</span>
+            <input className="input" value={inviteLink(invite)} readOnly />
           </label>
           <div className="sheet-actions">
             <Button kind="quiet" onClick={() => setInvite(null)}>
               Done
             </Button>
-            <Button onClick={() => void navigator.clipboard.writeText(invite)}>Copy</Button>
+            <Button onClick={() => void navigator.clipboard.writeText(inviteLink(invite))}>
+              Copy
+            </Button>
           </div>
         </Sheet>
       )}

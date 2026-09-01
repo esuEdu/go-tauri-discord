@@ -49,7 +49,7 @@ export function setSuppressesNoise(on: boolean) {
 export function audioConstraints(): MediaTrackConstraints {
   const shared: MediaTrackConstraints = {
     echoCancellation: true,
-    noiseSuppression: true,
+    noiseSuppression: !suppressesNoise(),
     autoGainControl: true,
   };
   const chosen = chosenMicrophone();
