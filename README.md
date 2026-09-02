@@ -1189,6 +1189,23 @@ npm run tauri build
 
 Built installers and binaries will be output to `client/src-tauri/target/release/bundle/`.
 
+### Shipping an Update
+
+The installed client checks
+`https://github.com/esuEdu/go-tauri-discord/releases/latest/download/latest.json`
+a few seconds after it starts, and offers the new version rather than
+installing it behind the user's back. Nothing else has to be done to
+release one: tag, let `release.yml` build, and **publish the draft**. A
+draft release is invisible to `/releases/latest/`, so an unpublished
+draft ships to nobody.
+
+The updater refuses any bundle it cannot verify against the public key in
+`client/src-tauri/tauri.conf.json`. The matching private key lives in the
+repository secret `TAURI_SIGNING_PRIVATE_KEY`; without it the workflow
+still builds installers, but no `latest.json` and no `.sig` files, so
+existing installs see nothing. Losing that key means every installed copy
+has to be replaced by hand, because a new key will not verify.
+
 ### Build Backend Server Binary
 
 ```bash
