@@ -8,21 +8,24 @@ import {
   type Microphone,
 } from "../audioPrefs";
 import type { User } from "../types/events.gen";
+import { checkForUpdate, currentVersion, type Release } from "../updates";
 import { Avatar } from "../ui/Avatar";
 import { Sheet } from "../ui/Sheet";
 import { PlacePicture } from "./PlacePicture";
+import { UpdateSheet } from "./UpdatePrompt";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Toggle } from "../ui/Toggle";
 import { voice } from "../voice";
 
-type Tab = "account" | "voice" | "alerts" | "look";
+type Tab = "account" | "voice" | "alerts" | "look" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "account", label: "Account" },
   { id: "voice", label: "Voice" },
   { id: "alerts", label: "Alerts" },
   { id: "look", label: "Look" },
+  { id: "about", label: "About" },
 ];
 
 export function ProfileSettings({
@@ -85,6 +88,7 @@ export function ProfileSettings({
           {tab === "voice" && <VoiceTab />}
           {tab === "alerts" && <AlertsTab />}
           {tab === "look" && <LookTab />}
+          {tab === "about" && <AboutTab />}
         </div>
       </div>
     </div>
@@ -333,6 +337,56 @@ function LookTab() {
         </button>
       </div>
       <p className="profile-hint">A light theme is a second full palette, not a switch.</p>
+    </>
+  );
+}
+
+type Verdict = "idle" | "checking" | "current" | "failed";
+
+function AboutTab() {
+  const [version, setVersion] = useState<string | null>(null);
+  const [verdict, setVerdict] = useState<Verdict>("idle");
+  const [release, setRelease] = useState<Release | null>(null);
+
+  useEffect(() => {
+    void currentVersion().then(setVersion);
+  }, []);
+
+  async function check() {
+    setVerdict("checking");
+    try {
+      const found = await checkForUpdate();
+      setRelease(found);
+      setVerdict(found ? "idle" : "current");
+    } catch {
+      setVerdict("failed");
+    }
+  }
+
+  return (
+    <>
+      <span className="profile-title">Vocalis</span>
+      <div className="profile-card">
+        <div className="profile-card-row">
+          <span className="profile-field">
+            <span className="profile-field-label">Version</span>
+            <span className="profile-field-value">{version ?? "in the browser"}</span>
+          </span>
+          <Button disabled={!version || verdict === "checking"} onClick={() => void check()}>
+            {verdict === "checking" ? "Looking…" : "Check for updates"}
+          </Button>
+        </div>
+      </div>
+      <p className="profile-hint">
+        {verdict === "current" && "You are on the newest version."}
+        {verdict === "failed" && "The update server could not be reached."}
+        {(verdict === "idle" || verdict === "checking") &&
+          (version
+            ? "Vocalis also looks for a new version shortly after it starts, and asks before installing one."
+            : "Updates only apply to the installed app. The browser always serves the newest build.")}
+      </p>
+
+      {release && <UpdateSheet release={release} onClose={() => setRelease(null)} />}
     </>
   );
 }

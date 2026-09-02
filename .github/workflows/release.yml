@@ -57,6 +57,8 @@ jobs:
           # Which server the installed app talks to. Without this it would ship
           # pointing at localhost and be useless to anybody but the builder.
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://147-15-15-86.nip.io' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           projectPath: client
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
