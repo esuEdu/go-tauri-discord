@@ -1180,7 +1180,7 @@ fails CI when the checked-in output is stale.
 
 ## 📦 Building for Production
 
-### Build Desktop Client (`.msi`, `.exe`, `.dmg`, `.AppImage`)
+### Build Desktop Client (`.exe`, `.dmg`)
 
 ```bash
 cd client
@@ -1205,6 +1205,13 @@ repository secret `TAURI_SIGNING_PRIVATE_KEY`; without it the workflow
 still builds installers, but no `latest.json` and no `.sig` files, so
 existing installs see nothing. Losing that key means every installed copy
 has to be replaced by hand, because a new key will not verify.
+
+Windows ships NSIS only. When both an `.msi` and an `.exe` are built, the
+manifest's `windows-x86_64` entry points at the `.msi`, and every Windows
+install updates through it whichever installer it came from — so anyone
+who used the `.exe` would get a UAC prompt and a second machine-wide copy
+in Program Files beside their per-user one. One installer, one update
+path.
 
 ### Build Backend Server Binary
 
