@@ -458,6 +458,7 @@ export default function App() {
 
   async function hangUp() {
     await voice.leave();
+    if (user) session.leftVoice(user.id);
     setCallChannel(null);
     setWatching(null);
     syncVoiceFlags();
