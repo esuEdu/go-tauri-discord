@@ -7,7 +7,7 @@ import {
   setJoinsMuted,
   type Microphone,
 } from "../audioPrefs";
-import type { Nameplate, OverlayMode } from "../streamPrefs";
+import type { Nameplate, OverlayCorner, OverlayMode } from "../streamPrefs";
 import type { User } from "../types/events.gen";
 import { checkForUpdate, currentVersion, type Release } from "../updates";
 import { Avatar } from "../ui/Avatar";
@@ -40,6 +40,8 @@ export function ProfileSettings({
   onNameplate,
   overlay,
   onOverlay,
+  corner,
+  onCorner,
 }: {
   user: User;
   avatarURL: string | null;
@@ -51,6 +53,8 @@ export function ProfileSettings({
   onNameplate: (mode: Nameplate) => void;
   overlay: OverlayMode;
   onOverlay: (mode: OverlayMode) => void;
+  corner: OverlayCorner;
+  onCorner: (corner: OverlayCorner) => void;
 }) {
   const [tab, setTab] = useState<Tab>("account");
 
@@ -102,6 +106,8 @@ export function ProfileSettings({
               onNameplate={onNameplate}
               overlay={overlay}
               onOverlay={onOverlay}
+              corner={corner}
+              onCorner={onCorner}
             />
           )}
           {tab === "about" && <AboutTab />}
@@ -339,16 +345,27 @@ const NAMEPLATES: { id: Nameplate; label: string }[] = [
   { id: "none", label: "None" },
 ];
 
+const CORNERS: { id: OverlayCorner; label: string }[] = [
+  { id: "top-left", label: "Top left" },
+  { id: "top-right", label: "Top right" },
+  { id: "bottom-left", label: "Bottom left" },
+  { id: "bottom-right", label: "Bottom right" },
+];
+
 function LookTab({
   nameplate,
   onNameplate,
   overlay,
   onOverlay,
+  corner,
+  onCorner,
 }: {
   nameplate: Nameplate;
   onNameplate: (mode: Nameplate) => void;
   overlay: OverlayMode;
   onOverlay: (mode: OverlayMode) => void;
+  corner: OverlayCorner;
+  onCorner: (corner: OverlayCorner) => void;
 }) {
   return (
     <>
@@ -414,6 +431,26 @@ function LookTab({
         so you can see who is in the call without coming back to Vocalis. It appears
         when your share starts and goes when it stops. Desktop only.
       </p>
+
+      {overlay !== "none" && (
+        <>
+          <div className="profile-choice-row">
+            {CORNERS.map((pick) => (
+              <button
+                key={pick.id}
+                type="button"
+                className="profile-choice"
+                data-active={corner === pick.id}
+                aria-pressed={corner === pick.id}
+                onClick={() => onCorner(pick.id)}
+              >
+                {pick.label}
+              </button>
+            ))}
+          </div>
+          <p className="profile-hint">Which corner it sits in.</p>
+        </>
+      )}
     </>
   );
 }

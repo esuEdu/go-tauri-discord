@@ -464,6 +464,19 @@ html.is-overlay #root {
   padding: 10px;
 }
 
+.call-overlay[data-corner="top-left"],
+.call-overlay[data-corner="bottom-left"] {
+  right: auto;
+  left: 0;
+  align-items: flex-start;
+}
+
+.call-overlay[data-corner="top-left"],
+.call-overlay[data-corner="top-right"] {
+  top: 0;
+  bottom: auto;
+}
+
 .call-overlay-row {
   display: flex;
   align-items: center;

@@ -6,9 +6,10 @@ const WIDTH: f64 = 300.0;
 const HEIGHT: f64 = 420.0;
 const MARGIN: f64 = 24.0;
 
-pub fn show(app: &AppHandle) -> Result<(), String> {
+pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show().map_err(|error| error.to_string())?;
+        place(&window, corner);
         return Ok(());
     }
 
@@ -33,7 +34,7 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
         .set_ignore_cursor_events(true)
         .map_err(|error| error.to_string())?;
 
-    place(&window);
+    place(&window, corner);
     Ok(())
 }
 
@@ -43,7 +44,7 @@ pub fn hide(app: &AppHandle) {
     }
 }
 
-fn place(window: &tauri::WebviewWindow) {
+fn place(window: &tauri::WebviewWindow, corner: &str) {
     let Ok(Some(screen)) = window.current_monitor() else {
         return;
     };
@@ -51,9 +52,18 @@ fn place(window: &tauri::WebviewWindow) {
     let size = screen.size().to_logical::<f64>(scale);
     let origin = screen.position().to_logical::<f64>(scale);
 
+    let left = origin.x + MARGIN;
+    let right = origin.x + size.width - WIDTH - MARGIN;
+    let top = origin.y + MARGIN;
+    let bottom = origin.y + size.height - HEIGHT - MARGIN;
+
+    let (x, y) = match corner {
+        "top-left" => (left, top),
+        "top-right" => (right, top),
+        "bottom-left" => (left, bottom),
+        _ => (right, bottom),
+    };
+
     let _ = window.set_size(LogicalSize::new(WIDTH, HEIGHT));
-    let _ = window.set_position(LogicalPosition::new(
-        origin.x + size.width - WIDTH - MARGIN,
-        origin.y + size.height - HEIGHT - MARGIN,
-    ));
+    let _ = window.set_position(LogicalPosition::new(x, y));
 }

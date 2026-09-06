@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Avatar } from "../ui/Avatar";
-import type { OverlayMode } from "../streamPrefs";
+import type { OverlayCorner, OverlayMode } from "../streamPrefs";
 
 export type OverlayPerson = {
   id: string;
@@ -11,6 +11,7 @@ export type OverlayPerson = {
 
 export type OverlayState = {
   mode: OverlayMode;
+  corner: OverlayCorner;
   people: OverlayPerson[];
 };
 
@@ -18,7 +19,11 @@ export const OVERLAY_EVENT = "overlay://call";
 export const OVERLAY_READY = "overlay://ready";
 
 export function CallOverlay() {
-  const [state, setState] = useState<OverlayState>({ mode: "full", people: [] });
+  const [state, setState] = useState<OverlayState>({
+    mode: "full",
+    corner: "bottom-right",
+    people: [],
+  });
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -44,7 +49,7 @@ export function CallOverlay() {
   if (state.mode === "none" || state.people.length === 0) return null;
 
   return (
-    <div className="call-overlay" data-size={state.mode}>
+    <div className="call-overlay" data-size={state.mode} data-corner={state.corner}>
       {state.people.map((person) => (
         <div key={person.id} className="call-overlay-row" data-speaking={person.speaking}>
           <Avatar name={person.name} url={person.avatarURL} size={28} />

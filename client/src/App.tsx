@@ -17,10 +17,13 @@ import {
 import { emptySession, nameOf, session, type SessionState } from "./session";
 import {
   nameplate as savedNameplate,
+  overlayCorner as savedOverlayCorner,
   overlayMode as savedOverlayMode,
   setNameplate,
+  setOverlayCorner,
   setOverlayMode,
   type Nameplate,
+  type OverlayCorner,
   type OverlayMode,
 } from "./streamPrefs";
 import { OVERLAY_EVENT, OVERLAY_READY, type OverlayState } from "./shell/CallOverlay";
@@ -140,6 +143,7 @@ export default function App() {
   const [historyFailed, setHistoryFailed] = useState(false);
   const [nameplate, setNameplateMode] = useState<Nameplate>(savedNameplate);
   const [overlay, setOverlay] = useState<OverlayMode>(savedOverlayMode);
+  const [corner, setCorner] = useState<OverlayCorner>(savedOverlayCorner);
 
   useEffect(
     () =>
@@ -492,10 +496,10 @@ export default function App() {
       speaking: Boolean(speaking[id]),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const overlayKey = JSON.stringify({ overlay, overlayPeople, sharing: screens.sharing });
+  const overlayKey = JSON.stringify({ overlay, corner, overlayPeople, sharing: screens.sharing });
 
-  const overlayShown = useRef<OverlayState>({ mode: overlay, people: overlayPeople });
-  overlayShown.current = { mode: overlay, people: overlayPeople };
+  const overlayShown = useRef<OverlayState>({ mode: overlay, corner, people: overlayPeople });
+  overlayShown.current = { mode: overlay, corner, people: overlayPeople };
 
   useEffect(() => {
     if (!onDesktop()) return;
@@ -527,7 +531,7 @@ export default function App() {
         await invoke("hide_call_overlay").catch(() => undefined);
         return;
       }
-      await invoke("show_call_overlay").catch(() => undefined);
+      await invoke("show_call_overlay", { corner }).catch(() => undefined);
       const { emit } = await import("@tauri-apps/api/event");
       await emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
     })();
@@ -1063,6 +1067,11 @@ export default function App() {
           onOverlay={(mode) => {
             setOverlay(mode);
             setOverlayMode(mode);
+          }}
+          corner={corner}
+          onCorner={(pick) => {
+            setCorner(pick);
+            setOverlayCorner(pick);
           }}
           onDeleteAccount={() => setProfileSettings(false)}
         />

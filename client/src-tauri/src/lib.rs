@@ -206,8 +206,8 @@ async fn stop_screen_share(screen: State<'_, Arc<Screen>>) -> Result<(), String>
 }
 
 #[tauri::command]
-fn show_call_overlay(app: AppHandle) -> Result<(), String> {
-    overlay::show(&app)
+fn show_call_overlay(app: AppHandle, corner: String) -> Result<(), String> {
+    overlay::show(&app, &corner)
 }
 
 #[tauri::command]
