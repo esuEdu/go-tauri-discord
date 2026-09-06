@@ -15,6 +15,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
+	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
@@ -912,5 +913,121 @@ func TestDeafeningIsAnnouncedToTheChannel(t *testing.T) {
 	}
 	if !state.SelfMute {
 		t.Error("deafening did not carry the mute with it, so a deafened member still appears live")
+	}
+}
+
+func TestDeletingAVoiceChannelEndsTheCallInsideIt(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Closing time")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := friend.dial()
+	watcher.identify(friend.token)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.ChannelID == nil {
+		t.Fatal("the speaker never appeared in the voice channel")
+	}
+
+	owner.mustDo("DELETE", "/api/v1/channels/"+voiceChannel.String(), 204, nil, nil)
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.ChannelID != nil {
+		t.Error("a voice channel was deleted with somebody talking in it and the call carried on: " +
+			"their microphone stays live and their media keeps flowing through a channel that no " +
+			"longer exists, and no departure can ever be announced for a channel the server can no " +
+			"longer look up")
+	}
+}
+
+func TestLosingConnectEndsTheCallYouAreAlreadyIn(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Revoked")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	member := &harness{t: t, server: owner.server}
+	memberID, _ := member.registerUser()
+	member.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := owner.dial()
+	watcher.identify(owner.token)
+
+	speaker := newVoiceClient(t, member)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, memberID); state.ChannelID == nil {
+		t.Fatal("the member never appeared in the voice channel")
+	}
+
+	owner.mustDo("PUT",
+		"/api/v1/channels/"+voiceChannel.String()+"/overwrites/"+everyone.ID.String(),
+		204, map[string]any{
+			"target_type": "role",
+			"deny":        perm(domain.PermConnect),
+		}, nil)
+
+	if !sawDeparture(watcher, memberID, 3*time.Second) {
+		t.Error("Connect was taken away from somebody already in the call and they stayed in it: " +
+			"the permission is only ever read on the way in, so the only way to remove somebody " +
+			"from a channel they may no longer join is to ask them to leave it")
+	}
+}
+
+func sawDeparture(s *socket, userID uuid.UUID, within time.Duration) bool {
+	return !s.quietFor(within, func(f events.Frame) bool {
+		if f.T != events.EventVoiceStateUpdate {
+			return false
+		}
+		var state events.VoiceStateUpdate
+		if json.Unmarshal(f.D, &state) != nil {
+			return false
+		}
+		return state.UserID == userID && state.ChannelID == nil
+	})
+}
+
+func TestBeingRefusedAVoiceChannelIsToldToYou(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("No entry")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	owner.mustDo("PUT",
+		"/api/v1/channels/"+voiceChannel.String()+"/overwrites/"+everyone.ID.String(),
+		204, map[string]any{
+			"target_type": "role",
+			"deny":        perm(domain.PermConnect),
+		}, nil)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	member := &harness{t: t, server: owner.server}
+	memberID, _ := member.registerUser()
+	member.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	sock := member.dial()
+	sock.identify(member.token)
+	sock.write(events.Frame{
+		Op: events.OpVoiceState,
+		D:  mustJSON(t, events.VoiceStateRequest{ChannelID: &voiceChannel}),
+	})
+
+	if !sawDeparture(sock, memberID, 3*time.Second) {
+		t.Error("a refused join went unanswered: the client has already opened the microphone and " +
+			"put itself in the room by the time it asks, so silence leaves it connecting forever " +
+			"with a live microphone and a call that was never allowed")
 	}
 }

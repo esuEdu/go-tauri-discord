@@ -259,10 +259,8 @@ fn filter_for(
                 .ok_or_else(|| "that window has closed".to_owned())?;
 
             let displays = unsafe { content.displays() };
-            let display = displays
-                .iter()
-                .next()
-                .ok_or_else(|| NO_PERMISSION.to_owned())?;
+            let display =
+                display_behind(&window, &displays).ok_or_else(|| NO_PERMISSION.to_owned())?;
 
             let owner = unsafe { window.owningApplication() }
                 .ok_or_else(|| "that window has no application".to_owned())?;
@@ -278,6 +276,26 @@ fn filter_for(
             })
         }
     }
+}
+
+fn display_behind(
+    window: &SCWindow,
+    displays: &objc2_foundation::NSArray<SCDisplay>,
+) -> Option<Retained<SCDisplay>> {
+    let frame = unsafe { window.frame() };
+    let x = frame.origin.x + frame.size.width / 2.0;
+    let y = frame.origin.y + frame.size.height / 2.0;
+
+    displays
+        .iter()
+        .find(|display| {
+            let seen = unsafe { display.frame() };
+            x >= seen.origin.x
+                && x < seen.origin.x + seen.size.width
+                && y >= seen.origin.y
+                && y < seen.origin.y + seen.size.height
+        })
+        .or_else(|| displays.iter().next())
 }
 
 fn configuration(options: &Options) -> Retained<SCStreamConfiguration> {

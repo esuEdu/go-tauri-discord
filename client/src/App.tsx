@@ -24,6 +24,7 @@ import type {
   Message,
   MessageReaction,
   User,
+  VoiceStateUpdate,
 } from "./types/events.gen";
 
 import { Auth } from "./screens/Auth";
@@ -331,13 +332,23 @@ export default function App() {
           .map((c) => (c.parent_id === channel.id ? { ...c, parent_id: undefined } : c)),
       );
       setActiveChannel((held) => (held?.id === channel.id ? null : held));
+      if (callChannel?.id === channel.id) void hangUp();
     });
     return () => {
       forgetCreate();
       forgetUpdate();
       forgetDelete();
     };
-  }, [activeGuild]);
+  }, [activeGuild, callChannel]);
+
+  useEffect(() => {
+    if (!user || !callChannel) return;
+    return gateway.on("VOICE_STATE_UPDATE", (payload) => {
+      const state = payload as VoiceStateUpdate;
+      if (state.user_id !== user.id || state.channel_id) return;
+      void hangUp();
+    });
+  }, [user, callChannel]);
 
   const reload = useCallback(async () => {
     if (!activeChannel || activeChannel.kind !== "text") {
@@ -458,6 +469,7 @@ export default function App() {
 
   async function hangUp() {
     await voice.leave();
+    if (user) session.leftVoice(user.id);
     setCallChannel(null);
     setWatching(null);
     syncVoiceFlags();
