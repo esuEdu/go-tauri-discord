@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "./api";
-import { gateway } from "./gateway";
+import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
 import {
   ADD_REACTIONS,
@@ -15,7 +15,14 @@ import {
   VIEW_CHANNEL,
 } from "./permissions";
 import { emptySession, nameOf, session, type SessionState } from "./session";
-import { voice, type ScreenQualityID, type ScreenState, type Speaking } from "./voice";
+import {
+  voice,
+  type ScreenQualityID,
+  type ScreenState,
+  type Speaking,
+  type VoiceFailure,
+  type VoiceStatus,
+} from "./voice";
 import type {
   Attachment,
   Channel,
@@ -69,6 +76,26 @@ type Menu =
 
 type Confirm = { action: "kick" | "ban"; userID: string };
 
+function callStatusText(status: VoiceStatus, failure: VoiceFailure | null): string {
+  if (status === "connecting") return "Connecting…";
+  if (status === "connected") return "Voice connected";
+  if (failure === "microphone") return "No microphone";
+  if (failure === "network") return "Cannot reach the call";
+  return "Not connected";
+}
+
+function callQuality(status: VoiceStatus, grade: string | undefined): "good" | "fair" | "bad" {
+  if (status !== "connected") return "bad";
+  if (grade === "poor") return "bad";
+  if (grade === "fair") return "fair";
+  return "good";
+}
+
+const LINK_TEXT: Partial<Record<ConnectionState, string>> = {
+  connecting: "Connecting to Vocalis…",
+  reconnecting: "Reconnecting… messages and calls will catch up on their own.",
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [booting, setBooting] = useState(true);
@@ -97,6 +124,21 @@ export default function App() {
   const [suppressing, setSuppressing] = useState(() => voice.suppressing);
   const [callChannel, setCallChannel] = useState<Channel | null>(null);
   const [watching, setWatching] = useState<string | null>(null);
+  const [callState, setCallState] = useState<VoiceStatus>("idle");
+  const [callFailure, setCallFailure] = useState<VoiceFailure | null>(null);
+  const [link, setLink] = useState<ConnectionState>("connecting");
+  const [historyFailed, setHistoryFailed] = useState(false);
+
+  useEffect(
+    () =>
+      voice.onStatusChange((status) => {
+        setCallState(status);
+        setCallFailure(status === "failed" ? voice.reasonForFailure() : null);
+      }),
+    [],
+  );
+
+  useEffect(() => gateway.onStateChange(setLink), []);
 
   const syncVoiceFlags = useCallback(() => {
     setMuted(voice.inCall ? voice.muted : joinsMuted());
@@ -353,10 +395,17 @@ export default function App() {
   const reload = useCallback(async () => {
     if (!activeChannel || activeChannel.kind !== "text") {
       setMessages([]);
+      setHistoryFailed(false);
       return;
     }
-    const history = await api.messages(activeChannel.id);
-    setMessages(history.slice().reverse());
+    try {
+      const history = await api.messages(activeChannel.id);
+      setMessages(history.slice().reverse());
+      setHistoryFailed(false);
+    } catch {
+      setMessages([]);
+      setHistoryFailed(true);
+    }
   }, [activeChannel]);
 
   useEffect(() => {
@@ -482,14 +531,22 @@ export default function App() {
 
   return (
     <div className="app">
-      {notice && (
-        <div className="notice" role="status">
-          <span>{notice}</span>
-          <button type="button" className="notice-dismiss" onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
+      <div className="banners">
+        {LINK_TEXT[link] && (
+          <div className="notice" data-tone="waiting" role="status">
+            <span className="notice-spinner" aria-hidden="true" />
+            <span>{LINK_TEXT[link]}</span>
+          </div>
+        )}
+        {notice && (
+          <div className="notice" role="status">
+            <span>{notice}</span>
+            <button type="button" className="notice-dismiss" onClick={() => setNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+      </div>
       <div className="left-column">
         <div className="rail-and-channels">
           <ServerRail
@@ -590,8 +647,8 @@ export default function App() {
             callChannel
               ? {
                   channelName: callChannel.name,
-                  status: "Voice connected",
-                  quality: "good",
+                  status: callStatusText(callState, callFailure),
+                  quality: callQuality(callState, state.connection[user.id]),
                   sharing: screens.sharing,
                 }
               : null
@@ -666,6 +723,8 @@ export default function App() {
         <VoiceRoom
           channel={activeChannel}
           inCall={state.inVoice[activeChannel.id] ?? []}
+          status={callChannel?.id === activeChannel.id ? callState : "idle"}
+          failure={callFailure}
           state={state}
           nameFor={nameFor}
           meID={user.id}
@@ -693,6 +752,7 @@ export default function App() {
             event.preventDefault();
             setMenu({ kind: "voice", at: { x: event.clientX, y: event.clientY }, userID });
           }}
+          onRetry={() => void joinVoice(activeChannel)}
         />
       ) : activeChannel ? (
         <Room
@@ -725,10 +785,37 @@ export default function App() {
           }}
           onOpenImage={(file, message) => setLightbox({ file, message })}
           insert={draftEmoji}
+          historyFailed={historyFailed}
+          onReload={() => void reload()}
           onSent={() => void reload()}
         />
       ) : (
-        <section className="room panel" />
+        <section className="room panel">
+          <div className="room-empty">
+            {guilds.length === 0 ? (
+              <>
+                <span className="room-empty-title">No servers yet</span>
+                <span className="room-empty-text">
+                  Make one with the + on the left, or open an invite somebody sent you.
+                </span>
+              </>
+            ) : channels.length === 0 ? (
+              <>
+                <span className="room-empty-title">Nothing here yet</span>
+                <span className="room-empty-text">
+                  This server has no channels you can see.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="room-empty-title">Pick a channel</span>
+                <span className="room-empty-text">
+                  Choose one on the left to read it or talk in it.
+                </span>
+              </>
+            )}
+          </div>
+        </section>
       )}
 
       {!showingVoice && !watching && activeGuild && (

@@ -26,6 +26,8 @@ export function Room({
   canSend,
   canReact,
   insert,
+  historyFailed,
+  onReload,
   avatarURL,
   onReact,
   onUnreact,
@@ -42,6 +44,8 @@ export function Room({
   canSend: boolean;
   canReact: boolean;
   insert: { char: string; n: number } | null;
+  historyFailed: boolean;
+  onReload: () => void;
   avatarURL: (id: string) => string | null;
   onReact: (messageID: string, emoji: string) => void;
   onUnreact: (messageID: string, emoji: string) => void;
@@ -165,6 +169,27 @@ export function Room({
           idle.current = window.setTimeout(() => setScrolling(false), 800);
         }}
       >
+        {historyFailed ? (
+          <div className="room-empty" role="alert">
+            <span className="room-empty-title">These messages did not load</span>
+            <span className="room-empty-text">
+              Nothing is missing from the channel — this window could not fetch it.
+            </span>
+            <button type="button" className="call-state-retry" onClick={onReload}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          messages.length === 0 && (
+            <div className="room-empty">
+              <span className="room-empty-title">#{channel.name} is empty</span>
+              <span className="room-empty-text">
+                No messages yet. Whatever you say first sets the tone.
+              </span>
+            </div>
+          )
+        )}
+
         {groups.map((group) =>
           group.kind === "day" ? (
             <div className="day-divider" key={group.key}>

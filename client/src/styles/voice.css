@@ -389,3 +389,41 @@
 .stream-volume-button:hover {
   background: rgb(41 44 62 / 0.7);
 }
+
+.call-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-neutral-300);
+  font: var(--body-small);
+}
+
+.call-state > .call-state-retry {
+  margin-left: auto;
+}
+
+.call-state[data-tone="bad"] {
+  border-color: var(--bad-edge);
+  background: var(--bad-fill);
+  color: var(--bad-text);
+}
+
+.call-state-retry {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--color-neutral-700);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: var(--body-small);
+  cursor: pointer;
+}
+
+.call-state-retry:hover {
+  border-color: var(--color-neutral-500);
+}
