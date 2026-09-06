@@ -5,7 +5,7 @@ import { Avatar, initialsOf } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
 import { LiveBadge } from "../ui/LiveBadge";
 import { knownTint, tintFor, tintOf } from "../tint";
-import { type ScreenState } from "../voice";
+import { type ScreenState, type VoiceFailure, type VoiceStatus } from "../voice";
 import { VoiceControls } from "./VoiceControls";
 
 const TILE_ASPECT = 5 / 3;
@@ -15,6 +15,8 @@ const MAX_TILE_WIDTH = 314;
 export function VoiceRoom({
   channel,
   inCall,
+  status,
+  failure,
   state,
   nameFor,
   meID,
@@ -30,9 +32,13 @@ export function VoiceRoom({
   onStopSharing,
   onWatch,
   onOpenMember,
+  onRetry,
+  onJoin,
 }: {
   channel: Channel;
   inCall: string[];
+  status: VoiceStatus;
+  failure: VoiceFailure | null;
   state: SessionState;
   nameFor: (id: string) => string;
   meID: string;
@@ -48,6 +54,8 @@ export function VoiceRoom({
   onStopSharing: () => void;
   onWatch: (userID: string) => void;
   onOpenMember: (userID: string, event: MouseEvent<HTMLElement>) => void;
+  onRetry: () => void;
+  onJoin: () => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -93,7 +101,44 @@ export function VoiceRoom({
         <span className="room-topic">Voice · {inCall.length} in call</span>
       </header>
 
+      {status === "connecting" && (
+        <div className="call-state" role="status">
+          <span className="notice-spinner" aria-hidden="true" />
+          <span>Connecting you to {channel.name}…</span>
+        </div>
+      )}
+
+      {status === "failed" && (
+        <div className="call-state" data-tone="bad" role="alert">
+          <Icon name="warning-circle" size={16} tone="bad" />
+          <span>
+            {failure === "microphone"
+              ? "Vocalis could not open your microphone. Check that nothing else is holding it and that Vocalis is allowed to use it."
+              : "The call could not be reached. Your connection may be blocking it."}
+          </span>
+          <button type="button" className="call-state-retry" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      )}
+
       <div className="voice-stage" ref={stage}>
+        {inCall.length === 0 && status !== "connecting" && status !== "failed" && (
+          <div className="room-empty">
+            <span className="room-empty-title">Nobody is in {channel.name}</span>
+            <span className="room-empty-text">
+              {status === "connected"
+                ? "You are the only one here. It stays open as long as you do."
+                : "Join and the others will see you waiting."}
+            </span>
+            {status !== "connected" && (
+              <button type="button" className="call-state-retry" onClick={onJoin}>
+                Join
+              </button>
+            )}
+          </div>
+        )}
+
         <div
           className="voice-tiles"
           style={{

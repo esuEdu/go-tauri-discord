@@ -7,6 +7,7 @@ import {
   setJoinsMuted,
   type Microphone,
 } from "../audioPrefs";
+import type { Nameplate } from "../streamPrefs";
 import type { User } from "../types/events.gen";
 import { Avatar } from "../ui/Avatar";
 import { Sheet } from "../ui/Sheet";
@@ -32,6 +33,8 @@ export function ProfileSettings({
   onChanged,
   onSignOut,
   onDeleteAccount,
+  nameplate,
+  onNameplate,
 }: {
   user: User;
   avatarURL: string | null;
@@ -39,6 +42,8 @@ export function ProfileSettings({
   onChanged: () => void;
   onSignOut: () => void;
   onDeleteAccount: () => void;
+  nameplate: Nameplate;
+  onNameplate: (mode: Nameplate) => void;
 }) {
   const [tab, setTab] = useState<Tab>("account");
 
@@ -84,7 +89,9 @@ export function ProfileSettings({
           )}
           {tab === "voice" && <VoiceTab />}
           {tab === "alerts" && <AlertsTab />}
-          {tab === "look" && <LookTab />}
+          {tab === "look" && (
+            <LookTab nameplate={nameplate} onNameplate={onNameplate} />
+          )}
         </div>
       </div>
     </div>
@@ -313,7 +320,19 @@ function AlertsTab() {
   );
 }
 
-function LookTab() {
+const NAMEPLATES: { id: Nameplate; label: string }[] = [
+  { id: "full", label: "Full" },
+  { id: "compact", label: "Compact" },
+  { id: "none", label: "None" },
+];
+
+function LookTab({
+  nameplate,
+  onNameplate,
+}: {
+  nameplate: Nameplate;
+  onNameplate: (mode: Nameplate) => void;
+}) {
   return (
     <>
       <div className="profile-choice-row">
@@ -333,6 +352,28 @@ function LookTab() {
         </button>
       </div>
       <p className="profile-hint">A light theme is a second full palette, not a switch.</p>
+
+      <span className="profile-divider" />
+
+      <span className="profile-title">Whose screen you are watching</span>
+      <div className="profile-choice-row">
+        {NAMEPLATES.map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            className="profile-choice"
+            data-active={nameplate === mode.id}
+            aria-pressed={nameplate === mode.id}
+            onClick={() => onNameplate(mode.id)}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+      <p className="profile-hint">
+        Drawn in the corner of somebody else's screen while you watch it. Full carries
+        their picture and name, compact only the picture, none stays out of the way.
+      </p>
     </>
   );
 }

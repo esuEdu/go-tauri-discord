@@ -3,6 +3,7 @@ import { Avatar } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
 import { LiveBadge } from "../ui/LiveBadge";
 import { MAX_VOLUME, voice, type ScreenState } from "../voice";
+import type { Nameplate } from "../streamPrefs";
 import { VoiceControls } from "./VoiceControls";
 
 export function StreamStage({
@@ -11,6 +12,7 @@ export function StreamStage({
   stream,
   userID,
   screens,
+  nameplate,
   muted,
   deafened,
   onToggleMute,
@@ -25,6 +27,7 @@ export function StreamStage({
   stream: MediaStream | null;
   userID: string;
   screens: ScreenState;
+  nameplate: Nameplate;
   muted: boolean;
   deafened: boolean;
   onToggleMute: () => void;
@@ -35,6 +38,7 @@ export function StreamStage({
   onStopWatching: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const [shape, setShape] = useState(16 / 9);
   const [level, setLevel] = useState(() => voice.volumeOf(userID, "screen"));
 
   useEffect(() => {
@@ -49,14 +53,33 @@ export function StreamStage({
 
   return (
     <section className="stream-stage">
-      <video ref={video} className="stream-video" autoPlay playsInline />
+      <div className="stream-frame" style={{ aspectRatio: shape }}>
+        <video
+          ref={video}
+          className="stream-video"
+          autoPlay
+          playsInline
+          onLoadedMetadata={(event) => {
+            const seen = event.currentTarget;
+            if (seen.videoWidth && seen.videoHeight) {
+              setShape(seen.videoWidth / seen.videoHeight);
+            }
+          }}
+        />
 
-      <span className="glass-chip stream-who">
-        <Avatar name={name} url={avatarURL} size={24} />
-        <span className="stream-who-name">{name}</span>
-        <LiveBadge />
-        <Icon name={muteThem ? "speaker-slash" : "speaker-high"} size={14} />
-      </span>
+        {nameplate !== "none" && (
+          <span className="glass-chip stream-who" data-size={nameplate}>
+            <Avatar name={name} url={avatarURL} size={24} />
+            {nameplate === "full" && (
+              <>
+                <span className="stream-who-name">{name}</span>
+                <LiveBadge />
+                <Icon name={muteThem ? "speaker-slash" : "speaker-high"} size={14} />
+              </>
+            )}
+          </span>
+        )}
+      </div>
 
       <div className="stream-chrome">
         <VoiceControls
