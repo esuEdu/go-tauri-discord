@@ -13,22 +13,18 @@ pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let window = WebviewWindowBuilder::new(
-        app,
-        LABEL,
-        WebviewUrl::App("index.html".into()),
-    )
-    .title("Vocalis call")
-    .inner_size(WIDTH, HEIGHT)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(false)
-    .resizable(false)
-    .build()
-    .map_err(|error| format!("overlay window: {error}"))?;
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
+        .title("Vocalis call")
+        .inner_size(WIDTH, HEIGHT)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .resizable(false)
+        .build()
+        .map_err(|error| format!("overlay window: {error}"))?;
 
     window
         .set_ignore_cursor_events(true)
