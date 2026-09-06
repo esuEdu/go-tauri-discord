@@ -24,18 +24,29 @@ type screenChange struct {
 type recordingSignaler struct {
 	mu         sync.Mutex
 	offers     map[uuid.UUID]webrtc.SessionDescription
+	sent       map[uuid.UUID]int
 	departures []departure
 	screens    []screenChange
 }
 
 func newRecordingSignaler() *recordingSignaler {
-	return &recordingSignaler{offers: make(map[uuid.UUID]webrtc.SessionDescription)}
+	return &recordingSignaler{
+		offers: make(map[uuid.UUID]webrtc.SessionDescription),
+		sent:   make(map[uuid.UUID]int),
+	}
 }
 
 func (r *recordingSignaler) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.offers[userID] = sdp
+	r.sent[userID]++
+}
+
+func (r *recordingSignaler) offersTo(userID uuid.UUID) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sent[userID]
 }
 
 func (r *recordingSignaler) SendCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
@@ -189,6 +200,34 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 	if stateOf(t, sfu, channelID, userID).Muted {
 		t.Error("a member who left muted came back muted, while their microphone came back live; " +
 			"the two would disagree and nothing would correct it until they toggled")
+	}
+}
+
+func TestResyncResendsAnOfferThatNeverArrived(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if got := signaler.offersTo(userID); got != 1 {
+		t.Fatalf("offers after joining = %d, want 1", got)
+	}
+
+	if err := sfu.Resync(userID); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+
+	if got := signaler.offersTo(userID); got < 2 {
+		t.Errorf("offers after a resync = %d, want the unanswered one sent again: a socket that "+
+			"drops takes any offer queued behind it with it, since control frames are not replayed, "+
+			"and the peer then sits in have-local-offer where every later attempt to renegotiate "+
+			"gives up; nothing new is ever heard or seen in that call again", got)
 	}
 }
 

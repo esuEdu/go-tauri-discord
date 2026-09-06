@@ -470,6 +470,10 @@ func (s *SFU) Resync(userID uuid.UUID) error {
 	}
 
 	p.redo = true
+	if local := p.pc.LocalDescription(); local != nil &&
+		p.pc.SignalingState() == webrtc.SignalingStateHaveLocalOffer {
+		s.signaler.SendOffer(userID, *local)
+	}
 	s.signalLocked(r)
 	return nil
 }
