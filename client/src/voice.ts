@@ -15,6 +15,7 @@ import {
   OpVoiceCandidate,
   OpVoiceMute,
   OpVoiceOffer,
+  OpVoiceResync,
   OpVoiceScreen,
   OpVoiceState,
   OpVoiceWatch,
@@ -651,6 +652,9 @@ class VoiceClient {
           sdpMid: candidate.sdp_mid ?? undefined,
           sdpMLineIndex: candidate.sdp_mline_index ?? undefined,
         });
+      }),
+      gateway.onStateChange((state) => {
+        if (state === "ready" && this.pc) gateway.sendRaw({ op: OpVoiceResync });
       }),
       gateway.on(EventVoiceScreenUpdate, (payload) => {
         const update = payload as VoiceScreenUpdate;
