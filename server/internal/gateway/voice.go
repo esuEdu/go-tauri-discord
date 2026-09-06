@@ -377,6 +377,24 @@ func (g *Gateway) leaveVoice(userID uuid.UUID) {
 	g.announceDeparture(ctx, channelID, userID)
 }
 
+func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, byChannel map[uuid.UUID]domain.Permission) {
+	if g.voice == nil {
+		return
+	}
+	channelID, connected := g.voice.ChannelOf(userID)
+	if !connected {
+		return
+	}
+	perms, hereabouts := byChannel[channelID]
+	if !hereabouts {
+		return
+	}
+	if perms.Has(domain.PermViewChannel) && perms.Has(domain.PermConnect) {
+		return
+	}
+	g.leaveVoice(userID)
+}
+
 func (g *Gateway) ClosedChannel(guildID, channelID uuid.UUID) {
 	if g.voice == nil {
 		return
