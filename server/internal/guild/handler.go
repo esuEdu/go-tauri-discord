@@ -23,6 +23,7 @@ type Handler struct {
 type Rooms interface {
 	JoinedGuild(userID, guildID uuid.UUID)
 	LeftGuild(userID, guildID uuid.UUID)
+	ClosedChannel(guildID, channelID uuid.UUID)
 	Online(userIDs []uuid.UUID) map[uuid.UUID]bool
 }
 
@@ -33,6 +34,12 @@ func NewHandler(svc *Service, pub *bus.Publisher, rooms Rooms) *Handler {
 func (h *Handler) joined(userID, guildID uuid.UUID) {
 	if h.rooms != nil {
 		h.rooms.JoinedGuild(userID, guildID)
+	}
+}
+
+func (h *Handler) closed(guildID, channelID uuid.UUID) {
+	if h.rooms != nil {
+		h.rooms.ClosedChannel(guildID, channelID)
 	}
 }
 
@@ -490,6 +497,7 @@ func (h *Handler) deleteChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.closed(gone.GuildID, gone.ID)
 	h.pub.ToGuild(r.Context(), gone.GuildID, events.EventChannelDelete, PublicChannel(gone))
 	w.WriteHeader(http.StatusNoContent)
 }

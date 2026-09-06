@@ -914,3 +914,35 @@ func TestDeafeningIsAnnouncedToTheChannel(t *testing.T) {
 		t.Error("deafening did not carry the mute with it, so a deafened member still appears live")
 	}
 }
+
+func TestDeletingAVoiceChannelEndsTheCallInsideIt(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Closing time")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := friend.dial()
+	watcher.identify(friend.token)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.ChannelID == nil {
+		t.Fatal("the speaker never appeared in the voice channel")
+	}
+
+	owner.mustDo("DELETE", "/api/v1/channels/"+voiceChannel.String(), 204, nil, nil)
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.ChannelID != nil {
+		t.Error("a voice channel was deleted with somebody talking in it and the call carried on: " +
+			"their microphone stays live and their media keeps flowing through a channel that no " +
+			"longer exists, and no departure can ever be announced for a channel the server can no " +
+			"longer look up")
+	}
+}

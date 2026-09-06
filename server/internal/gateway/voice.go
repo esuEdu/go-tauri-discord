@@ -377,6 +377,23 @@ func (g *Gateway) leaveVoice(userID uuid.UUID) {
 	g.announceDeparture(ctx, channelID, userID)
 }
 
+func (g *Gateway) ClosedChannel(guildID, channelID uuid.UUID) {
+	if g.voice == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, participant := range g.voice.States(channelID) {
+		g.voice.Leave(participant.UserID)
+		g.publishVoice(ctx, guildID, events.VoiceStateUpdate{
+			GuildID: guildID,
+			UserID:  participant.UserID,
+		})
+	}
+}
+
 func (g *Gateway) announceDeparture(ctx context.Context, channelID, userID uuid.UUID) {
 	channel, err := g.guilds.Channel(ctx, channelID)
 	if err != nil {
