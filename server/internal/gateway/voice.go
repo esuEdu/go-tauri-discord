@@ -404,10 +404,13 @@ func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, byChannel map[uuid.UUID]d
 	if !hereabouts {
 		return
 	}
-	if perms.Has(domain.PermViewChannel) && perms.Has(domain.PermConnect) {
+	if !perms.Has(domain.PermViewChannel) || !perms.Has(domain.PermConnect) {
+		g.leaveVoice(userID)
 		return
 	}
-	g.leaveVoice(userID)
+	if err := g.voice.SetMayStream(userID, perms.Has(domain.PermStream)); err != nil {
+		slog.Error("voice stream permission", "user_id", userID, "error", err)
+	}
 }
 
 func (g *Gateway) ClosedChannel(guildID, channelID uuid.UUID) {

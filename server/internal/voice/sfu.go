@@ -478,6 +478,27 @@ func (s *SFU) Resync(userID uuid.UUID) error {
 	return nil
 }
 
+func (s *SFU) SetMayStream(userID uuid.UUID, allowed bool) error {
+	s.mu.Lock()
+	p := s.peerLocked(userID)
+	if p == nil {
+		s.mu.Unlock()
+		return ErrNotConnected
+	}
+	if p.mayStream == allowed {
+		s.mu.Unlock()
+		return nil
+	}
+	p.mayStream = allowed
+	s.mu.Unlock()
+
+	if allowed {
+		return nil
+	}
+	s.StopPublishing(userID)
+	return s.SetScreenActive(userID, false)
+}
+
 func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 	s.mu.Lock()
 
@@ -495,6 +516,10 @@ func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 	if p == nil {
 		s.mu.Unlock()
 		return ErrNotConnected
+	}
+	if active && !p.mayStream {
+		s.mu.Unlock()
+		return ErrNotAllowed
 	}
 
 	video := p.screenTrack
@@ -773,7 +798,10 @@ func (s *SFU) roomFor(userID uuid.UUID) (*room, *peer) {
 func (s *SFU) peerFor(userID uuid.UUID) *peer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.peerLocked(userID)
+}
 
+func (s *SFU) peerLocked(userID uuid.UUID) *peer {
 	channelID, ok := s.homes[userID]
 	if !ok {
 		return nil

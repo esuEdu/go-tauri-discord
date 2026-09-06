@@ -51,6 +51,7 @@ type VoiceEngine interface {
 	AddCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit) error
 	Resync(userID uuid.UUID) error
 	SetScreenActive(userID uuid.UUID, active bool) error
+	SetMayStream(userID uuid.UUID, allowed bool) error
 	ChannelOf(userID uuid.UUID) (uuid.UUID, bool)
 	States(channelID uuid.UUID) []voice.Participant
 	SetMuted(userID uuid.UUID, muted bool) error
