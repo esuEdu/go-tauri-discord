@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "The call overlay listens for the call it draws, and nothing else",
+  "windows": ["overlay"],
+  "permissions": ["core:event:default"]
+}
