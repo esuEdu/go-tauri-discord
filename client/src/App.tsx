@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
@@ -15,7 +15,16 @@ import {
   VIEW_CHANNEL,
 } from "./permissions";
 import { emptySession, nameOf, session, type SessionState } from "./session";
-import { nameplate as savedNameplate, setNameplate, type Nameplate } from "./streamPrefs";
+import {
+  nameplate as savedNameplate,
+  overlayMode as savedOverlayMode,
+  setNameplate,
+  setOverlayMode,
+  type Nameplate,
+  type OverlayMode,
+} from "./streamPrefs";
+import { OVERLAY_EVENT, OVERLAY_READY, type OverlayState } from "./shell/CallOverlay";
+import { onDesktop } from "./capture";
 import {
   voice,
   type ScreenQualityID,
@@ -130,6 +139,7 @@ export default function App() {
   const [link, setLink] = useState<ConnectionState>("connecting");
   const [historyFailed, setHistoryFailed] = useState(false);
   const [nameplate, setNameplateMode] = useState<Nameplate>(savedNameplate);
+  const [overlay, setOverlay] = useState<OverlayMode>(savedOverlayMode);
 
   useEffect(
     () =>
@@ -472,6 +482,56 @@ export default function App() {
   const permissions = activeGuild ? (state.guildAllows[activeGuild.id] ?? 0) : 0;
   const channelAllows = activeChannel ? state.channelAllows[activeChannel.id] : undefined;
   const effective = channelAllows ?? permissions;
+
+  const inCallNow = callChannel ? (state.inVoice[callChannel.id] ?? []) : [];
+  const overlayPeople = inCallNow
+    .map((id) => ({
+      id,
+      name: nameFor(id),
+      avatarURL: avatarURL(id),
+      speaking: Boolean(speaking[id]),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const overlayKey = JSON.stringify({ overlay, overlayPeople, sharing: screens.sharing });
+
+  const overlayShown = useRef<OverlayState>({ mode: overlay, people: overlayPeople });
+  overlayShown.current = { mode: overlay, people: overlayPeople };
+
+  useEffect(() => {
+    if (!onDesktop()) return;
+    let stop: (() => void) | undefined;
+    let dropped = false;
+
+    void (async () => {
+      const { emit, listen } = await import("@tauri-apps/api/event");
+      const off = await listen(OVERLAY_READY, () => {
+        void emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
+      });
+      if (dropped) off();
+      else stop = off;
+    })();
+
+    return () => {
+      dropped = true;
+      stop?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!onDesktop()) return;
+    const wanted = screens.sharing && overlay !== "none";
+
+    void (async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      if (!wanted) {
+        await invoke("hide_call_overlay").catch(() => undefined);
+        return;
+      }
+      await invoke("show_call_overlay").catch(() => undefined);
+      const { emit } = await import("@tauri-apps/api/event");
+      await emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
+    })();
+  }, [overlayKey]);
 
   const live = useMemo(() => {
     const set = new Set(
@@ -998,6 +1058,11 @@ export default function App() {
           onNameplate={(mode) => {
             setNameplateMode(mode);
             setNameplate(mode);
+          }}
+          overlay={overlay}
+          onOverlay={(mode) => {
+            setOverlay(mode);
+            setOverlayMode(mode);
           }}
           onDeleteAccount={() => setProfileSettings(false)}
         />

@@ -18,3 +18,24 @@ export function setNameplate(mode: Nameplate) {
     localStorage.setItem(NAMEPLATE_KEY, mode);
   } catch {}
 }
+
+export type OverlayMode = "full" | "compact" | "none";
+
+const OVERLAY_KEY = "call_overlay";
+
+const OVERLAY_MODES: OverlayMode[] = ["full", "compact", "none"];
+
+export function overlayMode(): OverlayMode {
+  try {
+    const saved = localStorage.getItem(OVERLAY_KEY);
+    return OVERLAY_MODES.find((mode) => mode === saved) ?? "full";
+  } catch {
+    return "full";
+  }
+}
+
+export function setOverlayMode(mode: OverlayMode) {
+  try {
+    localStorage.setItem(OVERLAY_KEY, mode);
+  } catch {}
+}
