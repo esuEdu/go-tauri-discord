@@ -33,6 +33,7 @@ export function VoiceRoom({
   onWatch,
   onOpenMember,
   onRetry,
+  onJoin,
 }: {
   channel: Channel;
   inCall: string[];
@@ -54,6 +55,7 @@ export function VoiceRoom({
   onWatch: (userID: string) => void;
   onOpenMember: (userID: string, event: MouseEvent<HTMLElement>) => void;
   onRetry: () => void;
+  onJoin: () => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -121,6 +123,22 @@ export function VoiceRoom({
       )}
 
       <div className="voice-stage" ref={stage}>
+        {inCall.length === 0 && status !== "connecting" && status !== "failed" && (
+          <div className="room-empty">
+            <span className="room-empty-title">Nobody is in {channel.name}</span>
+            <span className="room-empty-text">
+              {status === "connected"
+                ? "You are the only one here. It stays open as long as you do."
+                : "Join and the others will see you waiting."}
+            </span>
+            {status !== "connected" && (
+              <button type="button" className="call-state-retry" onClick={onJoin}>
+                Join
+              </button>
+            )}
+          </div>
+        )}
+
         <div
           className="voice-tiles"
           style={{

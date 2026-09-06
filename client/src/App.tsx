@@ -15,6 +15,7 @@ import {
   VIEW_CHANNEL,
 } from "./permissions";
 import { emptySession, nameOf, session, type SessionState } from "./session";
+import { nameplate as savedNameplate, setNameplate, type Nameplate } from "./streamPrefs";
 import {
   voice,
   type ScreenQualityID,
@@ -128,6 +129,7 @@ export default function App() {
   const [callFailure, setCallFailure] = useState<VoiceFailure | null>(null);
   const [link, setLink] = useState<ConnectionState>("connecting");
   const [historyFailed, setHistoryFailed] = useState(false);
+  const [nameplate, setNameplateMode] = useState<Nameplate>(savedNameplate);
 
   useEffect(
     () =>
@@ -701,6 +703,7 @@ export default function App() {
           stream={watchedStream}
           userID={watching}
           screens={screens}
+          nameplate={nameplate}
           muted={muted}
           deafened={deafened}
           onToggleMute={() => {
@@ -753,6 +756,7 @@ export default function App() {
             setMenu({ kind: "voice", at: { x: event.clientX, y: event.clientY }, userID });
           }}
           onRetry={() => void joinVoice(activeChannel)}
+          onJoin={() => void joinVoice(activeChannel)}
         />
       ) : activeChannel ? (
         <Room
@@ -989,6 +993,11 @@ export default function App() {
           onSignOut={() => {
             void api.logout();
             setUser(null);
+          }}
+          nameplate={nameplate}
+          onNameplate={(mode) => {
+            setNameplateMode(mode);
+            setNameplate(mode);
           }}
           onDeleteAccount={() => setProfileSettings(false)}
         />
