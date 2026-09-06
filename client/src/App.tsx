@@ -24,6 +24,7 @@ import type {
   Message,
   MessageReaction,
   User,
+  VoiceStateUpdate,
 } from "./types/events.gen";
 
 import { Auth } from "./screens/Auth";
@@ -339,6 +340,15 @@ export default function App() {
       forgetDelete();
     };
   }, [activeGuild, callChannel]);
+
+  useEffect(() => {
+    if (!user || !callChannel) return;
+    return gateway.on("VOICE_STATE_UPDATE", (payload) => {
+      const state = payload as VoiceStateUpdate;
+      if (state.user_id !== user.id || state.channel_id) return;
+      void hangUp();
+    });
+  }, [user, callChannel]);
 
   const reload = useCallback(async () => {
     if (!activeChannel || activeChannel.kind !== "text") {
