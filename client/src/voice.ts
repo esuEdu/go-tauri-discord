@@ -215,6 +215,8 @@ class VoiceClient {
   private speakingListeners = new Set<(s: Speaking) => void>();
   private unsubscribe: Array<() => void> = [];
 
+  private generation = 0;
+
   private status: VoiceStatus = "idle";
   private failure: VoiceFailure | null = null;
   private channelID: string | null = null;
@@ -434,6 +436,7 @@ class VoiceClient {
     const sender = this.pc.getSenders().find((s) => s.track?.kind === "audio");
     if (!sender) return true;
 
+    const attempt = this.generation;
     const wasEnabled = this.microphone.getAudioTracks()[0]?.enabled ?? true;
 
     let fresh: MediaStream;
@@ -441,6 +444,10 @@ class VoiceClient {
       fresh = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints() });
     } catch {
       return false;
+    }
+    if (attempt !== this.generation) {
+      fresh.getTracks().forEach((track) => track.stop());
+      return true;
     }
 
     const older = this.microphone;
@@ -507,11 +514,16 @@ class VoiceClient {
     if (this.cleaned) return true;
     const mixer = this.context();
     if (!mixer) return false;
+    const attempt = this.generation;
     const made = await clean(mixer, this.microphone).catch(() => null);
     if (!made) {
       setSuppressesNoise(false);
       await browserSuppression(this.microphone, true);
       return false;
+    }
+    if (attempt !== this.generation) {
+      made.stop();
+      return true;
     }
     made.track.enabled = raw.enabled;
     await sender.replaceTrack(made.track).catch(() => undefined);
@@ -560,17 +572,20 @@ class VoiceClient {
 
   async join(channelID: string, selfID: string) {
     await this.leave();
+    const attempt = ++this.generation;
 
     this.selfID = selfID;
     this.channelID = channelID;
     this.failure = null;
     this.setStatus("connecting");
 
+    let microphone: MediaStream;
     try {
-      this.microphone = await navigator.mediaDevices.getUserMedia({
+      microphone = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints(),
       });
     } catch {
+      if (attempt !== this.generation) return;
       this.channelID = null;
       this.failure = "microphone";
       this.setStatus("failed");
@@ -578,22 +593,28 @@ class VoiceClient {
     }
 
     const mixer = this.context();
+    let cleaned: Cleaned | null = null;
+    if (mixer && suppressesNoise()) {
+      cleaned = await clean(mixer, microphone).catch(() => null);
+    }
+    await browserSuppression(microphone, !cleaned);
+
+    if (attempt !== this.generation) {
+      cleaned?.stop();
+      microphone.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    this.microphone = microphone;
+    this.cleaned = cleaned;
+
     if (mixer) {
-      if (suppressesNoise()) {
-        this.cleaned = await clean(mixer, this.microphone).catch(() => null);
-      }
       try {
-        this.watchLevel(
-          selfID,
-          mixer,
-          this.cleaned?.tap ?? mixer.createMediaStreamSource(this.microphone),
-        );
+        this.watchLevel(selfID, mixer, cleaned?.tap ?? mixer.createMediaStreamSource(microphone));
       } catch {
         this.forgetLevel(selfID);
       }
     }
-
-    await browserSuppression(this.microphone, !this.cleaned);
 
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     this.pc = pc;
@@ -795,6 +816,7 @@ class VoiceClient {
   }
 
   async leave() {
+    this.generation += 1;
     if (!this.pc && !this.channelID) return;
 
     gateway.sendRaw({ op: OpVoiceState, d: { channel_id: null, self_mute: false, self_deaf: false } });
