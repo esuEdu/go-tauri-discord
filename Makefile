@@ -147,7 +147,8 @@ client-build: require-rust ## Bundle the desktop app (needs Rust)
 
 .PHONY: desktop-check
 desktop-check: require-rust ## Compile and bundle the desktop app unoptimised (for CI)
-	cd $(CLIENT_DIR) && npm run tauri -- build --debug --bundles app
+	cd $(CLIENT_DIR) && npm run tauri -- build --debug --bundles app \
+		--config '{"bundle":{"createUpdaterArtifacts":false}}'
 
 .PHONY: desktop-smoke
 desktop-smoke: ## Launch the built desktop app and fail if it dies (catches WebKit key renames)
