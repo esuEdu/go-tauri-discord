@@ -664,6 +664,7 @@ class VoiceClient {
         } else {
           this.owners.delete(update.stream_id);
           this.videoStreams.delete(update.stream_id);
+          if (update.user_id === this.selfID) void this.stopScreenShare();
         }
         this.emitScreens();
       }),
