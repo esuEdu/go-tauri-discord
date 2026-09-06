@@ -822,11 +822,19 @@ button {
   background: var(--color-accent-400);
 }
 
-.notice {
+.banners {
   position: fixed;
   top: 16px;
   left: 50%;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.notice {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -838,7 +846,33 @@ button {
   color: var(--bad-text);
   font: var(--body-small);
   box-shadow: var(--shadow-md);
-  transform: translateX(-50%);
+}
+
+.notice[data-tone="waiting"] {
+  border-color: var(--color-neutral-700);
+  background: var(--color-surface);
+  color: var(--color-neutral-300);
+}
+
+.notice-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-neutral-700);
+  border-top-color: var(--color-accent-400);
+  border-radius: 50%;
+  animation: notice-spin 900ms linear infinite;
+}
+
+@keyframes notice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-spinner {
+    animation: none;
+  }
 }
 
 .notice-dismiss {

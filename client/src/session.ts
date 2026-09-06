@@ -151,6 +151,16 @@ class SessionStore {
     this.emit();
   }
 
+  leftVoice(userID: string) {
+    this.voiceMoved({
+      guild_id: "",
+      user_id: userID,
+      self_mute: false,
+      self_deaf: false,
+    });
+    this.emit();
+  }
+
   forget() {
     this.names = {};
     this.nicknames = {};

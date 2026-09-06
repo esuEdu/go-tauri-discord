@@ -4,30 +4,87 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
+type departure struct {
+	channelID uuid.UUID
+	userID    uuid.UUID
+}
+
+type screenChange struct {
+	userID   uuid.UUID
+	streamID string
+	active   bool
+}
+
 type recordingSignaler struct {
-	mu     sync.Mutex
-	offers map[uuid.UUID]webrtc.SessionDescription
+	mu         sync.Mutex
+	offers     map[uuid.UUID]webrtc.SessionDescription
+	sent       map[uuid.UUID]int
+	departures []departure
+	screens    []screenChange
 }
 
 func newRecordingSignaler() *recordingSignaler {
-	return &recordingSignaler{offers: make(map[uuid.UUID]webrtc.SessionDescription)}
+	return &recordingSignaler{
+		offers: make(map[uuid.UUID]webrtc.SessionDescription),
+		sent:   make(map[uuid.UUID]int),
+	}
 }
 
 func (r *recordingSignaler) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.offers[userID] = sdp
+	r.sent[userID]++
+}
+
+func (r *recordingSignaler) offersTo(userID uuid.UUID) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sent[userID]
 }
 
 func (r *recordingSignaler) SendCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
-func (r *recordingSignaler) VoiceClosed(uuid.UUID)                            {}
-func (r *recordingSignaler) ScreenChanged(uuid.UUID, uuid.UUID, string, bool) {}
 func (r *recordingSignaler) QualityChanged(uuid.UUID, Quality)                {}
+
+func (r *recordingSignaler) ScreenChanged(_, userID uuid.UUID, streamID string, active bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.screens = append(r.screens, screenChange{userID: userID, streamID: streamID, active: active})
+}
+
+func (r *recordingSignaler) sawScreen(want screenChange) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, change := range r.screens {
+		if change == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *recordingSignaler) VoiceClosed(channelID, userID uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.departures = append(r.departures, departure{channelID: channelID, userID: userID})
+}
+
+func (r *recordingSignaler) departed(channelID, userID uuid.UUID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.departures {
+		if d.channelID == channelID && d.userID == userID {
+			return true
+		}
+	}
+	return false
+}
 
 func stateOf(t *testing.T, sfu *SFU, channelID, userID uuid.UUID) Participant {
 	t.Helper()
@@ -143,6 +200,172 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 	if stateOf(t, sfu, channelID, userID).Muted {
 		t.Error("a member who left muted came back muted, while their microphone came back live; " +
 			"the two would disagree and nothing would correct it until they toggled")
+	}
+}
+
+func TestResyncResendsAnOfferThatNeverArrived(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if got := signaler.offersTo(userID); got != 1 {
+		t.Fatalf("offers after joining = %d, want 1", got)
+	}
+
+	if err := sfu.Resync(userID); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+
+	if got := signaler.offersTo(userID); got < 2 {
+		t.Errorf("offers after a resync = %d, want the unanswered one sent again: a socket that "+
+			"drops takes any offer queued behind it with it, since control frames are not replayed, "+
+			"and the peer then sits in have-local-offer where every later attempt to renegotiate "+
+			"gives up; nothing new is ever heard or seen in that call again", got)
+	}
+}
+
+func TestAConnectionThatClosesOnItsOwnIsAnnouncedAsALeave(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	p := sfu.peerFor(userID)
+	if p == nil {
+		t.Fatal("the peer went missing right after joining")
+	}
+	p.pc.Close()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !signaler.departed(channelID, userID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !signaler.departed(channelID, userID) {
+		t.Error("a peer whose connection closed was dropped without a word, so everyone else keeps " +
+			"them in the channel; the explicit leave that follows finds nobody to remove and stays " +
+			"silent too, and the ghost never goes away")
+	}
+	if _, still := sfu.ChannelOf(userID); still {
+		t.Error("the peer is still in a channel after its connection closed")
+	}
+}
+
+func TestLosingStreamTakesTheScreenDownMidShare(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, sharer := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, sharer, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	const streamID = "screen-being-shared"
+	share(t, sfu, channelID, sharer, streamID)
+
+	if err := sfu.SetMayStream(sharer, false); err != nil {
+		t.Fatalf("revoke stream: %v", err)
+	}
+
+	if !signaler.sawScreen(screenChange{userID: sharer, streamID: streamID, active: false}) {
+		t.Error("stream was taken away from somebody in the middle of sharing and the screen kept " +
+			"going: the permission is only read when a share starts, so a share already running " +
+			"outlives the permission that allowed it")
+	}
+	if err := sfu.SetScreenActive(sharer, true); err != ErrNotAllowed {
+		t.Errorf("re-announcing a screen after losing stream = %v, want %v; the client can put its "+
+			"own tile back up by asking", err, ErrNotAllowed)
+	}
+}
+
+func TestGettingStreamBackAllowsSharingAgain(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, sharer := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, sharer, false); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	share(t, sfu, channelID, sharer, "screen-being-shared")
+
+	if err := sfu.SetScreenActive(sharer, true); err != ErrNotAllowed {
+		t.Fatalf("sharing without the permission = %v, want %v", err, ErrNotAllowed)
+	}
+	if err := sfu.SetMayStream(sharer, true); err != nil {
+		t.Fatalf("grant stream: %v", err)
+	}
+	if err := sfu.SetScreenActive(sharer, true); err != nil {
+		t.Errorf("granting stream back left the member unable to share: %v", err)
+	}
+}
+
+func share(t *testing.T, sfu *SFU, channelID, sharer uuid.UUID, streamID string) {
+	t.Helper()
+
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8},
+		TrackName(SourceScreen, sharer, 1), streamID)
+	if err != nil {
+		t.Fatalf("create screen track: %v", err)
+	}
+
+	sfu.mu.Lock()
+	defer sfu.mu.Unlock()
+
+	r := sfu.rooms[channelID]
+	p := r.peers[sharer]
+	p.screenTrack = track
+	p.owned[track.ID()] = true
+	r.tracks[track.ID()] = track
+	r.screens[sharer] = streamID
+}
+
+func TestLeavingWhileSharingTakesTheScreenDown(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, sharer, viewer := uuid.New(), uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, sharer, true); err != nil {
+		t.Fatalf("join sharer: %v", err)
+	}
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join viewer: %v", err)
+	}
+
+	const streamID = "screen-being-shared"
+	sfu.mu.Lock()
+	sfu.rooms[channelID].screens[sharer] = streamID
+	sfu.mu.Unlock()
+
+	sfu.Leave(sharer)
+
+	if !signaler.sawScreen(screenChange{userID: sharer, streamID: streamID, active: false}) {
+		t.Error("somebody left mid-share and nobody was told the screen went away, so the tile and " +
+			"its owner linger for every viewer")
 	}
 }
 

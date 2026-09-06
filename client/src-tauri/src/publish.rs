@@ -61,9 +61,7 @@ impl PeerConnectionEventHandler for Events {
         log::info!("screen: publish connection is {state}");
         if matches!(
             state,
-            RTCPeerConnectionState::Failed
-                | RTCPeerConnectionState::Closed
-                | RTCPeerConnectionState::Disconnected
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
         ) {
             if let Ok(mut slot) = self.ended.lock() {
                 if let Some(tell) = slot.take() {

@@ -38,8 +38,10 @@ func (g *Gateway) SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateI
 	})
 }
 
-func (g *Gateway) VoiceClosed(userID uuid.UUID) {
-	g.leaveVoice(userID)
+func (g *Gateway) VoiceClosed(channelID, userID uuid.UUID) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	g.announceDeparture(ctx, channelID, userID)
 }
 
 func (g *Gateway) sendToUser(userID uuid.UUID, frame events.Frame) {
@@ -74,12 +76,11 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	perms, channel, err := g.guilds.PermissionsIn(ctx, sess.userID, *payload.ChannelID)
 	if err != nil {
+		g.refuseVoice(sess, uuid.Nil)
 		return
 	}
-	if channel.Kind != domain.ChannelVoice {
-		return
-	}
-	if !perms.Has(domain.PermConnect) {
+	if channel.Kind != domain.ChannelVoice || !perms.Has(domain.PermConnect) {
+		g.refuseVoice(sess, channel.GuildID)
 		return
 	}
 
@@ -90,11 +91,27 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	if err := g.voice.Join(*payload.ChannelID, sess.userID, perms.Has(domain.PermStream)); err != nil {
 		slog.ErrorContext(ctx, "voice join", "user_id", sess.userID, "error", err)
+		g.refuseVoice(sess, channel.GuildID)
 		return
 	}
 
 	g.sendExistingParticipants(sess, channel.GuildID, *payload.ChannelID)
 	g.announceVoice(ctx, sess.userID, *payload.ChannelID, payload.ChannelID, payload.SelfMute, payload.SelfDeaf)
+}
+
+func (g *Gateway) refuseVoice(sess *session, guildID uuid.UUID) {
+	frame, err := events.NewDispatch(events.EventVoiceStateUpdate, events.VoiceStateUpdate{
+		GuildID: guildID,
+		UserID:  sess.userID,
+	})
+	if err != nil {
+		return
+	}
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return
+	}
+	sess.enqueue(raw)
 }
 
 func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uuid.UUID) {
@@ -372,6 +389,48 @@ func (g *Gateway) leaveVoice(userID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	g.announceDeparture(ctx, channelID, userID)
+}
+
+func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, byChannel map[uuid.UUID]domain.Permission) {
+	if g.voice == nil {
+		return
+	}
+	channelID, connected := g.voice.ChannelOf(userID)
+	if !connected {
+		return
+	}
+	perms, hereabouts := byChannel[channelID]
+	if !hereabouts {
+		return
+	}
+	if !perms.Has(domain.PermViewChannel) || !perms.Has(domain.PermConnect) {
+		g.leaveVoice(userID)
+		return
+	}
+	if err := g.voice.SetMayStream(userID, perms.Has(domain.PermStream)); err != nil {
+		slog.Error("voice stream permission", "user_id", userID, "error", err)
+	}
+}
+
+func (g *Gateway) ClosedChannel(guildID, channelID uuid.UUID) {
+	if g.voice == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, participant := range g.voice.States(channelID) {
+		g.voice.Leave(participant.UserID)
+		g.publishVoice(ctx, guildID, events.VoiceStateUpdate{
+			GuildID: guildID,
+			UserID:  participant.UserID,
+		})
+	}
+}
+
+func (g *Gateway) announceDeparture(ctx context.Context, channelID, userID uuid.UUID) {
 	channel, err := g.guilds.Channel(ctx, channelID)
 	if err != nil {
 		return

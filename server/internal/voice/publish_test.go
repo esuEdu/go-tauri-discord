@@ -1,6 +1,7 @@
 package voice
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -133,5 +134,49 @@ func publishOneScreen(t *testing.T, sfu *SFU, userID uuid.UUID) {
 	}
 	if err := sfu.PublishScreen(userID, offer); err != nil {
 		t.Fatalf("publish screen: %v", err)
+	}
+}
+
+func TestPublishingWhileOthersJoinKeepsTheirEstimatesApart(t *testing.T) {
+	sfu, err := New(newRecordingSignaler(), nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+	sfu.AttachPublishSignaler(&recordingPublishSignaler{
+		answers: make(chan webrtc.SessionDescription, 1),
+	})
+
+	channelID, sharer := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, sharer, true); err != nil {
+		t.Fatalf("join sharer: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range 8 {
+			publishOneScreen(t, sfu, sharer)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 8 {
+			if err := sfu.Join(channelID, uuid.New(), false); err != nil {
+				t.Errorf("join listener: %v", err)
+			}
+		}
+	}()
+	wg.Wait()
+
+	for _, e := range sfu.Estimates(channelID) {
+		if e.Bits <= 0 {
+			t.Errorf("%s has no bandwidth estimate of its own: the estimator a new connection "+
+				"reports is picked up from one shared field, and publishing a screen builds a "+
+				"connection without taking the lock that field is guarded by, so a listener and "+
+				"a publisher arriving together can take each other's estimate or none at all",
+				e.UserID)
+		}
 	}
 }
