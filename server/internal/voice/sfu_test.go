@@ -4,14 +4,28 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
+type departure struct {
+	channelID uuid.UUID
+	userID    uuid.UUID
+}
+
+type screenChange struct {
+	userID   uuid.UUID
+	streamID string
+	active   bool
+}
+
 type recordingSignaler struct {
-	mu     sync.Mutex
-	offers map[uuid.UUID]webrtc.SessionDescription
+	mu         sync.Mutex
+	offers     map[uuid.UUID]webrtc.SessionDescription
+	departures []departure
+	screens    []screenChange
 }
 
 func newRecordingSignaler() *recordingSignaler {
@@ -25,9 +39,41 @@ func (r *recordingSignaler) SendOffer(userID uuid.UUID, sdp webrtc.SessionDescri
 }
 
 func (r *recordingSignaler) SendCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
-func (r *recordingSignaler) VoiceClosed(uuid.UUID)                            {}
-func (r *recordingSignaler) ScreenChanged(uuid.UUID, uuid.UUID, string, bool) {}
 func (r *recordingSignaler) QualityChanged(uuid.UUID, Quality)                {}
+
+func (r *recordingSignaler) ScreenChanged(_, userID uuid.UUID, streamID string, active bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.screens = append(r.screens, screenChange{userID: userID, streamID: streamID, active: active})
+}
+
+func (r *recordingSignaler) sawScreen(want screenChange) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, change := range r.screens {
+		if change == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *recordingSignaler) VoiceClosed(channelID, userID uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.departures = append(r.departures, departure{channelID: channelID, userID: userID})
+}
+
+func (r *recordingSignaler) departed(channelID, userID uuid.UUID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.departures {
+		if d.channelID == channelID && d.userID == userID {
+			return true
+		}
+	}
+	return false
+}
 
 func stateOf(t *testing.T, sfu *SFU, channelID, userID uuid.UUID) Participant {
 	t.Helper()
@@ -143,6 +189,69 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 	if stateOf(t, sfu, channelID, userID).Muted {
 		t.Error("a member who left muted came back muted, while their microphone came back live; " +
 			"the two would disagree and nothing would correct it until they toggled")
+	}
+}
+
+func TestAConnectionThatClosesOnItsOwnIsAnnouncedAsALeave(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, userID := uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, userID, true); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	p := sfu.peerFor(userID)
+	if p == nil {
+		t.Fatal("the peer went missing right after joining")
+	}
+	p.pc.Close()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !signaler.departed(channelID, userID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !signaler.departed(channelID, userID) {
+		t.Error("a peer whose connection closed was dropped without a word, so everyone else keeps " +
+			"them in the channel; the explicit leave that follows finds nobody to remove and stays " +
+			"silent too, and the ghost never goes away")
+	}
+	if _, still := sfu.ChannelOf(userID); still {
+		t.Error("the peer is still in a channel after its connection closed")
+	}
+}
+
+func TestLeavingWhileSharingTakesTheScreenDown(t *testing.T) {
+	signaler := newRecordingSignaler()
+	sfu, err := New(signaler, nil, Network{})
+	if err != nil {
+		t.Fatalf("new sfu: %v", err)
+	}
+	t.Cleanup(sfu.Close)
+
+	channelID, sharer, viewer := uuid.New(), uuid.New(), uuid.New()
+	if err := sfu.Join(channelID, sharer, true); err != nil {
+		t.Fatalf("join sharer: %v", err)
+	}
+	if err := sfu.Join(channelID, viewer, true); err != nil {
+		t.Fatalf("join viewer: %v", err)
+	}
+
+	const streamID = "screen-being-shared"
+	sfu.mu.Lock()
+	sfu.rooms[channelID].screens[sharer] = streamID
+	sfu.mu.Unlock()
+
+	sfu.Leave(sharer)
+
+	if !signaler.sawScreen(screenChange{userID: sharer, streamID: streamID, active: false}) {
+		t.Error("somebody left mid-share and nobody was told the screen went away, so the tile and " +
+			"its owner linger for every viewer")
 	}
 }
 

@@ -38,8 +38,10 @@ func (g *Gateway) SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateI
 	})
 }
 
-func (g *Gateway) VoiceClosed(userID uuid.UUID) {
-	g.leaveVoice(userID)
+func (g *Gateway) VoiceClosed(channelID, userID uuid.UUID) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	g.announceDeparture(ctx, channelID, userID)
 }
 
 func (g *Gateway) sendToUser(userID uuid.UUID, frame events.Frame) {
@@ -372,6 +374,10 @@ func (g *Gateway) leaveVoice(userID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	g.announceDeparture(ctx, channelID, userID)
+}
+
+func (g *Gateway) announceDeparture(ctx context.Context, channelID, userID uuid.UUID) {
 	channel, err := g.guilds.Channel(ctx, channelID)
 	if err != nil {
 		return

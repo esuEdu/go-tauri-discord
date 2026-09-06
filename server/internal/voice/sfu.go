@@ -23,7 +23,7 @@ var ErrNotAllowed = errors.New("voice: not allowed to share a screen here")
 type Signaler interface {
 	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription)
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
-	VoiceClosed(userID uuid.UUID)
+	VoiceClosed(channelID, userID uuid.UUID)
 	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
 	QualityChanged(channelID uuid.UUID, quality Quality)
 }
@@ -236,7 +236,11 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 		s.signaler.SendCandidate(userID, c.ToJSON())
 	})
 
-	watchConnection(pc, userID, "microphone", func() { s.leave(userID, p) })
+	watchConnection(pc, userID, "microphone", func() {
+		if channelID, left := s.leave(userID, p); left {
+			s.signaler.VoiceClosed(channelID, userID)
+		}
+	})
 
 	pc.OnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		s.forward(r, p, remote, SourceMicrophone)
@@ -330,38 +334,28 @@ func (s *SFU) Leave(userID uuid.UUID) {
 	s.leave(userID, nil)
 }
 
-func (s *SFU) leave(userID uuid.UUID, only *peer) {
+func (s *SFU) leave(userID uuid.UUID, only *peer) (uuid.UUID, bool) {
 	s.mu.Lock()
 	channelID, ok := s.homes[userID]
 	if !ok {
 		s.mu.Unlock()
-		return
+		return uuid.Nil, false
 	}
 
 	r := s.rooms[channelID]
 	if r == nil {
 		delete(s.homes, userID)
 		s.mu.Unlock()
-		return
+		return channelID, true
 	}
 	p := r.peers[userID]
 	if only != nil && p != only {
 		s.mu.Unlock()
-		return
+		return uuid.Nil, false
 	}
-	delete(s.homes, userID)
-	delete(r.peers, userID)
-	delete(r.screens, userID)
 
-	if p != nil {
-		for id := range p.owned {
-			delete(r.tracks, id)
-		}
-	}
-	empty := len(r.peers) == 0
-	if empty {
-		delete(s.rooms, channelID)
-	} else {
+	streamID, wasSharing := s.forgetLocked(r, userID, p)
+	if s.rooms[channelID] == r {
 		s.signalLocked(r)
 	}
 	s.mu.Unlock()
@@ -370,6 +364,30 @@ func (s *SFU) leave(userID uuid.UUID, only *peer) {
 		p.pc.Close()
 	}
 	s.StopPublishing(userID)
+	if wasSharing {
+		s.signaler.ScreenChanged(channelID, userID, streamID, false)
+	}
+	return channelID, true
+}
+
+func (s *SFU) forgetLocked(r *room, userID uuid.UUID, p *peer) (string, bool) {
+	streamID, sharing := r.screens[userID]
+
+	delete(s.homes, userID)
+	delete(r.peers, userID)
+	delete(r.screens, userID)
+
+	if p != nil {
+		for id := range p.owned {
+			delete(r.tracks, id)
+			delete(r.keyframes, id)
+			delete(r.layers, id)
+		}
+	}
+	if len(r.peers) == 0 {
+		delete(s.rooms, r.channelID)
+	}
+	return streamID, sharing
 }
 
 func (s *SFU) Answer(userID uuid.UUID, sdp webrtc.SessionDescription) error {
@@ -799,9 +817,16 @@ func (s *SFU) signalLocked(r *room) {
 func (s *SFU) syncLocked(r *room) bool {
 	for userID, p := range r.peers {
 		if p.pc.ConnectionState() == webrtc.PeerConnectionStateClosed {
-			delete(r.peers, userID)
-			delete(s.homes, userID)
-			continue
+			channelID := r.channelID
+			streamID, wasSharing := s.forgetLocked(r, userID, p)
+			go func() {
+				s.StopPublishing(userID)
+				if wasSharing {
+					s.signaler.ScreenChanged(channelID, userID, streamID, false)
+				}
+				s.signaler.VoiceClosed(channelID, userID)
+			}()
+			return false
 		}
 
 		changed := false
