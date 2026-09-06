@@ -339,7 +339,7 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
             let settings = Settings::new(
                 monitor,
                 CursorCaptureSettings::WithCursor,
-                DrawBorderSettings::Default,
+                DrawBorderSettings::WithoutBorder,
                 SecondaryWindowSettings::Default,
                 MinimumUpdateIntervalSettings::Default,
                 DirtyRegionSettings::Default,
@@ -354,7 +354,7 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
             let settings = Settings::new(
                 window,
                 CursorCaptureSettings::WithCursor,
-                DrawBorderSettings::Default,
+                DrawBorderSettings::WithoutBorder,
                 SecondaryWindowSettings::Default,
                 MinimumUpdateIntervalSettings::Default,
                 DirtyRegionSettings::Default,
