@@ -76,12 +76,11 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	perms, channel, err := g.guilds.PermissionsIn(ctx, sess.userID, *payload.ChannelID)
 	if err != nil {
+		g.refuseVoice(sess, uuid.Nil)
 		return
 	}
-	if channel.Kind != domain.ChannelVoice {
-		return
-	}
-	if !perms.Has(domain.PermConnect) {
+	if channel.Kind != domain.ChannelVoice || !perms.Has(domain.PermConnect) {
+		g.refuseVoice(sess, channel.GuildID)
 		return
 	}
 
@@ -92,11 +91,27 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	if err := g.voice.Join(*payload.ChannelID, sess.userID, perms.Has(domain.PermStream)); err != nil {
 		slog.ErrorContext(ctx, "voice join", "user_id", sess.userID, "error", err)
+		g.refuseVoice(sess, channel.GuildID)
 		return
 	}
 
 	g.sendExistingParticipants(sess, channel.GuildID, *payload.ChannelID)
 	g.announceVoice(ctx, sess.userID, *payload.ChannelID, payload.ChannelID, payload.SelfMute, payload.SelfDeaf)
+}
+
+func (g *Gateway) refuseVoice(sess *session, guildID uuid.UUID) {
+	frame, err := events.NewDispatch(events.EventVoiceStateUpdate, events.VoiceStateUpdate{
+		GuildID: guildID,
+		UserID:  sess.userID,
+	})
+	if err != nil {
+		return
+	}
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return
+	}
+	sess.enqueue(raw)
 }
 
 func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uuid.UUID) {

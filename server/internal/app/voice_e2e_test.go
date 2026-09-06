@@ -998,3 +998,36 @@ func sawDeparture(s *socket, userID uuid.UUID, within time.Duration) bool {
 		return state.UserID == userID && state.ChannelID == nil
 	})
 }
+
+func TestBeingRefusedAVoiceChannelIsToldToYou(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("No entry")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+	everyone := owner.everyone(guild.ID)
+
+	owner.mustDo("PUT",
+		"/api/v1/channels/"+voiceChannel.String()+"/overwrites/"+everyone.ID.String(),
+		204, map[string]any{
+			"target_type": "role",
+			"deny":        perm(domain.PermConnect),
+		}, nil)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	member := &harness{t: t, server: owner.server}
+	memberID, _ := member.registerUser()
+	member.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	sock := member.dial()
+	sock.identify(member.token)
+	sock.write(events.Frame{
+		Op: events.OpVoiceState,
+		D:  mustJSON(t, events.VoiceStateRequest{ChannelID: &voiceChannel}),
+	})
+
+	if !sawDeparture(sock, memberID, 3*time.Second) {
+		t.Error("a refused join went unanswered: the client has already opened the microphone and " +
+			"put itself in the room by the time it asks, so silence leaves it connecting forever " +
+			"with a live microphone and a call that was never allowed")
+	}
+}
