@@ -49,6 +49,7 @@ struct IceServerInput {
 }
 
 struct Active {
+    id: u64,
     capture: capture::Session,
     publisher: Publisher,
 }
@@ -56,6 +57,7 @@ struct Active {
 #[derive(Default)]
 struct Screen {
     active: Mutex<Option<Active>>,
+    shares: std::sync::atomic::AtomicU64,
     #[cfg(target_os = "windows")]
     webview: std::sync::atomic::AtomicU32,
 }
@@ -105,6 +107,11 @@ async fn start_screen_share(
 
     stop(&screen).await;
 
+    let id = screen
+        .shares
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        + 1;
+
     let (video_tx, video_rx) = channel(FRAME_QUEUE);
     let (audio_tx, audio_rx) = channel(FRAME_QUEUE);
 
@@ -146,6 +153,7 @@ async fn start_screen_share(
         .map_err(|error| error.to_string())?;
 
     *screen.active.lock().await = Some(Active {
+        id,
         capture: session,
         publisher: started.publisher,
     });
@@ -154,6 +162,9 @@ async fn start_screen_share(
     let held = Arc::clone(&screen);
     tauri::async_runtime::spawn(async move {
         let _ = started.ended.await;
+        if !still_sharing(&held, id).await {
+            return;
+        }
         stop(&held).await;
         let _ = watcher.emit(ENDED, ());
     });
@@ -199,6 +210,10 @@ async fn stop(screen: &Screen) {
         active.capture.stop();
         active.publisher.close().await;
     }
+}
+
+async fn still_sharing(screen: &Screen, id: u64) -> bool {
+    matches!(screen.active.lock().await.as_ref(), Some(active) if active.id == id)
 }
 
 pub fn run() {
