@@ -331,13 +331,14 @@ export default function App() {
           .map((c) => (c.parent_id === channel.id ? { ...c, parent_id: undefined } : c)),
       );
       setActiveChannel((held) => (held?.id === channel.id ? null : held));
+      if (callChannel?.id === channel.id) void hangUp();
     });
     return () => {
       forgetCreate();
       forgetUpdate();
       forgetDelete();
     };
-  }, [activeGuild]);
+  }, [activeGuild, callChannel]);
 
   const reload = useCallback(async () => {
     if (!activeChannel || activeChannel.kind !== "text") {
