@@ -15,7 +15,6 @@ import type {
 
 export type SessionState = {
   names: Record<string, string>;
-  nicknames: Record<string, Record<string, string>>;
   tags: Record<string, string>;
   avatars: Record<string, string | null>;
   online: Record<string, boolean>;
@@ -31,7 +30,6 @@ export type SessionState = {
 
 export const emptySession: SessionState = {
   names: {},
-  nicknames: {},
   tags: {},
   avatars: {},
   online: {},
@@ -47,7 +45,6 @@ export const emptySession: SessionState = {
 
 class SessionStore {
   private names: Record<string, string> = {};
-  private nicknames: Record<string, Record<string, string>> = {};
   private tags: Record<string, string> = {};
   private avatars: Record<string, string | null> = {};
   private online: Record<string, boolean> = {};
@@ -72,13 +69,7 @@ class SessionStore {
       this.names = { ...this.names, [member.user.id]: member.user.username };
       this.tags = { ...this.tags, [member.user.id]: member.user.discriminator };
       this.avatars = { ...this.avatars, [member.user.id]: member.user.avatar_key ?? null };
-      this.nameIn(member.guild_id, member.user.id, member.nickname ?? null);
       this.remember(member.guild_id, member.user.id);
-      this.emit();
-    });
-    gateway.on("GUILD_MEMBER_UPDATE", (payload) => {
-      const member = payload as Member;
-      this.nameIn(member.guild_id, member.user.id, member.nickname ?? null);
       this.emit();
     });
     gateway.on("USER_UPDATE", (payload) => {
@@ -163,7 +154,6 @@ class SessionStore {
 
   forget() {
     this.names = {};
-    this.nicknames = {};
     this.tags = {};
     this.avatars = {};
     this.online = {};
@@ -180,18 +170,6 @@ class SessionStore {
     this.emit();
   }
 
-  private nameIn(guildID: string, userID: string, nickname: string | null) {
-    const held = this.nicknames[guildID] ?? {};
-    if (nickname) {
-      this.nicknames = { ...this.nicknames, [guildID]: { ...held, [userID]: nickname } };
-      return;
-    }
-    if (!(userID in held)) return;
-    const left = { ...held };
-    delete left[userID];
-    this.nicknames = { ...this.nicknames, [guildID]: left };
-  }
-
   private snapshot(): SessionState {
     const unread: Record<string, boolean> = {};
     for (const [channelID, newest] of Object.entries(this.newest)) {
@@ -199,7 +177,6 @@ class SessionStore {
     }
     return {
       names: this.names,
-      nicknames: this.nicknames,
       tags: this.tags,
       avatars: this.avatars,
       online: this.online,
@@ -229,12 +206,10 @@ class SessionStore {
     this.deafenedInVoice = {};
     this.connection = {};
     for (const state of ready.voice) this.voiceMoved(state);
-    this.nicknames = {};
     for (const member of ready.members) {
       this.names[member.user.id] = member.user.username;
       this.tags[member.user.id] = member.user.discriminator;
       this.avatars[member.user.id] = member.user.avatar_key ?? null;
-      this.nameIn(member.guild_id, member.user.id, member.nickname ?? null);
       this.remember(member.guild_id, member.user.id);
     }
 
@@ -366,7 +341,6 @@ class SessionStore {
 
 export const session = new SessionStore();
 
-export function nameOf(state: SessionState, guildID: string | null, userID: string): string {
-  const nickname = guildID ? state.nicknames[guildID]?.[userID] : undefined;
-  return nickname ?? state.names[userID] ?? "Someone";
+export function nameOf(state: SessionState, userID: string): string {
+  return state.names[userID] ?? "Someone";
 }

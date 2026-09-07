@@ -9,7 +9,6 @@ import {
   CREATE_INVITE,
   KICK_MEMBERS,
   MANAGE_CHANNELS,
-  MANAGE_GUILD,
   MANAGE_MESSAGES,
   SEND_MESSAGES,
   VIEW_CHANNEL,
@@ -93,6 +92,8 @@ function callQuality(status: VoiceStatus, grade: string | undefined): "good" | "
   return "good";
 }
 
+const TYPING_LASTS = 6000;
+
 const LINK_TEXT: Partial<Record<ConnectionState, string>> = {
   connecting: "Connecting to Vocalis…",
   reconnecting: "Reconnecting… messages and calls will catch up on their own.",
@@ -166,7 +167,6 @@ export default function App() {
   const [privateChannel, setPrivateChannel] = useState(false);
   const [editingChannel, setEditingChannel] = useState<{ channel: Channel; name: string } | null>(null);
   const [droppingChannel, setDroppingChannel] = useState<Channel | null>(null);
-  const [renaming, setRenaming] = useState<{ userID: string; name: string } | null>(null);
   const [serverMenu, setServerMenu] = useState<Anchor | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -444,13 +444,24 @@ export default function App() {
       applyReaction(hit.message_id, hit.emoji, false, false);
     });
 
+    const stopped = new Map<string, number>();
     const typed = gateway.on("TYPING_START", (payload) => {
       const who = payload as { channel_id: string; user_id: string };
       if (who.channel_id !== activeChannel.id || who.user_id === user?.id) return;
       setTyping((prev) => (prev.includes(who.user_id) ? prev : [...prev, who.user_id]));
-      setTimeout(() => setTyping((prev) => prev.filter((id) => id !== who.user_id)), 6000);
+      window.clearTimeout(stopped.get(who.user_id));
+      stopped.set(
+        who.user_id,
+        window.setTimeout(() => {
+          stopped.delete(who.user_id);
+          setTyping((prev) => prev.filter((id) => id !== who.user_id));
+        }, TYPING_LASTS),
+      );
     });
+    setTyping([]);
     return () => {
+      for (const timer of stopped.values()) window.clearTimeout(timer);
+      setTyping([]);
       created();
       updated();
       removed();
@@ -466,8 +477,8 @@ export default function App() {
   );
 
   const nameFor = useCallback(
-    (id: string) => nameOf(state, activeGuild?.id ?? null, id),
-    [state, activeGuild],
+    (id: string) => nameOf(state, id),
+    [state],
   );
 
   const permissions = activeGuild ? (state.guildAllows[activeGuild.id] ?? 0) : 0;
@@ -783,6 +794,7 @@ export default function App() {
           typing={typing.map(nameFor)}
           canSend={allows(effective, SEND_MESSAGES)}
           canReact={allows(effective, ADD_REACTIONS)}
+          onTrouble={setNotice}
           avatarURL={avatarURL}
           onReact={react}
           onUnreact={unreact}
@@ -944,7 +956,10 @@ export default function App() {
         <Sheet
           title="Edit message"
           subtitle="Everyone sees the change, and it is marked as edited."
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setEditDraft("");
+          }}
         >
           <label className="field">
             <span className="field-label">Message</span>
@@ -956,13 +971,26 @@ export default function App() {
             />
           </label>
           <div className="sheet-actions">
-            <Button kind="quiet" onClick={() => setEditing(null)}>
+            <Button
+              kind="quiet"
+              onClick={() => {
+                setEditing(null);
+                setEditDraft("");
+              }}
+            >
               Cancel
             </Button>
             <Button
+              disabled={!editDraft.trim()}
               onClick={async () => {
-                const next = (editDraft || editing.content).trim();
-                if (next) await api.editMessage(editing.id, next);
+                const next = editDraft.trim();
+                if (!next) return;
+                try {
+                  await api.editMessage(editing.id, next);
+                } catch {
+                  setNotice("That edit was not saved.");
+                  return;
+                }
                 setEditing(null);
                 setEditDraft("");
               }}
@@ -1086,9 +1114,20 @@ export default function App() {
           at={menu.at}
           mine={menu.message.author.id === user.id}
           canDelete={menu.message.author.id === user.id || allows(permissions, MANAGE_MESSAGES)}
-          onEdit={() => setEditing(menu.message)}
-          onDelete={() => void api.deleteMessage(menu.message.id)}
-          onCopy={() => void navigator.clipboard.writeText(menu.message.content)}
+          onEdit={() => {
+            setEditDraft(menu.message.content);
+            setEditing(menu.message);
+          }}
+          onDelete={() =>
+            void api
+              .deleteMessage(menu.message.id)
+              .catch(() => setNotice("That message was not deleted."))
+          }
+          onCopy={() =>
+            void navigator.clipboard
+              .writeText(menu.message.content)
+              .catch(() => setNotice("That message was not copied."))
+          }
           onClose={() => setMenu(null)}
         />
       )}
@@ -1131,10 +1170,6 @@ export default function App() {
           name={nameFor(menu.userID)}
           avatarURL={avatarURL(menu.userID)}
           live={live.has(menu.userID)}
-          canRename={menu.userID === user.id || allows(permissions, MANAGE_GUILD)}
-          onRename={() =>
-            setRenaming({ userID: menu.userID, name: nameFor(menu.userID) })
-          }
           canKick={allows(permissions, KICK_MEMBERS)}
           canBan={allows(permissions, BAN_MEMBERS)}
           onKick={() => setConfirm({ action: "kick", userID: menu.userID })}
@@ -1233,39 +1268,6 @@ export default function App() {
             </Button>
             <Button disabled={!channelName.trim()} onClick={() => void makeChannel(activeGuild.id)}>
               Create Channel
-            </Button>
-          </div>
-        </Sheet>
-      )}
-
-      {renaming && activeGuild && (
-        <Sheet
-          title="Change nickname"
-          subtitle="It applies in this server only. Clear it to go back to their username."
-          onClose={() => setRenaming(null)}
-        >
-          <label className="field">
-            <span className="field-label">Nickname</span>
-            <input
-              className="input"
-              value={renaming.name}
-              placeholder={state.names[renaming.userID] ?? ""}
-              autoFocus
-              onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
-            />
-          </label>
-          <div className="sheet-actions">
-            <Button kind="quiet" onClick={() => setRenaming(null)}>
-              Never mind
-            </Button>
-            <Button
-              onClick={async () => {
-                const { userID, name } = renaming;
-                setRenaming(null);
-                await api.setNickname(activeGuild.id, userID, name.trim() || null);
-              }}
-            >
-              Save it
             </Button>
           </div>
         </Sheet>

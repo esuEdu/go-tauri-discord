@@ -2,7 +2,6 @@ import { apiBase, serverURL } from "./server";
 import type {
   Channel,
   Guild,
-  Member,
   Message,
   Overwrite,
   Role,
@@ -344,14 +343,6 @@ export class Api {
 
   clearGuildIcon(guildID: string): Promise<void> {
     return this.request<void>("DELETE", `/api/v1/guilds/${guildID}/icon`);
-  }
-
-  setNickname(guildID: string, userID: string, nickname: string | null): Promise<Member> {
-    return this.request<Member>(
-      "PATCH",
-      `/api/v1/guilds/${guildID}/members/${userID}`,
-      { nickname },
-    );
   }
 
   updateGuild(guildID: string, patch: { name?: string }): Promise<Guild> {
