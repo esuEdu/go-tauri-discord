@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
@@ -15,19 +15,7 @@ import {
   VIEW_CHANNEL,
 } from "./permissions";
 import { emptySession, nameOf, session, type SessionState } from "./session";
-import {
-  nameplate as savedNameplate,
-  overlayCorner as savedOverlayCorner,
-  overlayMode as savedOverlayMode,
-  setNameplate,
-  setOverlayCorner,
-  setOverlayMode,
-  type Nameplate,
-  type OverlayCorner,
-  type OverlayMode,
-} from "./streamPrefs";
-import { OVERLAY_EVENT, OVERLAY_READY, type OverlayState } from "./shell/CallOverlay";
-import { onDesktop } from "./capture";
+import { nameplate as savedNameplate, setNameplate, type Nameplate } from "./streamPrefs";
 import {
   voice,
   type ScreenQualityID,
@@ -142,8 +130,6 @@ export default function App() {
   const [link, setLink] = useState<ConnectionState>("connecting");
   const [historyFailed, setHistoryFailed] = useState(false);
   const [nameplate, setNameplateMode] = useState<Nameplate>(savedNameplate);
-  const [overlay, setOverlay] = useState<OverlayMode>(savedOverlayMode);
-  const [corner, setCorner] = useState<OverlayCorner>(savedOverlayCorner);
 
   useEffect(
     () =>
@@ -486,73 +472,6 @@ export default function App() {
   const permissions = activeGuild ? (state.guildAllows[activeGuild.id] ?? 0) : 0;
   const channelAllows = activeChannel ? state.channelAllows[activeChannel.id] : undefined;
   const effective = channelAllows ?? permissions;
-
-  const inCallNow = callChannel ? (state.inVoice[callChannel.id] ?? []) : [];
-  const overlayPeople = inCallNow
-    .map((id) => ({
-      id,
-      name: nameFor(id),
-      avatarURL: avatarURL(id),
-      speaking: Boolean(speaking[id]),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const overlayKey = JSON.stringify({ overlay, corner, overlayPeople, sharing: screens.sharing });
-
-  const overlayShown = useRef<OverlayState>({ mode: overlay, corner, people: overlayPeople });
-  overlayShown.current = { mode: overlay, corner, people: overlayPeople };
-
-  useEffect(() => {
-    if (!onDesktop()) return;
-    let stop: (() => void) | undefined;
-    let dropped = false;
-
-    void (async () => {
-      const { emit, listen } = await import("@tauri-apps/api/event");
-      const { invoke } = await import("@tauri-apps/api/core");
-      const off = await listen(OVERLAY_READY, () => {
-        void invoke("note", { message: "overlay: the panel reported itself ready" });
-        void emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
-      });
-      if (dropped) off();
-      else stop = off;
-    })();
-
-    return () => {
-      dropped = true;
-      stop?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!onDesktop()) return;
-    const wanted = screens.sharing && overlay !== "none";
-
-    void (async () => {
-      const { invoke } = await import("@tauri-apps/api/core");
-      if (!wanted) {
-        await invoke("hide_call_overlay").catch(() => undefined);
-        return;
-      }
-      try {
-        await invoke("show_call_overlay", { corner });
-      } catch (reason) {
-        console.error("the call overlay would not open", reason);
-        void invoke("note", { message: `overlay: asking for it failed (${String(reason)})` });
-        return;
-      }
-
-      const { emit } = await import("@tauri-apps/api/event");
-      try {
-        await emit(OVERLAY_EVENT, overlayShown.current);
-        void invoke("note", {
-          message: `overlay: sent ${overlayShown.current.people.length} in the call`,
-        });
-      } catch (reason) {
-        console.error("the call overlay could not be told who is here", reason);
-        void invoke("note", { message: `overlay: sending failed (${String(reason)})` });
-      }
-    })();
-  }, [overlayKey]);
 
   const live = useMemo(() => {
     const set = new Set(
@@ -1079,16 +998,6 @@ export default function App() {
           onNameplate={(mode) => {
             setNameplateMode(mode);
             setNameplate(mode);
-          }}
-          overlay={overlay}
-          onOverlay={(mode) => {
-            setOverlay(mode);
-            setOverlayMode(mode);
-          }}
-          corner={corner}
-          onCorner={(pick) => {
-            setCorner(pick);
-            setOverlayCorner(pick);
           }}
           onDeleteAccount={() => setProfileSettings(false)}
         />

@@ -7,7 +7,7 @@ import {
   setJoinsMuted,
   type Microphone,
 } from "../audioPrefs";
-import type { Nameplate, OverlayCorner, OverlayMode } from "../streamPrefs";
+import type { Nameplate } from "../streamPrefs";
 import type { User } from "../types/events.gen";
 import { checkForUpdate, currentVersion, type Release } from "../updates";
 import { Avatar } from "../ui/Avatar";
@@ -38,10 +38,6 @@ export function ProfileSettings({
   onDeleteAccount,
   nameplate,
   onNameplate,
-  overlay,
-  onOverlay,
-  corner,
-  onCorner,
 }: {
   user: User;
   avatarURL: string | null;
@@ -51,10 +47,6 @@ export function ProfileSettings({
   onDeleteAccount: () => void;
   nameplate: Nameplate;
   onNameplate: (mode: Nameplate) => void;
-  overlay: OverlayMode;
-  onOverlay: (mode: OverlayMode) => void;
-  corner: OverlayCorner;
-  onCorner: (corner: OverlayCorner) => void;
 }) {
   const [tab, setTab] = useState<Tab>("account");
 
@@ -101,14 +93,7 @@ export function ProfileSettings({
           {tab === "voice" && <VoiceTab />}
           {tab === "alerts" && <AlertsTab />}
           {tab === "look" && (
-            <LookTab
-              nameplate={nameplate}
-              onNameplate={onNameplate}
-              overlay={overlay}
-              onOverlay={onOverlay}
-              corner={corner}
-              onCorner={onCorner}
-            />
+            <LookTab nameplate={nameplate} onNameplate={onNameplate} />
           )}
           {tab === "about" && <AboutTab />}
         </div>
@@ -345,27 +330,12 @@ const NAMEPLATES: { id: Nameplate; label: string }[] = [
   { id: "none", label: "None" },
 ];
 
-const CORNERS: { id: OverlayCorner; label: string }[] = [
-  { id: "top-left", label: "Top left" },
-  { id: "top-right", label: "Top right" },
-  { id: "bottom-left", label: "Bottom left" },
-  { id: "bottom-right", label: "Bottom right" },
-];
-
 function LookTab({
   nameplate,
   onNameplate,
-  overlay,
-  onOverlay,
-  corner,
-  onCorner,
 }: {
   nameplate: Nameplate;
   onNameplate: (mode: Nameplate) => void;
-  overlay: OverlayMode;
-  onOverlay: (mode: OverlayMode) => void;
-  corner: OverlayCorner;
-  onCorner: (corner: OverlayCorner) => void;
 }) {
   return (
     <>
@@ -409,50 +379,6 @@ function LookTab({
         their picture and name, compact only the picture, none stays out of the way.
       </p>
 
-      <span className="profile-divider" />
-
-      <span className="profile-title">The call, while you share your screen</span>
-      <div className="profile-choice-row">
-        {NAMEPLATES.map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className="profile-choice"
-            data-active={overlay === mode.id}
-            aria-pressed={overlay === mode.id}
-            onClick={() => onOverlay(mode.id)}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
-      <p className="profile-hint">
-        A panel in the corner of your own screen, on top of whatever you are sharing,
-        so you can see who is in the call without coming back to Vocalis. It appears
-        when your share starts and goes when it stops. macOS only for now — on
-        Windows it opened a window that crashed, so it stays shut until that is
-        understood.
-      </p>
-
-      {overlay !== "none" && (
-        <>
-          <div className="profile-choice-row">
-            {CORNERS.map((pick) => (
-              <button
-                key={pick.id}
-                type="button"
-                className="profile-choice"
-                data-active={corner === pick.id}
-                aria-pressed={corner === pick.id}
-                onClick={() => onCorner(pick.id)}
-              >
-                {pick.label}
-              </button>
-            ))}
-          </div>
-          <p className="profile-hint">Which corner it sits in.</p>
-        </>
-      )}
     </>
   );
 }
