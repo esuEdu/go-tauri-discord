@@ -534,6 +534,26 @@
   background: var(--color-accent-400);
 }
 
+.profile-meter-bar[data-lit="true"][data-loud="true"] {
+  background: var(--fair);
+}
+
+.profile-reading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-300);
+  font: var(--body-small);
+}
+
+.profile-reading-why {
+  color: var(--color-neutral-500);
+  font: var(--caption);
+}
+
 .profile-toggles {
   display: flex;
   flex-direction: column;
@@ -1072,4 +1092,8 @@
   color: var(--bad-text);
   font-size: 12px;
   line-height: 17px;
+}
+
+.profile-sound-level {
+  padding: 2px 0 6px;
 }

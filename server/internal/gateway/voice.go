@@ -70,6 +70,7 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 	defer cancel()
 
 	if payload.ChannelID == nil {
+		sess.holdsTheCall(false)
 		g.leaveVoice(sess.userID)
 		return
 	}
@@ -95,8 +96,23 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 		return
 	}
 
+	g.claimTheCall(sess)
 	g.sendExistingParticipants(sess, channel.GuildID, *payload.ChannelID)
 	g.announceVoice(ctx, sess.userID, *payload.ChannelID, payload.ChannelID, payload.SelfMute, payload.SelfDeaf)
+}
+
+func (g *Gateway) claimTheCall(sess *session) {
+	g.mu.RLock()
+	others := make([]*session, 0, len(g.byUser[sess.userID]))
+	for other := range g.byUser[sess.userID] {
+		others = append(others, other)
+	}
+	g.mu.RUnlock()
+
+	for _, other := range others {
+		other.holdsTheCall(other == sess)
+	}
+	sess.holdsTheCall(true)
 }
 
 func (g *Gateway) refuseVoice(sess *session, guildID uuid.UUID) {

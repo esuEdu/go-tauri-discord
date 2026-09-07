@@ -1031,3 +1031,34 @@ func TestBeingRefusedAVoiceChannelIsToldToYou(t *testing.T) {
 			"with a live microphone and a call that was never allowed")
 	}
 }
+
+func TestClosingTheAppLeavesTheCall(t *testing.T) {
+	owner := newHarness(t)
+	speakerID, _ := owner.registerUser()
+	guild := owner.createGuild("Closing")
+	_, voiceChannel := owner.textAndVoice(guild.ID)
+
+	invite := owner.createInvite(guild.ID, map[string]any{})
+	friend := owner.newUser()
+	friend.mustDo("POST", "/api/v1/invites/"+invite.Code, 200, nil, nil)
+
+	watcher := friend.dial()
+	watcher.identify(friend.token)
+
+	speaker := newVoiceClient(t, owner)
+	speaker.pump()
+	speaker.join(voiceChannel)
+	speaker.streamSilence()
+
+	if state := awaitVoiceState(t, watcher, speakerID); state.ChannelID == nil {
+		t.Fatal("the speaker never appeared in the voice channel")
+	}
+
+	speaker.sock.conn.CloseNow()
+
+	if !sawDeparture(watcher, speakerID, 5*time.Second) {
+		t.Error("the window closed and the call carried on: a session that has gone is kept for " +
+			"ninety seconds so it can resume, which is right for a connection that dropped and " +
+			"wrong for one that ended — everybody else is left talking to somebody who has quit")
+	}
+}

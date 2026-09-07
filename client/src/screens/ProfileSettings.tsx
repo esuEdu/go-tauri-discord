@@ -1,12 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import {
   chosenMicrophone,
   joinsMuted,
   microphones,
   setJoinsMuted,
+  setSoundLevel,
+  setSoundsFor,
+  setSoundsOn,
+  soundLevel,
+  soundsFor,
+  soundsOn,
   type Microphone,
 } from "../audioPrefs";
+import { listenToMicrophone } from "../micLevel";
 import type { Nameplate } from "../streamPrefs";
 import type { User } from "../types/events.gen";
 import { checkForUpdate, currentVersion, type Release } from "../updates";
@@ -17,6 +24,8 @@ import { UpdateSheet } from "./UpdatePrompt";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Toggle } from "../ui/Toggle";
+import { VolumeSlider } from "../ui/VolumeSlider";
+import { play } from "../sounds";
 import { voice } from "../voice";
 
 type Tab = "account" | "voice" | "alerts" | "look" | "about";
@@ -230,10 +239,42 @@ function VoiceTab() {
   const [mics, setMics] = useState<Microphone[]>([]);
   const [mic, setMic] = useState<string | null>(chosenMicrophone);
   const [muted, setMuted] = useState(joinsMuted);
+  const [sounds, setSounds] = useState(soundsOn);
+  const [level, setLevel] = useState(soundLevel);
+  const [ownSounds, setOwnSounds] = useState(() => soundsFor("self"));
+  const [otherSounds, setOtherSounds] = useState(() => soundsFor("others"));
+  const [controlSounds, setControlSounds] = useState(() => soundsFor("controls"));
+  const preview = useRef<number | undefined>(undefined);
+  const [heard, setHeard] = useState(0);
+  const [quiet, setQuiet] = useState<"busy" | "failed" | null>(null);
 
   useEffect(() => {
     void microphones().then(setMics);
+
+    const devices = navigator.mediaDevices;
+    if (!devices?.addEventListener) return;
+
+    const relist = () => void microphones().then(setMics);
+    devices.addEventListener("devicechange", relist);
+    return () => devices.removeEventListener("devicechange", relist);
   }, []);
+
+  useEffect(() => {
+    setQuiet(null);
+    setHeard(0);
+    const listening = listenToMicrophone(mic, setHeard, () =>
+      setQuiet(voice.inCall ? "busy" : "failed"),
+    );
+    return () => listening.stop();
+  }, [mic]);
+
+  useEffect(() => {
+    if (mic === null || mics.length === 0) return;
+    if (mics.some((entry) => entry.id === mic)) return;
+
+    setMic(null);
+    void voice.useMicrophone(null);
+  }, [mics, mic]);
 
   return (
     <>
@@ -259,27 +300,36 @@ function VoiceTab() {
 
       <div className="profile-field-block">
         <span className="profile-field-label">Output</span>
-        <span className="profile-select" aria-disabled="true">
-          system default
+        <span className="profile-reading">
+          Whatever your computer is set to
+          <span className="profile-reading-why">
+            Vocalis does not choose a speaker of its own — change it where you change it
+            for everything else
+          </span>
         </span>
       </div>
 
       <div className="profile-level">
         <div className="profile-level-head">
-          <span>Your level, as others hear it</span>
-          <span>100%</span>
-        </div>
-        <div className="profile-level-track">
-          <span className="profile-level-knob" />
+          <span>Say something</span>
+          <span>{quiet ? "no signal" : `${Math.round(heard * 100)}%`}</span>
         </div>
         <div className="profile-meter">
           {Array.from({ length: 10 }, (_, i) => (
-            <span key={i} className="profile-meter-bar" data-lit={i < 4} />
+            <span
+              key={i}
+              className="profile-meter-bar"
+              data-lit={!quiet && heard * 10 > i}
+              data-loud={i > 7}
+            />
           ))}
         </div>
         <p className="profile-hint">
-          The meter is the only way to tell a dead microphone from a quiet room before
-          joining.
+          {quiet === "busy"
+            ? "The call has the microphone, so it cannot be listened to twice. The bars come back when you leave."
+            : quiet === "failed"
+              ? "Nothing is coming from this microphone. Another program may be holding it, or Vocalis may not be allowed to use it."
+              : "This is the microphone itself, before anybody hears it — the way to tell a dead one from a quiet room without joining a call."}
         </p>
       </div>
 
@@ -307,7 +357,90 @@ function VoiceTab() {
         </div>
       </div>
 
-      <span className="profile-dashed">every control here · needs backend</span>
+      <span className="profile-divider" />
+
+      <span className="profile-title">Sounds</span>
+
+      <div className="profile-toggles">
+        <div className="profile-toggle-row">
+          <Toggle
+            on={sounds}
+            label="Sounds when a call changes"
+            onChange={(on) => {
+              setSounds(on);
+              setSoundsOn(on);
+              if (on) play("joined");
+            }}
+          />
+          <span className="profile-toggle-label">Sounds when a call changes</span>
+        </div>
+
+        {sounds && (
+          <>
+            <div className="profile-sound-level">
+              <VolumeSlider
+                label="How loud"
+                value={level}
+                max={1}
+                onChange={(next) => {
+                  setLevel(next);
+                  setSoundLevel(next);
+                  window.clearTimeout(preview.current);
+                  preview.current = window.setTimeout(() => play("joined"), 220);
+                }}
+              />
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={ownSounds}
+                label="When you join and leave"
+                onChange={(on) => {
+                  setOwnSounds(on);
+                  setSoundsFor("self", on);
+                  if (on) play("joined");
+                }}
+              />
+              <span className="profile-toggle-label">When you join and leave a call</span>
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={otherSounds}
+                label="When others come and go"
+                onChange={(on) => {
+                  setOtherSounds(on);
+                  setSoundsFor("others", on);
+                  if (on) play("somebodyJoined");
+                }}
+              />
+              <span className="profile-toggle-label">
+                When somebody else comes or goes while you are in a call
+              </span>
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={controlSounds}
+                label="When you mute or deafen"
+                onChange={(on) => {
+                  setControlSounds(on);
+                  setSoundsFor("controls", on);
+                  if (on) play("muted");
+                }}
+              />
+              <span className="profile-toggle-label">When you mute, unmute or deafen</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <p className="profile-hint">
+        Made rather than recorded, so nothing is downloaded to play them. Rising means
+        somebody arrived, falling means somebody left.
+      </p>
+
+      <span className="profile-dashed">push to talk and the shortcut · not wired yet</span>
     </>
   );
 }
