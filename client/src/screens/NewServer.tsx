@@ -148,9 +148,9 @@ export function NewServer({
 function reasonFor(cause: unknown): string {
   const status = cause instanceof ApiError ? cause.status : 0;
   if (status === 404) return "No invite with that code.";
-  if (status === 410) return "That invite has expired or run out of uses.";
-  if (status === 403) return "You are banned from that server.";
-  if (status === 409) return "You are already in that server.";
-  if (status === 400) return "Check the code and try again.";
+  if (status === 403 || status === 400 || status === 409) {
+    const said = cause instanceof ApiError ? cause.message.trim() : "";
+    if (said) return said.charAt(0).toUpperCase() + said.slice(1) + ".";
+  }
   return "The server did not answer.";
 }

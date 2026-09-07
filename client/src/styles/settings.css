@@ -1097,3 +1097,40 @@
 .profile-sound-level {
   padding: 2px 0 6px;
 }
+
+.settings-trouble {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--bad-edge);
+  border-radius: 10px;
+  background: var(--bad-fill);
+  color: var(--bad-text);
+  font: var(--body-small);
+}
+
+.settings-trouble-go {
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--color-neutral-300);
+  font: var(--body-small);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.settings-trouble-go:hover {
+  color: var(--color-neutral-100);
+}
+
+.settings-failed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: var(--color-neutral-500);
+  font: var(--body-small);
+}
