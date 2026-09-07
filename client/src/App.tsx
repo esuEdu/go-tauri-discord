@@ -529,11 +529,25 @@ export default function App() {
     if (!kind || !wanted) return;
     const shut = privateChannel && kind !== "category";
     closeCreate();
-    const made = await api.createChannel(guildID, wanted, kind, channels.length);
+    let made;
+    try {
+      made = await api.createChannel(guildID, wanted, kind, channels.length);
+    } catch {
+      setNewChannel(kind);
+      setChannelName(wanted);
+      setPrivateChannel(shut);
+      setNotice(`${wanted} was not made. What you typed is still here.`);
+      return;
+    }
     if (shut) {
-      const everyone = (await api.roles(guildID)).find((role) => role.is_default);
-      if (everyone) {
-        await api.setOverwrite(made.id, everyone.id, 0, VIEW_CHANNEL).catch(() => undefined);
+      try {
+        const everyone = (await api.roles(guildID)).find((role) => role.is_default);
+        if (!everyone) throw new Error("no default role");
+        await api.setOverwrite(made.id, everyone.id, 0, VIEW_CHANNEL);
+      } catch {
+        setNotice(
+          `${wanted} was made, but shutting it to everybody failed — it is open. Close it from Server settings, under Channel access.`,
+        );
       }
     }
     setChannels(await api.channels(guildID));
@@ -1073,6 +1087,7 @@ export default function App() {
           uploaderAvatarURL={avatarURL(lightbox.message.author.id)}
           postedAt={new Date(lightbox.message.created_at).toLocaleString()}
           onClose={() => setLightbox(null)}
+          onTrouble={setNotice}
         />
       )}
 
@@ -1305,8 +1320,12 @@ export default function App() {
               onClick={async () => {
                 const { channel, name } = editingChannel;
                 setEditingChannel(null);
-                await api.updateChannel(channel.id, { name: name.trim() });
-                if (activeGuild) setChannels(await api.channels(activeGuild.id));
+                try {
+                  await api.updateChannel(channel.id, { name: name.trim() });
+                  if (activeGuild) setChannels(await api.channels(activeGuild.id));
+                } catch {
+                  setNotice(`${channel.name} was not renamed.`);
+                }
               }}
             >
               Rename it
@@ -1334,9 +1353,13 @@ export default function App() {
               onClick={async () => {
                 const going = droppingChannel;
                 setDroppingChannel(null);
-                await api.deleteChannel(going.id);
-                if (activeChannel?.id === going.id) setActiveChannel(null);
-                if (activeGuild) setChannels(await api.channels(activeGuild.id));
+                try {
+                  await api.deleteChannel(going.id);
+                  if (activeChannel?.id === going.id) setActiveChannel(null);
+                  if (activeGuild) setChannels(await api.channels(activeGuild.id));
+                } catch {
+                  setNotice(`${going.name} was not deleted.`);
+                }
               }}
             >
               Delete it
