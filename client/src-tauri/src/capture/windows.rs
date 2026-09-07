@@ -8,7 +8,7 @@ use openh264::encoder::{BitRate, Encoder, EncoderConfig, FrameRate, IntraFramePe
 use openh264::formats::{BgraSliceU8, YUVBuffer};
 use openh264::{OpenH264API, Timestamp};
 use wasapi::{initialize_mta, AudioClient, Direction, SampleType, StreamMode, WaveFormat};
-use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
+use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
 use windows_capture::monitor::Monitor;
@@ -310,13 +310,20 @@ fn pump_audio(
     Ok(())
 }
 
+type VideoControl =
+    CaptureControl<VideoHandler, <VideoHandler as GraphicsCaptureApiHandler>::Error>;
+
 pub struct Session {
     running: Arc<AtomicBool>,
+    capture: VideoControl,
 }
 
 impl Session {
     pub fn stop(self) {
         self.running.store(false, Ordering::Relaxed);
+        if let Err(reason) = self.capture.stop() {
+            log::warn!("screen: the capture did not stop cleanly ({reason})");
+        }
     }
 }
 
@@ -333,13 +340,13 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
 
     let flags = (Arc::clone(&shared), Arc::clone(&running));
 
-    match options.target {
+    let capture = match options.target {
         Target::Display(id) => {
             let monitor = Monitor::from_raw_hmonitor(id as usize as *mut std::ffi::c_void);
             let settings = Settings::new(
                 monitor,
                 CursorCaptureSettings::WithCursor,
-                DrawBorderSettings::Default,
+                DrawBorderSettings::WithoutBorder,
                 SecondaryWindowSettings::Default,
                 MinimumUpdateIntervalSettings::Default,
                 DirtyRegionSettings::Default,
@@ -347,14 +354,14 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
                 flags,
             );
             VideoHandler::start_free_threaded(settings)
-                .map_err(|error| format!("screen capture: {error}"))?;
+                .map_err(|error| format!("screen capture: {error}"))?
         }
         Target::Window(id) => {
             let window = Window::from_raw_hwnd(id as usize as *mut std::ffi::c_void);
             let settings = Settings::new(
                 window,
                 CursorCaptureSettings::WithCursor,
-                DrawBorderSettings::Default,
+                DrawBorderSettings::WithoutBorder,
                 SecondaryWindowSettings::Default,
                 MinimumUpdateIntervalSettings::Default,
                 DirtyRegionSettings::Default,
@@ -362,9 +369,9 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
                 flags,
             );
             VideoHandler::start_free_threaded(settings)
-                .map_err(|error| format!("screen capture: {error}"))?;
+                .map_err(|error| format!("screen capture: {error}"))?
         }
-    }
+    };
 
     beat(Arc::clone(&shared), Arc::clone(&running));
 
@@ -394,5 +401,5 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
         }
     }
 
-    Ok(Session { running })
+    Ok(Session { running, capture })
 }
