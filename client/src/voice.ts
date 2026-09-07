@@ -7,6 +7,7 @@ import {
   suppressesNoise,
 } from "./audioPrefs";
 import { clean, RNNOISE_RATE, type Cleaned } from "./noise";
+import { play } from "./sounds";
 import { iceServers } from "./ice";
 import { screenPublisher } from "./screen";
 import {
@@ -242,7 +243,9 @@ class VoiceClient {
   }
 
   private setStatus(status: VoiceStatus) {
+    const was = this.status;
     this.status = status;
+    if (status === "connected" && was !== "connected") play("joined");
     for (const fn of this.statusListeners) fn(status, this.channelID);
   }
 
@@ -540,6 +543,7 @@ class VoiceClient {
     if (this.cleaned) this.cleaned.track.enabled = track.enabled;
     const muted = !track.enabled;
     if (!muted) this.silent = false;
+    play(muted ? "muted" : "unmuted");
     this.announceListening(muted);
     return muted;
   }
@@ -555,6 +559,7 @@ class VoiceClient {
     if (track) track.enabled = !this.silent;
 
     for (const output of this.outputs.values()) this.applySilence(output);
+    play(this.silent ? "deafened" : "undeafened");
     this.announceListening(this.silent || this.muted);
     return this.silent;
   }
@@ -820,6 +825,8 @@ class VoiceClient {
   async leave() {
     this.generation += 1;
     if (!this.pc && !this.channelID) return;
+
+    if (this.status === "connected") play("left");
 
     gateway.sendRaw({ op: OpVoiceState, d: { channel_id: null, self_mute: false, self_deaf: false } });
     this.silent = false;

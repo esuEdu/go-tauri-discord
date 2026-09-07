@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import {
   chosenMicrophone,
   joinsMuted,
   microphones,
   setJoinsMuted,
+  setSoundLevel,
+  setSoundsFor,
+  setSoundsOn,
+  soundLevel,
+  soundsFor,
+  soundsOn,
   type Microphone,
 } from "../audioPrefs";
 import type { Nameplate } from "../streamPrefs";
@@ -17,6 +23,8 @@ import { UpdateSheet } from "./UpdatePrompt";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Toggle } from "../ui/Toggle";
+import { VolumeSlider } from "../ui/VolumeSlider";
+import { play } from "../sounds";
 import { voice } from "../voice";
 
 type Tab = "account" | "voice" | "alerts" | "look" | "about";
@@ -230,6 +238,12 @@ function VoiceTab() {
   const [mics, setMics] = useState<Microphone[]>([]);
   const [mic, setMic] = useState<string | null>(chosenMicrophone);
   const [muted, setMuted] = useState(joinsMuted);
+  const [sounds, setSounds] = useState(soundsOn);
+  const [level, setLevel] = useState(soundLevel);
+  const [ownSounds, setOwnSounds] = useState(() => soundsFor("self"));
+  const [otherSounds, setOtherSounds] = useState(() => soundsFor("others"));
+  const [controlSounds, setControlSounds] = useState(() => soundsFor("controls"));
+  const preview = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     void microphones().then(setMics);
@@ -307,7 +321,90 @@ function VoiceTab() {
         </div>
       </div>
 
-      <span className="profile-dashed">every control here · needs backend</span>
+      <span className="profile-divider" />
+
+      <span className="profile-title">Sounds</span>
+
+      <div className="profile-toggles">
+        <div className="profile-toggle-row">
+          <Toggle
+            on={sounds}
+            label="Sounds when a call changes"
+            onChange={(on) => {
+              setSounds(on);
+              setSoundsOn(on);
+              if (on) play("joined");
+            }}
+          />
+          <span className="profile-toggle-label">Sounds when a call changes</span>
+        </div>
+
+        {sounds && (
+          <>
+            <div className="profile-sound-level">
+              <VolumeSlider
+                label="How loud"
+                value={level}
+                max={1}
+                onChange={(next) => {
+                  setLevel(next);
+                  setSoundLevel(next);
+                  window.clearTimeout(preview.current);
+                  preview.current = window.setTimeout(() => play("joined"), 220);
+                }}
+              />
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={ownSounds}
+                label="When you join and leave"
+                onChange={(on) => {
+                  setOwnSounds(on);
+                  setSoundsFor("self", on);
+                  if (on) play("joined");
+                }}
+              />
+              <span className="profile-toggle-label">When you join and leave a call</span>
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={otherSounds}
+                label="When others come and go"
+                onChange={(on) => {
+                  setOtherSounds(on);
+                  setSoundsFor("others", on);
+                  if (on) play("somebodyJoined");
+                }}
+              />
+              <span className="profile-toggle-label">
+                When somebody else comes or goes while you are in a call
+              </span>
+            </div>
+
+            <div className="profile-toggle-row">
+              <Toggle
+                on={controlSounds}
+                label="When you mute or deafen"
+                onChange={(on) => {
+                  setControlSounds(on);
+                  setSoundsFor("controls", on);
+                  if (on) play("muted");
+                }}
+              />
+              <span className="profile-toggle-label">When you mute, unmute or deafen</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <p className="profile-hint">
+        Made rather than recorded, so nothing is downloaded to play them. Rising means
+        somebody arrived, falling means somebody left.
+      </p>
+
+      <span className="profile-dashed">push to talk and the shortcut · not wired yet</span>
     </>
   );
 }
