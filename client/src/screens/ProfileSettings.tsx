@@ -13,6 +13,7 @@ import {
   soundsOn,
   type Microphone,
 } from "../audioPrefs";
+import { listenToMicrophone } from "../micLevel";
 import type { Nameplate } from "../streamPrefs";
 import type { User } from "../types/events.gen";
 import { checkForUpdate, currentVersion, type Release } from "../updates";
@@ -244,10 +245,36 @@ function VoiceTab() {
   const [otherSounds, setOtherSounds] = useState(() => soundsFor("others"));
   const [controlSounds, setControlSounds] = useState(() => soundsFor("controls"));
   const preview = useRef<number | undefined>(undefined);
+  const [heard, setHeard] = useState(0);
+  const [quiet, setQuiet] = useState<"busy" | "failed" | null>(null);
 
   useEffect(() => {
     void microphones().then(setMics);
+
+    const devices = navigator.mediaDevices;
+    if (!devices?.addEventListener) return;
+
+    const relist = () => void microphones().then(setMics);
+    devices.addEventListener("devicechange", relist);
+    return () => devices.removeEventListener("devicechange", relist);
   }, []);
+
+  useEffect(() => {
+    setQuiet(null);
+    setHeard(0);
+    const listening = listenToMicrophone(mic, setHeard, () =>
+      setQuiet(voice.inCall ? "busy" : "failed"),
+    );
+    return () => listening.stop();
+  }, [mic]);
+
+  useEffect(() => {
+    if (mic === null || mics.length === 0) return;
+    if (mics.some((entry) => entry.id === mic)) return;
+
+    setMic(null);
+    void voice.useMicrophone(null);
+  }, [mics, mic]);
 
   return (
     <>
@@ -273,27 +300,36 @@ function VoiceTab() {
 
       <div className="profile-field-block">
         <span className="profile-field-label">Output</span>
-        <span className="profile-select" aria-disabled="true">
-          system default
+        <span className="profile-reading">
+          Whatever your computer is set to
+          <span className="profile-reading-why">
+            Vocalis does not choose a speaker of its own — change it where you change it
+            for everything else
+          </span>
         </span>
       </div>
 
       <div className="profile-level">
         <div className="profile-level-head">
-          <span>Your level, as others hear it</span>
-          <span>100%</span>
-        </div>
-        <div className="profile-level-track">
-          <span className="profile-level-knob" />
+          <span>Say something</span>
+          <span>{quiet ? "no signal" : `${Math.round(heard * 100)}%`}</span>
         </div>
         <div className="profile-meter">
           {Array.from({ length: 10 }, (_, i) => (
-            <span key={i} className="profile-meter-bar" data-lit={i < 4} />
+            <span
+              key={i}
+              className="profile-meter-bar"
+              data-lit={!quiet && heard * 10 > i}
+              data-loud={i > 7}
+            />
           ))}
         </div>
         <p className="profile-hint">
-          The meter is the only way to tell a dead microphone from a quiet room before
-          joining.
+          {quiet === "busy"
+            ? "The call has the microphone, so it cannot be listened to twice. The bars come back when you leave."
+            : quiet === "failed"
+              ? "Nothing is coming from this microphone. Another program may be holding it, or Vocalis may not be allowed to use it."
+              : "This is the microphone itself, before anybody hears it — the way to tell a dead one from a quiet room without joining a call."}
         </p>
       </div>
 
