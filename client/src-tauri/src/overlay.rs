@@ -7,6 +7,19 @@ const HEIGHT: f64 = 420.0;
 const MARGIN: f64 = 24.0;
 
 pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = (app, corner);
+        log::info!("overlay: not opened, it is not fit for Windows yet");
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    open(app, corner)
+}
+
+#[cfg(not(windows))]
+fn open(app: &AppHandle, corner: &str) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show().map_err(|error| error.to_string())?;
         place(&window, corner);

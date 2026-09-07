@@ -429,7 +429,9 @@ function LookTab({
       <p className="profile-hint">
         A panel in the corner of your own screen, on top of whatever you are sharing,
         so you can see who is in the call without coming back to Vocalis. It appears
-        when your share starts and goes when it stops. Desktop only.
+        when your share starts and goes when it stops. macOS only for now — on
+        Windows it opened a window that crashed, so it stays shut until that is
+        understood.
       </p>
 
       {overlay !== "none" && (
