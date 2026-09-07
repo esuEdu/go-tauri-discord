@@ -1,4 +1,4 @@
-import { soundsOn } from "./audioPrefs";
+import { soundLevel, soundsFor, soundsOn, type SoundGroup } from "./audioPrefs";
 
 export type Cue =
   | "joined"
@@ -28,6 +28,17 @@ const SHAPES: Record<Cue, Shape> = {
   undeafened: { notes: [293.66, 392], step: 0.06, hold: 0.12, level: 0.07 },
 };
 
+const GROUPS: Record<Cue, SoundGroup> = {
+  joined: "self",
+  left: "self",
+  somebodyJoined: "others",
+  somebodyLeft: "others",
+  muted: "controls",
+  unmuted: "controls",
+  deafened: "controls",
+  undeafened: "controls",
+};
+
 let piano: AudioContext | null = null;
 
 function wake(): AudioContext | null {
@@ -43,27 +54,28 @@ function wake(): AudioContext | null {
 }
 
 export function play(cue: Cue) {
-  if (!soundsOn()) return;
+  if (!soundsOn() || !soundsFor(GROUPS[cue]) || soundLevel() <= 0) return;
 
   const context = wake();
   if (!context) return;
 
   const shape = SHAPES[cue];
+  const loudness = Math.max(0.0002, shape.level * soundLevel());
   const start = context.currentTime;
 
   shape.notes.forEach((note, index) => {
     const at = start + index * shape.step;
     const tone = context.createOscillator();
-    const level = context.createGain();
+    const swell = context.createGain();
 
     tone.type = "sine";
     tone.frequency.setValueAtTime(note, at);
 
-    level.gain.setValueAtTime(0, at);
-    level.gain.linearRampToValueAtTime(shape.level, at + 0.012);
-    level.gain.exponentialRampToValueAtTime(0.0001, at + shape.hold);
+    swell.gain.setValueAtTime(0, at);
+    swell.gain.linearRampToValueAtTime(loudness, at + 0.012);
+    swell.gain.exponentialRampToValueAtTime(0.0001, at + shape.hold);
 
-    tone.connect(level).connect(context.destination);
+    tone.connect(swell).connect(context.destination);
     tone.start(at);
     tone.stop(at + shape.hold + 0.02);
   });
