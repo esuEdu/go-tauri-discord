@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, type Ban, type GuildMember, type Invite } from "../api";
 import { inviteLink } from "../invites";
 import {
@@ -20,6 +20,8 @@ import { Toggle } from "../ui/Toggle";
 import { PlacePicture } from "./PlacePicture";
 
 type Tab = "overview" | "roles" | "people" | "access" | "bans" | "links";
+
+type Load = "loading" | "ready" | "failed";
 
 const TABS: SettingsTab<Tab>[] = [
   { id: "overview", label: "Overview", icon: "gear-six" },
@@ -58,11 +60,25 @@ export function ServerSettings({
   const [naming, setNaming] = useState<{ role: Role | null; name: string } | null>(null);
   const [dropping, setDropping] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
+  const [load, setLoad] = useState<Load>("ready");
+  const [trouble, setTrouble] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<{
+    action: "kick" | "ban";
+    member: GuildMember;
+  } | null>(null);
 
   const ranked = [...roles].sort((a, b) => {
     if (a.is_default !== b.is_default) return a.is_default ? 1 : -1;
     return b.position - a.position;
   });
+
+  async function attempt(what: string, run: () => Promise<void>) {
+    try {
+      await run();
+    } catch {
+      setTrouble(what);
+    }
+  }
 
   async function refreshRoles() {
     setRoles(await api.roles(guild.id));
@@ -77,6 +93,7 @@ export function ServerSettings({
       setRoles((prev) =>
         prev.map((r) => (r.id === role.id ? { ...r, permissions: role.permissions } : r)),
       );
+      setTrouble(`${entryName(bit)} was not changed for ${role.name}.`);
     }
   }
 
@@ -96,25 +113,31 @@ export function ServerSettings({
     if (at + step < 0 || at + step >= order.length) return;
     const [lifted] = order.splice(at, 1);
     order.splice(at + step, 0, lifted);
-    await renumber(order);
+    await attempt("The order was not changed. It may be part way there — reopen to see.", () =>
+      renumber(order),
+    );
   }
 
   const canManage = allows(permissions, MANAGE_GUILD);
   const canRoles = allows(permissions, MANAGE_ROLES);
 
-  useEffect(() => {
-    if (tab === "roles" || tab === "access") void api.roles(guild.id).then(setRoles);
-    if (tab === "access") {
-      void Promise.all(
-        channels
-          .filter((channel) => channel.kind !== "category")
-          .map((channel) =>
-            api
-              .overwrites(channel.id)
-              .then((list) => [channel.id, list] as [string, Overwrite[]])
-              .catch(() => [channel.id, [] as Overwrite[]] as [string, Overwrite[]]),
-          ),
-      ).then((pairs) => {
+  const openTab = useCallback(async () => {
+    if (tab === "overview") {
+      setLoad("ready");
+      return;
+    }
+    setLoad("loading");
+    try {
+      if (tab === "roles" || tab === "access") setRoles(await api.roles(guild.id));
+      if (tab === "access") {
+        const pairs = await Promise.all(
+          channels
+            .filter((channel) => channel.kind !== "category")
+            .map(async (channel) => {
+              const list = await api.overwrites(channel.id);
+              return [channel.id, list] as [string, Overwrite[]];
+            }),
+        );
         const shut: Record<string, boolean> = {};
         for (const [id, list] of pairs) {
           shut[id] = list.some(
@@ -122,12 +145,19 @@ export function ServerSettings({
           );
         }
         setHidden(shut);
-      });
+      }
+      if (tab === "people") setMembers(await api.members(guild.id));
+      if (tab === "bans") setBans(await api.bans(guild.id));
+      if (tab === "links") setInvites(await api.invites(guild.id));
+      setLoad("ready");
+    } catch {
+      setLoad("failed");
     }
-    if (tab === "people") void api.members(guild.id).then(setMembers);
-    if (tab === "bans") void api.bans(guild.id).then(setBans);
-    if (tab === "links") void api.invites(guild.id).then(setInvites);
-  }, [tab, guild.id]);
+  }, [tab, guild.id, channels]);
+
+  useEffect(() => {
+    void openTab();
+  }, [openTab]);
 
   return (
     <SettingsPanel
@@ -144,6 +174,15 @@ export function ServerSettings({
       }
       onClose={onClose}
     >
+      {trouble && (
+        <div className="settings-trouble" role="alert">
+          <span>{trouble}</span>
+          <button type="button" className="settings-trouble-go" onClick={() => setTrouble(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {tab === "overview" && (
         <>
           <SettingsHead title="Overview" />
@@ -172,10 +211,12 @@ export function ServerSettings({
               <Button
                 kind="quiet"
                 disabled={!canManage || !guild.icon_key}
-                onClick={async () => {
-                  await api.clearGuildIcon(guild.id);
-                  onChanged();
-                }}
+                onClick={() =>
+                  void attempt("The picture was not removed.", async () => {
+                    await api.clearGuildIcon(guild.id);
+                    onChanged();
+                  })
+                }
               >
                 Remove
               </Button>
@@ -205,12 +246,11 @@ export function ServerSettings({
               disabled={!canManage || saving || !name.trim() || name.trim() === guild.name}
               onClick={async () => {
                 setSaving(true);
-                try {
+                await attempt("That name was not saved.", async () => {
                   await api.updateGuild(guild.id, { name: name.trim() });
                   onChanged();
-                } finally {
-                  setSaving(false);
-                }
+                });
+                setSaving(false);
               }}
             >
               {saving ? "Saving…" : "Save changes"}
@@ -285,7 +325,7 @@ export function ServerSettings({
                 ))}
               </div>
             ))}
-            {roles.length === 0 && <span className="settings-empty">No roles yet.</span>}
+            {load !== "ready" && <Waiting load={load} what="roles" onRetry={openTab} />}
           </div>
         </>
       )}
@@ -294,7 +334,11 @@ export function ServerSettings({
         <>
           <SettingsHead
             title="People"
-            note={`${members.filter((m) => online[m.user_id]).length} online, ${members.length} total`}
+            note={
+              load === "ready"
+                ? `${members.filter((m) => online[m.user_id]).length} online, ${members.length} total`
+                : undefined
+            }
           />
           <div className="settings-list">
             {members.map((member) => (
@@ -305,25 +349,20 @@ export function ServerSettings({
                 <Button
                   kind="quiet"
                   disabled={!allows(permissions, KICK_MEMBERS)}
-                  onClick={async () => {
-                    await api.kick(guild.id, member.user_id);
-                    setMembers(await api.members(guild.id));
-                  }}
+                  onClick={() => setConfirming({ action: "kick", member })}
                 >
                   Kick
                 </Button>
                 <Button
                   kind="danger"
                   disabled={!allows(permissions, BAN_MEMBERS)}
-                  onClick={async () => {
-                    await api.ban(guild.id, member.user_id);
-                    setMembers(await api.members(guild.id));
-                  }}
+                  onClick={() => setConfirming({ action: "ban", member })}
                 >
                   Ban
                 </Button>
               </div>
             ))}
+            {load !== "ready" && <Waiting load={load} what="the member list" onRetry={openTab} />}
           </div>
         </>
       )}
@@ -356,11 +395,15 @@ export function ServerSettings({
                         }
                       } catch {
                         setHidden((was) => ({ ...was, [channel.id]: on }));
+                        setTrouble(`Who can see ${channel.name} was not changed.`);
                       }
                     }}
                   />
                 </div>
               ))}
+            {load !== "ready" && (
+              <Waiting load={load} what="channel access" onRetry={openTab} />
+            )}
           </div>
         </>
       )}
@@ -380,16 +423,21 @@ export function ServerSettings({
                 <Button
                   kind="quiet"
                   disabled={!allows(permissions, BAN_MEMBERS)}
-                  onClick={async () => {
-                    await api.unban(guild.id, ban.user_id);
-                    setBans(await api.bans(guild.id));
-                  }}
+                  onClick={() =>
+                    void attempt(`${ban.username} was not unbanned.`, async () => {
+                      await api.unban(guild.id, ban.user_id);
+                      setBans(await api.bans(guild.id));
+                    })
+                  }
                 >
                   Lift it
                 </Button>
               </div>
             ))}
-            {bans.length === 0 && <span className="settings-empty">Nobody is banned.</span>}
+            {load === "ready" && bans.length === 0 && (
+              <span className="settings-empty">Nobody is banned.</span>
+            )}
+            {load !== "ready" && <Waiting load={load} what="the ban list" onRetry={openTab} />}
           </div>
         </>
       )}
@@ -401,10 +449,12 @@ export function ServerSettings({
             note={`Invite links people can use to join ${guild.name}.`}
             action={
               <Button
-                onClick={async () => {
-                  await api.createInvite(guild.id);
-                  setInvites(await api.invites(guild.id));
-                }}
+                onClick={() =>
+                  void attempt("A new link was not made.", async () => {
+                    await api.createInvite(guild.id);
+                    setInvites(await api.invites(guild.id));
+                  })
+                }
               >
                 New link
               </Button>
@@ -416,22 +466,31 @@ export function ServerSettings({
                 <span className="settings-list-name">{inviteLink(invite.code)}</span>
                 <Button
                   kind="quiet"
-                  onClick={() => void navigator.clipboard.writeText(inviteLink(invite.code))}
+                  onClick={() =>
+                    void navigator.clipboard
+                      .writeText(inviteLink(invite.code))
+                      .catch(() => setTrouble("That link was not copied."))
+                  }
                 >
                   Copy
                 </Button>
                 <Button
                   kind="danger"
-                  onClick={async () => {
-                    await api.revokeInvite(invite.code);
-                    setInvites(await api.invites(guild.id));
-                  }}
+                  onClick={() =>
+                    void attempt("That link was not revoked.", async () => {
+                      await api.revokeInvite(invite.code);
+                      setInvites(await api.invites(guild.id));
+                    })
+                  }
                 >
                   Revoke
                 </Button>
               </div>
             ))}
-            {invites.length === 0 && <span className="settings-empty">No links yet.</span>}
+            {load === "ready" && invites.length === 0 && (
+              <span className="settings-empty">No links yet.</span>
+            )}
+            {load !== "ready" && <Waiting load={load} what="the links" onRetry={openTab} />}
           </div>
         </>
       )}
@@ -461,17 +520,22 @@ export function ServerSettings({
             </Button>
             <Button
               disabled={!naming.name.trim()}
-              onClick={async () => {
+              onClick={() => {
                 const wanted = naming.name.trim();
                 const role = naming.role;
                 setNaming(null);
-                if (role) {
-                  await api.updateRole(role.id, { name: wanted });
-                  await refreshRoles();
-                } else {
-                  const made = await api.createRole(guild.id, wanted, 0);
-                  await renumber([...ranked.filter((r) => !r.is_default), made]);
-                }
+                void attempt(
+                  role ? `${role.name} was not renamed.` : `${wanted} was not made.`,
+                  async () => {
+                    if (role) {
+                      await api.updateRole(role.id, { name: wanted });
+                      await refreshRoles();
+                    } else {
+                      const made = await api.createRole(guild.id, wanted, 0);
+                      await renumber([...ranked.filter((r) => !r.is_default), made]);
+                    }
+                  },
+                );
               }}
             >
               {naming.role ? "Rename it" : "Make it"}
@@ -492,14 +556,53 @@ export function ServerSettings({
             </Button>
             <Button
               kind="danger"
-              onClick={async () => {
+              onClick={() => {
                 const role = dropping;
                 setDropping(null);
-                await api.deleteRole(role.id);
-                await refreshRoles();
+                void attempt(`${role.name} was not deleted.`, async () => {
+                  await api.deleteRole(role.id);
+                  await refreshRoles();
+                });
               }}
             >
               Delete it
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {confirming && (
+        <Sheet
+          title={confirming.action === "kick" ? "Kick member" : "Ban member"}
+          subtitle={
+            confirming.action === "kick"
+              ? `${confirming.member.username} can come back with a new invite. What they wrote stays.`
+              : `${confirming.member.username} is kept out by account id only, so a new account gets back in. What they wrote stays.`
+          }
+          onClose={() => setConfirming(null)}
+        >
+          <div className="sheet-actions">
+            <Button kind="quiet" onClick={() => setConfirming(null)}>
+              Never mind
+            </Button>
+            <Button
+              kind="danger"
+              onClick={() => {
+                const { action, member } = confirming;
+                setConfirming(null);
+                void attempt(
+                  action === "kick"
+                    ? `${member.username} was not kicked.`
+                    : `${member.username} was not banned.`,
+                  async () => {
+                    if (action === "kick") await api.kick(guild.id, member.user_id);
+                    else await api.ban(guild.id, member.user_id);
+                    setMembers(await api.members(guild.id));
+                  },
+                );
+              }}
+            >
+              {confirming.action === "kick" ? "Kick them" : "Ban them"}
             </Button>
           </div>
         </Sheet>
@@ -509,15 +612,43 @@ export function ServerSettings({
         <PlacePicture
           file={placing}
           onCancel={() => setPlacing(null)}
-          onUse={async (cropped) => {
+          onUse={(cropped) => {
             setPlacing(null);
-            await api.setGuildIcon(guild.id, cropped);
-            onChanged();
+            void attempt("That picture was not saved.", async () => {
+              await api.setGuildIcon(guild.id, cropped);
+              onChanged();
+            });
           }}
         />
       )}
     </SettingsPanel>
   );
+}
+
+function Waiting({
+  load,
+  what,
+  onRetry,
+}: {
+  load: Load;
+  what: string;
+  onRetry: () => void;
+}) {
+  if (load === "loading") {
+    return <span className="settings-empty">Fetching {what}…</span>;
+  }
+  return (
+    <div className="settings-failed" role="alert">
+      <span>Could not fetch {what}. Nothing here is missing — this window could not read it.</span>
+      <button type="button" className="settings-trouble-go" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
+function entryName(bit: number): string {
+  return PERMISSIONS.find((entry) => entry.bit === bit)?.name ?? "That permission";
 }
 
 function SettingsHead({
