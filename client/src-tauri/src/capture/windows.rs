@@ -328,9 +328,15 @@ pub struct Session {
 impl Session {
     pub fn stop(self) {
         self.running.store(false, Ordering::Relaxed);
-        if let Err(reason) = self.capture.stop() {
-            log::warn!("screen: the capture did not stop cleanly ({reason})");
-        }
+
+        let capture = self.capture;
+        std::thread::spawn(move || {
+            if let Err(reason) = capture.stop() {
+                log::warn!("screen: the capture did not stop cleanly ({reason})");
+            } else {
+                log::info!("screen: the capture stopped");
+            }
+        });
     }
 }
 
