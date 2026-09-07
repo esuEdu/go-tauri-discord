@@ -703,7 +703,9 @@ class VoiceClient {
     await this.stopScreenShare();
 
     try {
-      await screenPublisher.publish(sourceID, this.quality, audio);
+      await screenPublisher.publish(sourceID, this.quality, audio, () =>
+        void this.stopScreenShare(),
+      );
     } catch (error) {
       console.error("screen share did not start", error);
       return false;
@@ -719,9 +721,9 @@ class VoiceClient {
     if (!this.display) return;
 
     this.display = null;
-    await screenPublisher.stop();
     this.announceScreen(false);
     this.emitScreens();
+    await screenPublisher.stop();
   }
 
   private announceScreen(active: boolean) {
