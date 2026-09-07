@@ -508,7 +508,9 @@ export default function App() {
 
     void (async () => {
       const { emit, listen } = await import("@tauri-apps/api/event");
+      const { invoke } = await import("@tauri-apps/api/core");
       const off = await listen(OVERLAY_READY, () => {
+        void invoke("note", { message: "overlay: the panel reported itself ready" });
         void emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
       });
       if (dropped) off();
@@ -531,9 +533,24 @@ export default function App() {
         await invoke("hide_call_overlay").catch(() => undefined);
         return;
       }
-      await invoke("show_call_overlay", { corner }).catch(() => undefined);
+      try {
+        await invoke("show_call_overlay", { corner });
+      } catch (reason) {
+        console.error("the call overlay would not open", reason);
+        void invoke("note", { message: `overlay: asking for it failed (${String(reason)})` });
+        return;
+      }
+
       const { emit } = await import("@tauri-apps/api/event");
-      await emit(OVERLAY_EVENT, overlayShown.current).catch(() => undefined);
+      try {
+        await emit(OVERLAY_EVENT, overlayShown.current);
+        void invoke("note", {
+          message: `overlay: sent ${overlayShown.current.people.length} in the call`,
+        });
+      } catch (reason) {
+        console.error("the call overlay could not be told who is here", reason);
+        void invoke("note", { message: `overlay: sending failed (${String(reason)})` });
+      }
     })();
   }, [overlayKey]);
 

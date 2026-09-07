@@ -210,7 +210,16 @@ async fn stop_screen_share(screen: State<'_, Arc<Screen>>) -> Result<(), String>
 
 #[tauri::command]
 fn show_call_overlay(app: AppHandle, corner: String) -> Result<(), String> {
-    overlay::show(&app, &corner)
+    let outcome = overlay::show(&app, &corner);
+    if let Err(reason) = &outcome {
+        log::error!("overlay: could not open ({reason})");
+    }
+    outcome
+}
+
+#[tauri::command]
+fn note(message: String) {
+    log::info!("{message}");
 }
 
 #[tauri::command]
@@ -267,7 +276,8 @@ pub fn run() {
             screen_candidate,
             stop_screen_share,
             show_call_overlay,
-            hide_call_overlay
+            hide_call_overlay,
+            note
         ])
         .setup(|app| {
             log::info!("vocalis {} starting", app.package_info().version);
