@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
@@ -15,6 +15,7 @@ import {
   VIEW_CHANNEL,
 } from "./permissions";
 import { emptySession, nameOf, session, type SessionState } from "./session";
+import { play } from "./sounds";
 import { nameplate as savedNameplate, setNameplate, type Nameplate } from "./streamPrefs";
 import {
   voice,
@@ -472,6 +473,20 @@ export default function App() {
   const permissions = activeGuild ? (state.guildAllows[activeGuild.id] ?? 0) : 0;
   const channelAllows = activeChannel ? state.channelAllows[activeChannel.id] : undefined;
   const effective = channelAllows ?? permissions;
+
+  const heardInCall = useRef<string[]>([]);
+
+  useEffect(() => {
+    const here = callChannel ? (state.inVoice[callChannel.id] ?? []) : [];
+    const before = heardInCall.current;
+    heardInCall.current = here;
+
+    if (!callChannel || callState !== "connected" || deafened) return;
+    if (before.length === 0) return;
+
+    if (here.some((id) => id !== user?.id && !before.includes(id))) play("somebodyJoined");
+    if (before.some((id) => id !== user?.id && !here.includes(id))) play("somebodyLeft");
+  }, [state.inVoice, callChannel, callState, deafened, user?.id]);
 
   const live = useMemo(() => {
     const set = new Set(

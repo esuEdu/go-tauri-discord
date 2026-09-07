@@ -5,6 +5,8 @@ import {
   joinsMuted,
   microphones,
   setJoinsMuted,
+  setSoundsOn,
+  soundsOn,
   type Microphone,
 } from "../audioPrefs";
 import type { Nameplate } from "../streamPrefs";
@@ -17,6 +19,7 @@ import { UpdateSheet } from "./UpdatePrompt";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Toggle } from "../ui/Toggle";
+import { play } from "../sounds";
 import { voice } from "../voice";
 
 type Tab = "account" | "voice" | "alerts" | "look" | "about";
@@ -230,6 +233,7 @@ function VoiceTab() {
   const [mics, setMics] = useState<Microphone[]>([]);
   const [mic, setMic] = useState<string | null>(chosenMicrophone);
   const [muted, setMuted] = useState(joinsMuted);
+  const [sounds, setSounds] = useState(soundsOn);
 
   useEffect(() => {
     void microphones().then(setMics);
@@ -300,6 +304,20 @@ function VoiceTab() {
             }}
           />
           <span className="profile-toggle-label">Join calls with the microphone off</span>
+        </div>
+        <div className="profile-toggle-row">
+          <Toggle
+            on={sounds}
+            label="Sounds when calls change"
+            onChange={(on) => {
+              setSounds(on);
+              setSoundsOn(on);
+              if (on) play("joined");
+            }}
+          />
+          <span className="profile-toggle-label">
+            Sounds when you join, leave, mute, and when others come and go
+          </span>
         </div>
         <div className="profile-toggle-row">
           <span className="profile-keycap">⌥ M</span>

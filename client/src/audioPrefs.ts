@@ -1,6 +1,7 @@
 const MIC_KEY = "microphone_id";
 const JOIN_MUTED_KEY = "join_muted";
 const SUPPRESS_KEY = "suppress_noise";
+const SOUNDS_KEY = "call_sounds";
 
 export type Microphone = {
   id: string;
@@ -70,4 +71,12 @@ export async function microphones(): Promise<Microphone[]> {
   } catch {
     return [];
   }
+}
+
+export function soundsOn(): boolean {
+  return read(SOUNDS_KEY) !== "false";
+}
+
+export function setSoundsOn(on: boolean) {
+  write(SOUNDS_KEY, on ? "true" : "false");
 }
