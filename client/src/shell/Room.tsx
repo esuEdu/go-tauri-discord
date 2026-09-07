@@ -16,6 +16,8 @@ import { ReactionPill } from "../ui/ReactionPill";
 
 const MAX_CONTENT = 4000;
 const MAX_FILES = 10;
+const NEAR_BOTTOM = 120;
+const TYPING_EVERY = 4000;
 
 export function Room({
   channel,
@@ -35,6 +37,7 @@ export function Room({
   onOpenMessageMenu,
   onOpenImage,
   onSent,
+  onTrouble,
 }: {
   channel: Channel;
   messages: Message[];
@@ -53,6 +56,7 @@ export function Room({
   onOpenMessageMenu: (message: Message, event: MouseEvent<HTMLElement>) => void;
   onOpenImage: (attachment: Attachment, message: Message) => void;
   onSent: () => void;
+  onTrouble: (what: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -63,6 +67,8 @@ export function Room({
   const [flashing, setFlashing] = useState<string | null>(null);
   const [scrolling, setScrolling] = useState(false);
   const idle = useRef<number | undefined>(undefined);
+  const pinned = useRef(true);
+  const typedAt = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<string, HTMLElement>());
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -74,6 +80,7 @@ export function Room({
     setDraft("");
     setFiles([]);
     setReplyTo(null);
+    typedAt.current = 0;
   }, [channel.id]);
 
   useEffect(() => {
@@ -83,8 +90,12 @@ export function Room({
   }, [insert?.n]);
 
   useEffect(() => {
+    pinned.current = true;
+  }, [channel.id]);
+
+  useEffect(() => {
     const list = listRef.current;
-    if (!list) return;
+    if (!list || !pinned.current) return;
     const toBottom = () => {
       list.scrollTop = list.scrollHeight;
     };
@@ -108,6 +119,18 @@ export function Room({
     );
   }
 
+  const thumbs = useMemo(
+    () => files.map((file) => (file.type.startsWith("image/") ? URL.createObjectURL(file) : "")),
+    [files],
+  );
+
+  useEffect(
+    () => () => {
+      for (const url of thumbs) if (url) URL.revokeObjectURL(url);
+    },
+    [thumbs],
+  );
+
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const left = MAX_CONTENT - [...draft].length;
   const sendable = canSend && (draft.trim().length > 0 || files.length > 0) && left >= 0;
@@ -116,9 +139,9 @@ export function Room({
     if (!sendable || progress !== null) return;
     const content = draft.trim();
     const carried = files;
+    const parent = replyTo;
     setDraft("");
     setFiles([]);
-    const parent = replyTo;
     setReplyTo(null);
     try {
       if (carried.length) {
@@ -133,14 +156,42 @@ export function Room({
       } else {
         await api.sendMessage(channel.id, content, parent?.id);
       }
+      pinned.current = true;
       onSent();
+    } catch {
+      setDraft((since) => (since ? `${content}\n${since}` : content));
+      setFiles((since) => [...carried, ...since].slice(0, MAX_FILES));
+      setReplyTo((since) => since ?? parent);
+      onTrouble(
+        carried.length
+          ? "That did not send. Your message and its files are back in the box."
+          : "That did not send. Your message is back in the box.",
+      );
     } finally {
       setProgress(null);
     }
   }
 
+  function announceTyping() {
+    const now = performance.now();
+    if (now - typedAt.current < TYPING_EVERY) return;
+    typedAt.current = now;
+    void api.typing(channel.id).catch(() => {});
+  }
+
   function addFiles(incoming: File[]) {
-    setFiles((was) => [...was, ...incoming].slice(0, MAX_FILES));
+    setFiles((was) => {
+      const kept = [...was, ...incoming].slice(0, MAX_FILES);
+      const dropped = was.length + incoming.length - kept.length;
+      if (dropped > 0) {
+        onTrouble(
+          dropped === 1
+            ? `One file was left out — ${MAX_FILES} is the most that can go at once.`
+            : `${dropped} files were left out — ${MAX_FILES} is the most that can go at once.`,
+        );
+      }
+      return kept;
+    });
   }
 
   function onDrop(event: DragEvent) {
@@ -163,7 +214,10 @@ export function Room({
         className="messages"
         ref={listRef}
         data-scrolling={scrolling}
-        onScroll={() => {
+        onScroll={(event) => {
+          const list = event.currentTarget;
+          pinned.current =
+            list.scrollHeight - list.scrollTop - list.clientHeight < NEAR_BOTTOM;
           setScrolling(true);
           window.clearTimeout(idle.current);
           idle.current = window.setTimeout(() => setScrolling(false), 800);
@@ -277,12 +331,8 @@ export function Room({
             <div className="composer-attachments">
               {files.map((file, index) => (
                 <div className="composer-thumb" key={`${file.name}-${index}`}>
-                  {file.type.startsWith("image/") ? (
-                    <img
-                      className="composer-thumb-picture"
-                      src={URL.createObjectURL(file)}
-                      alt=""
-                    />
+                  {thumbs[index] ? (
+                    <img className="composer-thumb-picture" src={thumbs[index]} alt="" />
                   ) : (
                     <span className="composer-thumb-file">
                       <Icon name="paperclip" size={20} />
@@ -347,7 +397,7 @@ export function Room({
               onBlur={() => setFocused(false)}
               onChange={(event) => {
                 setDraft(event.target.value);
-                void api.typing(channel.id).catch(() => {});
+                announceTyping();
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
