@@ -17,14 +17,18 @@ export function Lightbox({
   uploaderAvatarURL,
   postedAt,
   onClose,
+  onTrouble,
 }: {
   attachment: Attachment;
   uploader: string;
   uploaderAvatarURL: string | null;
   postedAt: string;
   onClose: () => void;
+  onTrouble: (what: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [broken, setBroken] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -36,13 +40,21 @@ export function Lightbox({
 
   async function copyImage() {
     setMenuOpen(false);
-    const blob = await fetch(mediaURL(attachment.url)).then((r) => r.blob());
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    try {
+      const blob = await fetch(mediaURL(attachment.url)).then((r) => r.blob());
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    } catch {
+      onTrouble("That picture was not copied. Copy Link works everywhere this does not.");
+    }
   }
 
   async function copyLink() {
     setMenuOpen(false);
-    await navigator.clipboard.writeText(mediaURL(attachment.url));
+    try {
+      await navigator.clipboard.writeText(mediaURL(attachment.url));
+    } catch {
+      onTrouble("That link was not copied.");
+    }
   }
 
   return (
@@ -111,12 +123,33 @@ export function Lightbox({
         </div>
       </div>
 
-      <img
-        className="lightbox-picture"
-        src={mediaURL(attachment.url)}
-        alt={attachment.filename}
-        onClick={(event) => event.stopPropagation()}
-      />
+      {broken ? (
+        <div className="lightbox-broken" onClick={(event) => event.stopPropagation()}>
+          <span className="lightbox-broken-title">This picture did not load</span>
+          <span className="lightbox-broken-text">
+            It is still attached to the message. If trying again does nothing, the link
+            has aged out — close this and open the picture afresh.
+          </span>
+          <button
+            type="button"
+            className="lightbox-broken-go"
+            onClick={() => {
+              setAttempt((n) => n + 1);
+              setBroken(false);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <img
+          className="lightbox-picture"
+          src={attempt === 0 ? mediaURL(attachment.url) : `${mediaURL(attachment.url)}${mediaURL(attachment.url).includes("?") ? "&" : "?"}retry=${attempt}`}
+          alt={attachment.filename}
+          onError={() => setBroken(true)}
+          onClick={(event) => event.stopPropagation()}
+        />
+      )}
     </div>
   );
 }
