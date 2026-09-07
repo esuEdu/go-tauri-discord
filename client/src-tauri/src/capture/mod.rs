@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -19,10 +20,13 @@ pub struct Quality {
     pub max_bitrate: u32,
 }
 
+pub type Ended = Arc<dyn Fn() + Send + Sync>;
+
 pub struct Options {
     pub target: Target,
     pub quality: Quality,
     pub audio: bool,
+    pub ended: Ended,
     #[cfg(target_os = "windows")]
     pub webview: Option<u32>,
 }

@@ -25,7 +25,12 @@ function serverIceServers() {
 class ScreenPublisher {
   private off: Unlisten[] = [];
 
-  async publish(sourceID: string, quality: ScreenQuality, audio: boolean): Promise<void> {
+  async publish(
+    sourceID: string,
+    quality: ScreenQuality,
+    audio: boolean,
+    onEnded: () => void,
+  ): Promise<void> {
     await this.stop();
 
     const { invoke, listen } = await tauri();
@@ -38,7 +43,7 @@ class ScreenPublisher {
     });
 
     const ended = await listen("screen://ended", () => {
-      void this.stop();
+      onEnded();
     });
 
     this.off.push(
