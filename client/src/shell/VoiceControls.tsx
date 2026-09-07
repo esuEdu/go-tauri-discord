@@ -86,8 +86,9 @@ export function VoiceControls({
             type="button"
             className="control"
             data-active={screens.sharing}
-            aria-label={screens.sharing ? "Stop sharing" : "Share your screen"}
-            title={screens.sharing ? "Stop sharing" : "Share your screen"}
+            data-tone={screens.sharing ? "bad" : undefined}
+            aria-label={screens.sharing ? "Stop sharing your screen" : "Share your screen"}
+            title={screens.sharing ? "Stop sharing your screen" : "Share your screen"}
             onClick={screens.sharing ? onStopSharing : onGoLive}
           >
             <Icon name={screens.sharing ? "monitor-x" : "monitor-arrow-up"} size={17} />
