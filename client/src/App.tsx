@@ -305,7 +305,13 @@ export default function App() {
         setActiveGuild(guild);
         void loadGuilds();
       })
-      .catch(() => setNotice("That invite link did not work."));
+      .catch((cause) =>
+        setNotice(
+          cause instanceof ApiError && cause.message.trim()
+            ? `That invite link did not work. ${cause.message.trim().charAt(0).toUpperCase()}${cause.message.trim().slice(1)}.`
+            : "That invite link did not work.",
+        ),
+      );
   }, [user, loadGuilds]);
 
   useEffect(() => {
