@@ -25,6 +25,7 @@ const PIXEL_FORMAT_420V: u32 = u32::from_be_bytes(*b"420v");
 const AUDIO_BITRATE: u32 = 128_000;
 const CONTENT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT: Duration = Duration::from_secs(2);
+const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 const NO_PERMISSION: &str =
     "Vocalis needs permission to record the screen. Grant it in System Settings › Privacy & Security › Screen & System Audio Recording.";
 
@@ -372,7 +373,21 @@ impl Session {
     pub fn stop(self) {
         self.beating
             .store(false, std::sync::atomic::Ordering::Relaxed);
-        unsafe { self.stream.stopCaptureWithCompletionHandler(None) };
+
+        let (send, receive) = mpsc::channel::<()>();
+        let handler = RcBlock::new(move |_error: *mut NSError| {
+            let _ = send.send(());
+        });
+        unsafe { self.stream.stopCaptureWithCompletionHandler(Some(&handler)) };
+        if receive.recv_timeout(STOP_TIMEOUT).is_err() {
+            log::warn!("screen: the capture did not confirm it had stopped");
+        }
+
+        let protocol = ProtocolObject::from_ref(&*self.output);
+        for kind in [SCStreamOutputType::Screen, SCStreamOutputType::Audio] {
+            let _ = unsafe { self.stream.removeStreamOutput_type_error(protocol, kind) };
+        }
+
         drop(self.output);
         drop(self.delegate);
     }
