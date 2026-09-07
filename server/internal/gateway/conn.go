@@ -262,6 +262,12 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 		err := readFrame(readCtx, conn, &frame)
 		cancel()
 		if err != nil {
+			// A read that times out is a client gone quiet, which resuming is
+			// for. Anything else is the socket itself ending, and a call
+			// cannot outlive the window that was in it.
+			if !errors.Is(err, context.DeadlineExceeded) && sess.hasTheCall() {
+				g.leaveVoice(sess.userID)
+			}
 			return
 		}
 

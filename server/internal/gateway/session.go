@@ -35,7 +35,20 @@ type session struct {
 	topics    map[string]struct{}
 	hidden    map[uuid.UUID]uuid.UUID
 	connected bool
+	inCall    bool
 	expiry    *time.Timer
+}
+
+func (s *session) holdsTheCall(holds bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inCall = holds
+}
+
+func (s *session) hasTheCall() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inCall
 }
 
 func (s *session) hideInGuild(guildID uuid.UUID, channelIDs []uuid.UUID) {
