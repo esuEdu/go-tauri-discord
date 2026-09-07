@@ -10,6 +10,7 @@ pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show().map_err(|error| error.to_string())?;
         place(&window, corner);
+        log::info!("overlay: already open, moved to {corner}");
         return Ok(());
     }
 
@@ -23,6 +24,7 @@ pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
+        .visible(true)
         .build()
         .map_err(|error| format!("overlay window: {error}"))?;
 
@@ -31,6 +33,11 @@ pub fn show(app: &AppHandle, corner: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
 
     place(&window, corner);
+    log::info!(
+        "overlay: opened at {corner}, position {:?}, size {:?}",
+        window.outer_position(),
+        window.outer_size()
+    );
     Ok(())
 }
 

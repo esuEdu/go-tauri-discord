@@ -46,10 +46,17 @@ export function CallOverlay() {
     };
   }, []);
 
-  if (state.mode === "none" || state.people.length === 0) return null;
+  if (state.mode === "none") return null;
 
   return (
     <div className="call-overlay" data-size={state.mode} data-corner={state.corner}>
+      {state.people.length === 0 && (
+        <div className="call-overlay-row" data-speaking="false">
+          <span className="call-overlay-mark">·</span>
+          {state.mode === "full" && <span className="call-overlay-name">In a call</span>}
+        </div>
+      )}
+
       {state.people.map((person) => (
         <div key={person.id} className="call-overlay-row" data-speaking={person.speaking}>
           <Avatar name={person.name} url={person.avatarURL} size={28} />
