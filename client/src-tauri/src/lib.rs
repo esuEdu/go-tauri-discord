@@ -1,6 +1,5 @@
 pub mod capture;
 pub mod encode;
-pub mod overlay;
 pub mod publish;
 pub mod sources;
 
@@ -208,25 +207,6 @@ async fn stop_screen_share(screen: State<'_, Arc<Screen>>) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
-fn show_call_overlay(app: AppHandle, corner: String) -> Result<(), String> {
-    let outcome = overlay::show(&app, &corner);
-    if let Err(reason) = &outcome {
-        log::error!("overlay: could not open ({reason})");
-    }
-    outcome
-}
-
-#[tauri::command]
-fn note(message: String) {
-    log::info!("{message}");
-}
-
-#[tauri::command]
-fn hide_call_overlay(app: AppHandle) {
-    overlay::hide(&app);
-}
-
 async fn stop(screen: &Screen) {
     let taken = screen.active.lock().await.take();
     if let Some(Active {
@@ -274,10 +254,7 @@ pub fn run() {
             start_screen_share,
             screen_answer,
             screen_candidate,
-            stop_screen_share,
-            show_call_overlay,
-            hide_call_overlay,
-            note
+            stop_screen_share
         ])
         .setup(|app| {
             log::info!("vocalis {} starting", app.package_info().version);
