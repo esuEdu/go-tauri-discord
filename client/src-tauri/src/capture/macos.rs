@@ -12,14 +12,14 @@ use objc2_core_media::CMSampleBuffer;
 use objc2_foundation::NSError;
 use objc2_screen_capture_kit::{
     SCContentFilter, SCDisplay, SCShareableContent, SCStream, SCStreamConfiguration,
-    SCStreamOutput, SCStreamOutputType, SCWindow,
+    SCStreamDelegate, SCStreamOutput, SCStreamOutputType, SCWindow,
 };
 
 use crate::encode::audio::{AudioEncoder, CHANNELS, SAMPLE_RATE};
 use crate::encode::video_macos::VideoEncoder;
 use crate::sources::Target;
 
-use super::{Encoded, Options, Sink};
+use super::{Encoded, Ended, Options, Sink};
 
 const PIXEL_FORMAT_420V: u32 = u32::from_be_bytes(*b"420v");
 const AUDIO_BITRATE: u32 = 128_000;
@@ -34,6 +34,31 @@ struct Handlers {
     sink: Sink,
     last: Arc<Mutex<Option<LastFrame>>>,
 }
+
+struct Ending {
+    ended: Ended,
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "VocalisStreamDelegate"]
+    #[ivars = Ending]
+    struct StreamEnd;
+
+    unsafe impl NSObjectProtocol for StreamEnd {}
+
+    unsafe impl SCStreamDelegate for StreamEnd {
+        #[unsafe(method(stream:didStopWithError:))]
+        #[allow(non_snake_case)]
+        unsafe fn stream_didStopWithError(&self, _stream: &SCStream, error: &NSError) {
+            log::info!(
+                "screen: the capture stopped on its own ({})",
+                error.localizedDescription()
+            );
+            (self.ivars().ended)();
+        }
+    }
+);
 
 struct LastFrame {
     image: objc2_core_foundation::CFRetained<objc2_core_video::CVImageBuffer>,
@@ -227,7 +252,7 @@ fn shareable_content() -> Result<Retained<SCShareableContent>, String> {
 fn filter_for(
     target: Target,
     content: &SCShareableContent,
-) -> Result<Retained<SCContentFilter>, String> {
+) -> Result<(Retained<SCContentFilter>, Option<libc::pid_t>), String> {
     match target {
         Target::Display(id) => {
             let displays = unsafe { content.displays() };
@@ -240,13 +265,16 @@ fn filter_for(
                 .ok_or_else(|| "that screen is no longer there".to_owned())?;
 
             let filter = SCContentFilter::alloc();
-            Ok(unsafe {
-                SCContentFilter::initWithDisplay_excludingWindows(
-                    filter,
-                    &display,
-                    &objc2_foundation::NSArray::new(),
-                )
-            })
+            Ok((
+                unsafe {
+                    SCContentFilter::initWithDisplay_excludingWindows(
+                        filter,
+                        &display,
+                        &objc2_foundation::NSArray::new(),
+                    )
+                },
+                None,
+            ))
         }
         Target::Window(id) => {
             let windows = unsafe { content.windows() };
@@ -264,16 +292,20 @@ fn filter_for(
 
             let owner = unsafe { window.owningApplication() }
                 .ok_or_else(|| "that window has no application".to_owned())?;
+            let pid = unsafe { owner.processID() };
             let apps = objc2_foundation::NSArray::from_retained_slice(&[owner]);
             let filter = SCContentFilter::alloc();
-            Ok(unsafe {
-                SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
-                    filter,
-                    &display,
-                    &apps,
-                    &objc2_foundation::NSArray::new(),
-                )
-            })
+            Ok((
+                unsafe {
+                    SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
+                        filter,
+                        &display,
+                        &apps,
+                        &objc2_foundation::NSArray::new(),
+                    )
+                },
+                Some(pid),
+            ))
         }
     }
 }
@@ -330,6 +362,7 @@ fn configuration(options: &Options) -> Retained<SCStreamConfiguration> {
 pub struct Session {
     stream: Retained<SCStream>,
     output: Retained<StreamOutput>,
+    delegate: Retained<StreamEnd>,
     beating: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -341,6 +374,7 @@ impl Session {
             .store(false, std::sync::atomic::Ordering::Relaxed);
         unsafe { self.stream.stopCaptureWithCompletionHandler(None) };
         drop(self.output);
+        drop(self.delegate);
     }
 }
 
@@ -348,10 +382,20 @@ fn beat(
     beating: Arc<std::sync::atomic::AtomicBool>,
     video: Arc<VideoEncoder>,
     last: Arc<Mutex<Option<LastFrame>>>,
+    sharing_pid: Option<libc::pid_t>,
+    ended: Ended,
 ) {
     std::thread::spawn(move || {
         while beating.load(std::sync::atomic::Ordering::Relaxed) {
             std::thread::sleep(HEARTBEAT);
+
+            if let Some(pid) = sharing_pid {
+                if !alive(pid) {
+                    log::info!("screen: the app being shared has gone (pid {pid})");
+                    ended();
+                    return;
+                }
+            }
 
             let Ok(slot) = last.lock() else { continue };
             let Some(frame) = slot.as_ref() else { continue };
@@ -363,9 +407,13 @@ fn beat(
     });
 }
 
+fn alive(pid: libc::pid_t) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 || *libc::__error() == libc::EPERM }
+}
+
 pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
     let content = shareable_content()?;
-    let filter = filter_for(options.target, &content)?;
+    let (filter, sharing_pid) = filter_for(options.target, &content)?;
     let config = configuration(&options);
 
     let video_sink = sink.video.clone();
@@ -397,9 +445,20 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
     let output = StreamOutput::alloc().set_ivars(handlers);
     let output: Retained<StreamOutput> = unsafe { msg_send![super(output), init] };
 
+    let delegate = StreamEnd::alloc().set_ivars(Ending {
+        ended: Arc::clone(&options.ended),
+    });
+    let delegate: Retained<StreamEnd> = unsafe { msg_send![super(delegate), init] };
+
     let stream = SCStream::alloc();
-    let stream =
-        unsafe { SCStream::initWithFilter_configuration_delegate(stream, &filter, &config, None) };
+    let stream = unsafe {
+        SCStream::initWithFilter_configuration_delegate(
+            stream,
+            &filter,
+            &config,
+            Some(ProtocolObject::from_ref(&*delegate)),
+        )
+    };
 
     let protocol = ProtocolObject::from_ref(&*output);
     let queue = dispatch2::DispatchQueue::new("dev.esuedu.vocalis.capture", None);
@@ -439,10 +498,17 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
     match receive.recv_timeout(CONTENT_TIMEOUT) {
         Ok(None) => {
             let beating = Arc::new(std::sync::atomic::AtomicBool::new(true));
-            beat(Arc::clone(&beating), video, last);
+            beat(
+                Arc::clone(&beating),
+                video,
+                last,
+                sharing_pid,
+                Arc::clone(&options.ended),
+            );
             Ok(Session {
                 stream,
                 output,
+                delegate,
                 beating,
             })
         }

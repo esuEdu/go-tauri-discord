@@ -505,3 +505,15 @@ html.is-overlay #root {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.call-overlay-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-accent-800);
+  color: var(--color-accent-200);
+  font: var(--body-small);
+}

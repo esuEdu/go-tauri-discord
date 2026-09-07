@@ -19,19 +19,29 @@ export function GoLive({
 }) {
   const [tab, setTab] = useState<Tab>("screens");
   const [sources, setSources] = useState<CaptureSource[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
   const [audio, setAudio] = useState(true);
 
   useEffect(() => {
     let dropped = false;
-    captureSources().then((found) => {
-      if (!dropped) setSources(found);
-    });
+    setSources(null);
+    setFailed(false);
+
+    captureSources()
+      .then((found) => {
+        if (!dropped) setSources(found);
+      })
+      .catch(() => {
+        if (!dropped) setFailed(true);
+      });
+
     return () => {
       dropped = true;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -82,15 +92,27 @@ export function GoLive({
         </div>
 
         <div className="golive-grid">
-          {sources === null && (
+          {sources === null && !failed && (
             <span className="golive-note">Looking for something to share…</span>
           )}
 
-          {sources !== null && shown.length === 0 && (
+          {failed && (
+            <span className="golive-note">
+              Nothing came back when Vocalis asked what is on screen.
+              <button type="button" className="golive-retry" onClick={() => setAttempt((n) => n + 1)}>
+                Try again
+              </button>
+            </span>
+          )}
+
+          {sources !== null && !failed && shown.length === 0 && (
             <span className="golive-note">
               Nothing to show here. Vocalis needs permission to record the
               screen: System Settings › Privacy &amp; Security › Screen &amp;
               System Audio Recording.
+              <button type="button" className="golive-retry" onClick={() => setAttempt((n) => n + 1)}>
+                Look again
+              </button>
             </span>
           )}
 

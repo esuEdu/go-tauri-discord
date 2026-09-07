@@ -21,7 +21,7 @@ use windows_capture::window::Window;
 use crate::encode::audio::{AudioEncoder, CHANNELS, SAMPLE_RATE};
 use crate::sources::Target;
 
-use super::{Encoded, Options, Quality, Sink};
+use super::{Encoded, Ended, Options, Quality, Sink};
 
 const AUDIO_BITRATE: u32 = 128_000;
 const HEARTBEAT: Duration = Duration::from_secs(2);
@@ -59,17 +59,22 @@ impl Shared {
 }
 
 struct VideoHandler {
+    ended: Ended,
     shared: Arc<Shared>,
     running: Arc<AtomicBool>,
 }
 
 impl GraphicsCaptureApiHandler for VideoHandler {
-    type Flags = (Arc<Shared>, Arc<AtomicBool>);
+    type Flags = (Arc<Shared>, Arc<AtomicBool>, Ended);
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-        let (shared, running) = ctx.flags;
-        Ok(Self { shared, running })
+        let (shared, running, ended) = ctx.flags;
+        Ok(Self {
+            ended,
+            shared,
+            running,
+        })
     }
 
     fn on_frame_arrived(
@@ -138,7 +143,9 @@ impl GraphicsCaptureApiHandler for VideoHandler {
     }
 
     fn on_closed(&mut self) -> Result<(), Self::Error> {
+        log::info!("screen: what was being shared has closed");
         self.running.store(false, Ordering::Relaxed);
+        (self.ended)();
         Ok(())
     }
 }
@@ -338,7 +345,11 @@ pub fn start(options: Options, sink: Sink) -> Result<Session, String> {
         started: Instant::now(),
     });
 
-    let flags = (Arc::clone(&shared), Arc::clone(&running));
+    let flags = (
+        Arc::clone(&shared),
+        Arc::clone(&running),
+        Arc::clone(&options.ended),
+    );
 
     let capture = match options.target {
         Target::Display(id) => {

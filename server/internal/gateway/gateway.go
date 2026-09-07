@@ -390,9 +390,11 @@ func (g *Gateway) sendAccess(sessions []*session, guildID uuid.UUID) {
 			}
 			access = resolved
 			resolvedFor[s.userID] = access
-			g.enforceVoiceAccess(s.userID, access.ByChannel)
 		}
 		s.hideInGuild(guildID, access.Hidden)
+		if !cached {
+			g.enforceVoiceAccess(s.userID, access.ByChannel)
+		}
 
 		frame, err := events.NewDispatch(events.EventPermissionsUpdate, allowedFrom(guildID, access))
 		if err != nil {

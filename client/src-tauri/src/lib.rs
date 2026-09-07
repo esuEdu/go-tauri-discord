@@ -116,11 +116,18 @@ async fn start_screen_share(
     let (video_tx, video_rx) = channel(FRAME_QUEUE);
     let (audio_tx, audio_rx) = channel(FRAME_QUEUE);
 
+    let ending = {
+        let app = app.clone();
+        let screen = Arc::clone(&screen);
+        Arc::new(move || share_ended(app.clone(), Arc::clone(&screen), id))
+    };
+
     let session = capture::start(
         Options {
             target,
             quality,
             audio,
+            ended: ending,
             #[cfg(target_os = "windows")]
             webview: match screen.webview.load(std::sync::atomic::Ordering::Relaxed) {
                 0 => None,
@@ -163,11 +170,7 @@ async fn start_screen_share(
     let held = Arc::clone(&screen);
     tauri::async_runtime::spawn(async move {
         let _ = started.ended.await;
-        if !still_sharing(&held, id).await {
-            return;
-        }
-        stop(&held).await;
-        let _ = watcher.emit(ENDED, ());
+        share_ended(watcher, held, id);
     });
 
     Ok(())
@@ -207,7 +210,16 @@ async fn stop_screen_share(screen: State<'_, Arc<Screen>>) -> Result<(), String>
 
 #[tauri::command]
 fn show_call_overlay(app: AppHandle, corner: String) -> Result<(), String> {
-    overlay::show(&app, &corner)
+    let outcome = overlay::show(&app, &corner);
+    if let Err(reason) = &outcome {
+        log::error!("overlay: could not open ({reason})");
+    }
+    outcome
+}
+
+#[tauri::command]
+fn note(message: String) {
+    log::info!("{message}");
 }
 
 #[tauri::command]
@@ -217,10 +229,25 @@ fn hide_call_overlay(app: AppHandle) {
 
 async fn stop(screen: &Screen) {
     let taken = screen.active.lock().await.take();
-    if let Some(active) = taken {
-        active.capture.stop();
-        active.publisher.close().await;
+    if let Some(Active {
+        id: _,
+        capture,
+        publisher,
+    }) = taken
+    {
+        capture.stop();
+        tauri::async_runtime::spawn(async move { publisher.close().await });
     }
+}
+
+fn share_ended(app: AppHandle, screen: Arc<Screen>, id: u64) {
+    tauri::async_runtime::spawn(async move {
+        if !still_sharing(&screen, id).await {
+            return;
+        }
+        stop(&screen).await;
+        let _ = app.emit(ENDED, ());
+    });
 }
 
 async fn still_sharing(screen: &Screen, id: u64) -> bool {
@@ -249,7 +276,8 @@ pub fn run() {
             screen_candidate,
             stop_screen_share,
             show_call_overlay,
-            hide_call_overlay
+            hide_call_overlay,
+            note
         ])
         .setup(|app| {
             log::info!("vocalis {} starting", app.package_info().version);
