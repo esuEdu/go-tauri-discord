@@ -64,7 +64,8 @@ export function Auth({ onSignedIn }: { onSignedIn: (user: User) => void }) {
               autoFocus
             />
             <span className="field-hint">
-              Spaces and emoji are fine. It cannot be changed later.
+              Two to thirty-two characters. Spaces and emoji are fine, and it cannot be
+              changed later.
             </span>
           </label>
         )}
@@ -92,7 +93,7 @@ export function Auth({ onSignedIn }: { onSignedIn: (user: User) => void }) {
               autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
             {mode === "register" && (
-              <span className="field-hint">Length is the only rule.</span>
+              <span className="field-hint">At least 8 characters. Nothing else is required.</span>
             )}
           </label>
         )}
@@ -142,8 +143,15 @@ function messageFor(mode: Mode, cause: unknown): string {
     if (status === 429) return "Too many attempts. Wait a moment and try again.";
     return "Could not sign in. The server did not answer.";
   }
-  if (status === 409) return "That email is already in use.";
-  if (status === 400) return "Check the name, email and password.";
   if (status === 429) return "Too many attempts. Wait a moment and try again.";
+  if (status === 400 || status === 409) {
+    const said = cause instanceof ApiError ? cause.message.trim() : "";
+    if (said) return sentence(said);
+  }
   return "Could not make the account. The server did not answer.";
+}
+
+function sentence(text: string): string {
+  const ended = /[.!?]$/.test(text) ? text : `${text}.`;
+  return ended.charAt(0).toUpperCase() + ended.slice(1);
 }
