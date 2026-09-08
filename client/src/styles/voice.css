@@ -325,14 +325,10 @@
   position: absolute;
   inset: 0;
   z-index: 20;
-  opacity: 0;
   pointer-events: none;
-  transition: opacity 140ms ease;
 }
 
-.stream-stage:hover .stream-chrome,
-.stream-chrome:focus-within {
-  opacity: 1;
+.stream-chrome > * {
   pointer-events: auto;
 }
 
@@ -351,6 +347,15 @@
   height: 150px;
   padding: 12px 0 10px;
   border-radius: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.stream-stage:hover .stream-volume,
+.stream-volume:focus-within {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .stream-volume-value {
