@@ -62,6 +62,7 @@ func (l *limits) publicMiddleware(trusted []netip.Prefix) func(http.Handler) htt
 		{Match: ratelimit.Method(http.MethodPost, "/api/v1/auth/login"), Limiter: l.login},
 		{Match: ratelimit.Method(http.MethodPost, "/api/v1/auth/refresh"), Limiter: l.refresh},
 		{Match: ratelimit.Method(http.MethodGet, "/api/v1/invites/"), Limiter: l.invitePreview},
+		{Match: ratelimit.Method(http.MethodGet, "/invite/"), Limiter: l.invitePreview},
 		{Match: ratelimit.Any("/api/"), Limiter: l.publicOther},
 	})
 }

@@ -3,7 +3,9 @@
 package app_test
 
 import (
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -214,4 +216,63 @@ func TestUnknownInviteCodes(t *testing.T) {
 
 	h.mustDo(http.MethodGet, "/api/v1/invites/nosuchco", http.StatusNotFound, nil, nil)
 	h.mustDo(http.MethodPost, "/api/v1/invites/nosuchco", http.StatusNotFound, nil, nil)
+}
+
+func (h *harness) getPage(path string) (int, string) {
+	h.t.Helper()
+
+	resp, err := http.Get(h.server.URL + path)
+	if err != nil {
+		h.t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		h.t.Fatalf("reading %s: %v", path, err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+func TestInvitePageNamesTheServerItIsFor(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Kitchen Table " + randomSuffix())
+	invite := owner.createInvite(guild.ID, map[string]any{})
+
+	status, page := owner.getPage("/invite/" + invite.Code)
+
+	if status != http.StatusOK {
+		t.Fatalf("want 200, got %d", status)
+	}
+	if !strings.Contains(page, guild.Name) {
+		t.Errorf("page never names %q", guild.Name)
+	}
+	if !strings.Contains(page, "1 member ") {
+		t.Error("page does not count the one member")
+	}
+	if !strings.Contains(page, "vocalis://invite/"+invite.Code) {
+		t.Error("page never reaches for the app")
+	}
+}
+
+func TestInvitePageSaysWhenARevokedInviteIsOpened(t *testing.T) {
+	owner := newHarness(t)
+	owner.registerUser()
+	guild := owner.createGuild("Kitchen Table " + randomSuffix())
+	invite := owner.createInvite(guild.ID, map[string]any{})
+
+	owner.mustDo(http.MethodDelete, "/api/v1/invites/"+invite.Code, http.StatusNoContent, nil, nil)
+
+	status, page := owner.getPage("/invite/" + invite.Code)
+
+	if status != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", status)
+	}
+	if !strings.Contains(page, "run out") {
+		t.Error("page does not say the invite is spent")
+	}
+	if strings.Contains(page, guild.Name) {
+		t.Errorf("a dead invite still names %q", guild.Name)
+	}
 }
