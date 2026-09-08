@@ -10,6 +10,7 @@ function codeIn(text: string): string | null {
 const HELD = "pending_invite";
 
 let pending = codeIn(location.pathname + location.search);
+const waiting = new Set<(code: string) => void>();
 
 if (pending) {
   sessionStorage.setItem(HELD, pending);
@@ -32,4 +33,24 @@ export function takePendingInvite(): string | null {
   pending = null;
   sessionStorage.removeItem(HELD);
   return held;
+}
+
+export function offerInvite(text: string): boolean {
+  const code = codeIn(text);
+  if (!code) return false;
+
+  if (waiting.size === 0) {
+    pending = code;
+    sessionStorage.setItem(HELD, code);
+    return true;
+  }
+  for (const listener of waiting) listener(code);
+  return true;
+}
+
+export function onInvite(listener: (code: string) => void): () => void {
+  waiting.add(listener);
+  return () => {
+    waiting.delete(listener);
+  };
 }

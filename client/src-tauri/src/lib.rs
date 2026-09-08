@@ -236,6 +236,12 @@ async fn still_sharing(screen: &Screen, id: u64) -> bool {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
@@ -259,6 +265,14 @@ pub fn run() {
         .setup(|app| {
             log::info!("vocalis {} starting", app.package_info().version);
             app.manage(Arc::new(Screen::default()));
+
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(error) = app.deep_link().register_all() {
+                    log::warn!("invite links may not open this app: {error}");
+                }
+            }
 
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
