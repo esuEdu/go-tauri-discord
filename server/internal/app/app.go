@@ -71,6 +71,8 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	mux.HandleFunc("GET /gateway", gw.Handler())
 	mux.HandleFunc("GET /healthz", healthz(pool, gw))
 
+	mux.HandleFunc("GET /invite/{code}", invitePage(cfg.UIDir != "", guildSvc.PreviewInvite))
+
 	if cfg.UIDir != "" {
 		mux.HandleFunc("/", spaHandler(cfg.UIDir))
 	}
