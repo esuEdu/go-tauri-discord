@@ -161,6 +161,13 @@ somewhere else, set a repository variable called `VITE_API_URL` rather than
 editing the workflow. A pinned build also hides the server field in the app,
 so nobody has to be told what to type.
 
+Installing is also what claims the `vocalis://` URL scheme, which is how an
+invite link opens the app. The scheme is registered by the installer on Windows,
+by the bundle's `Info.plist` on macOS, and at first launch on Linux — so a
+person who has never installed a release is the person the invite page sends to
+the download. Existing installs only learn the scheme once they update to a
+build that carries it.
+
 Neither installer is signed, and both systems say so on first launch. macOS
 refuses the app until it is opened once from the right-click menu, or its
 quarantine flag is removed with

@@ -512,9 +512,36 @@ the pathname is read once at startup and redeemed after sign-in; and anything
 pasted into the join box is reduced to a code first. The older `?invite=<code>`
 form is still accepted, because this file promised it.
 
-Not done, and worth knowing before it surprises somebody: opening a link
-**joins**, it does not preview. `GET /api/v1/invites/{code}` returns the server
-name and member count for exactly that screen and nothing calls it yet.
+**A link opens the app, not the browser.** `GET /invite/{code}` is no longer the
+web client: the server answers it with a small page that names the server being
+joined and how many people are in it, reaches for `vocalis://invite/<code>`, and
+if nothing answers within two and a half seconds, sends the visitor to the
+releases page to download Vocalis. The desktop app claims the `vocalis` scheme
+through `tauri-plugin-deep-link`, and `tauri-plugin-single-instance` hands the
+link to the window already open instead of starting a second one. A link that
+arrives while somebody is signed in is redeemed there and then; one that arrives
+before sign-in waits in `sessionStorage` exactly as a pasted link does. The page keeps a quiet
+*Continue in this browser* link to `/?invite=<code>`, which is why that old form
+had to keep working, and it is only offered when this server serves a web client
+at all.
+
+The fallback is a guess, not a fact — no browser will tell a page whether a
+scheme is registered. The timer is cancelled when the page is hidden, blurred,
+or unfocused, which is what happens when the app opens or when a browser puts up
+its *Open Vocalis?* dialog. A person who ignores that dialog long enough still
+lands on the download page.
+
+The name comes from `PreviewInvite`, the same call the sign-up screen was
+always meant to use, so an invite that expired, was used up, or was taken back
+is a 404 saying exactly that instead of a page that opens an app to fail
+quietly. A lookup that fails for any other reason is logged and the page still
+opens the app — a database hiccup should not stand between somebody and the
+invite they were sent. The lookup shares the invite-preview rate limiter, so a
+link is one cheap read per click and no more.
+
+Still true and worth knowing before it surprises somebody: opening a link
+**joins**, it does not preview. The app itself shows no server name before
+somebody signs in, only the page in front of it does.
 
 ### Pictures
 
@@ -1085,9 +1112,13 @@ stable hostname needs a named tunnel and a free Cloudflare account.
 
 Your friends open the link, register, and they are in. Open the server menu and
 click **Invite people** to copy a link like `https://<host>/invite/LBJJqars` —
-opening it joins that server, once they have an account. The link, the bare code,
-or the older `https://<host>/?invite=LBJJqars` form can all be pasted into the
-**Code or link** box instead.
+opening it hands the invite to the desktop app, and offers the download when the
+app is not installed. From a tunnel that is worth knowing: the installed app
+talks to the server it was built against, so an invite from a `trycloudflare`
+host is for people running the app you built, or for the *Continue in this
+browser* link on that page. The link, the bare code, or the older
+`https://<host>/?invite=LBJJqars` form can all be pasted into the **Code or
+link** box instead.
 
 Requires `cloudflared` (`brew install cloudflared`).
 
