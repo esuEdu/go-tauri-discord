@@ -25,6 +25,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["vocalis"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwOThGRDkxRkE2ODBEQ0YKUldUUERXajZrZjJZd0pBbUMyRUdQSjNTb3gzbkQrYVRENXFoWnBZV3VxZDhUaW9jSHpMVjJHWlEK",
       "endpoints": [

@@ -40,7 +40,7 @@ import { EmojiPalette } from "./screens/EmojiPalette";
 import { ReactionPalette } from "./screens/ReactionPalette";
 import { GoLive } from "./screens/GoLive";
 import { Lightbox } from "./screens/Lightbox";
-import { inviteLink, takePendingInvite } from "./invites";
+import { inviteLink, onInvite, takePendingInvite } from "./invites";
 import { NewServer } from "./screens/NewServer";
 import { ProfileSettings } from "./screens/ProfileSettings";
 import { ServerSettings } from "./screens/ServerSettings";
@@ -295,24 +295,31 @@ export default function App() {
     return gateway.on("GUILD_CREATE", () => void loadGuilds());
   }, [user, loadGuilds]);
 
+  const redeemInvite = useCallback(
+    (code: string) => {
+      void api
+        .redeemInvite(code)
+        .then((guild) => {
+          setActiveGuild(guild);
+          void loadGuilds();
+        })
+        .catch((cause) =>
+          setNotice(
+            cause instanceof ApiError && cause.message.trim()
+              ? `That invite link did not work. ${cause.message.trim().charAt(0).toUpperCase()}${cause.message.trim().slice(1)}.`
+              : "That invite link did not work.",
+          ),
+        );
+    },
+    [loadGuilds],
+  );
+
   useEffect(() => {
     if (!user) return;
-    const code = takePendingInvite();
-    if (!code) return;
-    void api
-      .redeemInvite(code)
-      .then((guild) => {
-        setActiveGuild(guild);
-        void loadGuilds();
-      })
-      .catch((cause) =>
-        setNotice(
-          cause instanceof ApiError && cause.message.trim()
-            ? `That invite link did not work. ${cause.message.trim().charAt(0).toUpperCase()}${cause.message.trim().slice(1)}.`
-            : "That invite link did not work.",
-        ),
-      );
-  }, [user, loadGuilds]);
+    const held = takePendingInvite();
+    if (held) redeemInvite(held);
+    return onInvite(redeemInvite);
+  }, [user, redeemInvite]);
 
   useEffect(() => {
     if (!user) return;
