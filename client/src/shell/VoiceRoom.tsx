@@ -210,16 +210,24 @@ export function VoiceRoom({
           })}
         </div>
 
-        <VoiceControls
-          screens={screens}
-          muted={muted}
-          deafened={deafened}
-          onToggleMute={onToggleMute}
-          onToggleDeafen={onToggleDeafen}
-          onHangUp={onHangUp}
-          onGoLive={onGoLive}
-          onStopSharing={onStopSharing}
-        />
+        {status === "connected" && (
+          <VoiceControls
+            screens={screens}
+            muted={muted}
+            deafened={deafened}
+            onToggleMute={onToggleMute}
+            onToggleDeafen={onToggleDeafen}
+            onHangUp={onHangUp}
+            onGoLive={onGoLive}
+            onStopSharing={onStopSharing}
+          />
+        )}
+
+        {status === "idle" && inCall.length > 0 && (
+          <button type="button" className="join-call" onClick={onJoin}>
+            Join call
+          </button>
+        )}
       </div>
     </section>
   );
