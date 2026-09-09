@@ -48,7 +48,11 @@ export function VoiceControls({
 
   return (
     <>
-      <div className="controls" onPointerDown={(event) => event.stopPropagation()}>
+      <div
+        className="controls"
+        data-open={popover !== null}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           className="control"
