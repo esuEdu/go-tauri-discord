@@ -158,7 +158,45 @@
     0 10px 30px rgb(0 0 0 / 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
   transform: translateX(-50%);
+  transition: opacity 140ms ease;
+}
+
+.voice-room:hover .controls,
+.stream-stage:hover .controls,
+.controls:focus-within,
+.controls[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls {
+    transition: none;
+  }
+}
+
+.join-call {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  z-index: 20;
+  padding: 12px 28px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-800);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.join-call:hover {
+  background: var(--color-accent-600);
 }
 
 .control {
@@ -328,10 +366,6 @@
   pointer-events: none;
 }
 
-.stream-chrome > * {
-  pointer-events: auto;
-}
-
 .stream-chrome .controls {
   bottom: 24px;
 }
@@ -402,6 +436,7 @@
   right: 28px;
   bottom: 36px;
   background: rgb(22 24 38 / 0.5);
+  pointer-events: auto;
   box-shadow:
     inset 0 0 0 1px rgb(233 233 237 / 0.14),
     0 10px 30px rgb(0 0 0 / 0.5);
