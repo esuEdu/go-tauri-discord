@@ -1,6 +1,6 @@
 //go:build e2e
 
-package app_test
+package e2e
 
 import (
 	"context"
