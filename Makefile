@@ -181,7 +181,7 @@ test: ## Run the unit test suite with the race detector
 
 .PHONY: e2e
 e2e: db-up migrate ## Drive the real API and gateway against Postgres
-	cd $(SERVER_DIR) && go test -tags=e2e -race -count=1 -v ./internal/app/
+	cd $(SERVER_DIR) && go test -tags=e2e -race -count=1 -v ./test/e2e/
 
 .PHONY: lint
 lint: ## Vet and check formatting
