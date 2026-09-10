@@ -30,6 +30,7 @@ type Repository interface {
 	SetChannelParent(ctx context.Context, arg dbgen.SetChannelParentParams) error
 	AddGuildMember(ctx context.Context, arg dbgen.AddGuildMemberParams) (dbgen.GuildMember, error)
 	GetGuildMember(ctx context.Context, arg dbgen.GetGuildMemberParams) (dbgen.GuildMember, error)
+	GetGuildMemberProfile(ctx context.Context, arg dbgen.GetGuildMemberProfileParams) (dbgen.GetGuildMemberProfileRow, error)
 	RemoveGuildMember(ctx context.Context, arg dbgen.RemoveGuildMemberParams) error
 	ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]dbgen.ListGuildMembersRow, error)
 	ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]uuid.UUID, error)

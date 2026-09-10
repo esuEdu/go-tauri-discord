@@ -25,7 +25,7 @@ type Rooms interface {
 	JoinedGuild(userID, guildID uuid.UUID)
 	LeftGuild(userID, guildID uuid.UUID)
 	ClosedChannel(guildID, channelID uuid.UUID)
-	Online(userIDs []uuid.UUID) map[uuid.UUID]bool
+	Statuses(userIDs []uuid.UUID) map[uuid.UUID]events.PresenceUpdate
 }
 
 func NewHandler(svc *Service, pub *bus.Publisher, rooms Rooms) *Handler {
@@ -44,11 +44,18 @@ func (h *Handler) closed(guildID, channelID uuid.UUID) {
 	}
 }
 
-func (h *Handler) online(userIDs []uuid.UUID) map[uuid.UUID]bool {
+func seen(status string) string {
+	if status == "" {
+		return string(domain.StatusOffline)
+	}
+	return status
+}
+
+func (h *Handler) statuses(userIDs []uuid.UUID) map[uuid.UUID]events.PresenceUpdate {
 	if h.rooms == nil {
 		return nil
 	}
-	return h.rooms.Online(userIDs)
+	return h.rooms.Statuses(userIDs)
 }
 
 func (h *Handler) removed(r *http.Request, guildID, userID uuid.UUID, banned bool) {
@@ -85,6 +92,7 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("PATCH /api/v1/roles/{roleID}", h.updateRole)
 	mux.HandleFunc("DELETE /api/v1/roles/{roleID}", h.deleteRole)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/profile", h.memberProfile)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
 	mux.HandleFunc("PATCH /api/v1/guilds/{guildID}", h.updateGuild)
@@ -229,13 +237,14 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		Discriminator string        `json:"discriminator"`
 		Nickname      *string       `json:"nickname"`
 		AvatarKey     *string       `json:"avatar_key"`
-		Online        bool          `json:"online"`
+		Status        string        `json:"status"`
+		CustomStatus  *string       `json:"custom_status"`
 	}
 	ids := make([]uuid.UUID, len(rows))
 	for i, m := range rows {
 		ids[i] = m.UserID
 	}
-	online := h.online(ids)
+	presence := h.statuses(ids)
 
 	out := make([]member, len(rows))
 	for i, m := range rows {
@@ -245,7 +254,8 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 			Discriminator: m.Discriminator,
 			Nickname:      m.Nickname,
 			AvatarKey:     m.AvatarKey,
-			Online:        online[m.UserID],
+			Status:        seen(presence[m.UserID].Status),
+			CustomStatus:  presence[m.UserID].CustomStatus,
 		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
@@ -678,6 +688,20 @@ func (h *Handler) memberRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, mapSlice(roles, PublicRole))
+}
+
+func (h *Handler) memberProfile(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := h.guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	profile, err := h.svc.MemberProfile(r.Context(), auth.MustUserID(r.Context()), guildID, memberID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, profile)
 }
 
 func (h *Handler) assignRole(w http.ResponseWriter, r *http.Request) {

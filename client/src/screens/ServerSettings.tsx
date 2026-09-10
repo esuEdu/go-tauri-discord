@@ -37,7 +37,7 @@ export function ServerSettings({
   channels,
   permissions,
   iconURL,
-  online,
+  status,
   onClose,
   onChanged,
 }: {
@@ -45,7 +45,7 @@ export function ServerSettings({
   channels: Channel[];
   permissions: number;
   iconURL: string | null;
-  online: Record<string, boolean>;
+  status: Record<string, string>;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -336,7 +336,7 @@ export function ServerSettings({
             title="People"
             note={
               load === "ready"
-                ? `${members.filter((m) => online[m.user_id]).length} online, ${members.length} total`
+                ? `${members.filter((m) => (status[m.user_id] ?? "offline") !== "offline").length} online, ${members.length} total`
                 : undefined
             }
           />

@@ -103,17 +103,6 @@ func (g *Gateway) JoinedGuild(userID, guildID uuid.UUID) {
 	g.sendAccess(joining, guildID)
 }
 
-func (g *Gateway) Online(userIDs []uuid.UUID) map[uuid.UUID]bool {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	online := make(map[uuid.UUID]bool, len(userIDs))
-	for _, id := range userIDs {
-		online[id] = len(g.byUser[id]) > 0
-	}
-	return online
-}
-
 func (g *Gateway) LeftGuild(userID, guildID uuid.UUID) {
 	g.leaveVoiceIn(userID, guildID)
 
@@ -233,7 +222,7 @@ func (g *Gateway) register(s *session, guildIDs []uuid.UUID) {
 	g.mu.Unlock()
 
 	if firstSession {
-		g.broadcastPresence(s, "online")
+		g.publishPresence(s)
 	}
 }
 
@@ -266,8 +255,8 @@ func (g *Gateway) unregister(s *session) {
 
 	s.kill()
 	if lastSession {
-		g.leaveVoice(s.userID, events.UserID(s.user.PublicID))
-		g.broadcastPresence(s, "offline")
+		g.leaveVoice(s.userID, s.publicID())
+		g.publishPresence(s)
 	}
 }
 
@@ -406,7 +395,7 @@ func (g *Gateway) sendAccess(sessions []*session, guildID uuid.UUID) {
 		}
 		s.hideInGuild(guildID, access.Hidden)
 		if !cached {
-			g.enforceVoiceAccess(s.userID, events.UserID(s.user.PublicID), access.ByChannel)
+			g.enforceVoiceAccess(s.userID, s.publicID(), access.ByChannel)
 		}
 
 		frame, err := events.NewDispatch(events.EventPermissionsUpdate, allowedFrom(guildID, access))
@@ -420,7 +409,7 @@ func (g *Gateway) sendAccess(sessions []*session, guildID uuid.UUID) {
 		s.enqueue(raw)
 
 		for _, state := range g.voiceStatesIn(guildID, access.Visible) {
-			if state.UserID == events.UserID(s.user.PublicID) {
+			if state.UserID == s.publicID() {
 				continue
 			}
 			frame, err := events.NewDispatch(events.EventVoiceStateUpdate, state)
@@ -503,33 +492,6 @@ func (g *Gateway) detach(s *session) {
 		}
 	})
 	s.mu.Unlock()
-}
-
-func (g *Gateway) broadcastPresence(s *session, status string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	guilds, err := g.guilds.ListForUser(ctx, s.userID)
-	if err != nil {
-		slog.ErrorContext(ctx, "presence lookup", "user_id", s.userID, "error", err)
-		return
-	}
-
-	frame, err := events.NewDispatch(events.EventPresenceUpdate, events.PresenceUpdate{
-		UserID: events.UserID(s.user.PublicID), Status: status,
-	})
-	if err != nil {
-		return
-	}
-	raw, err := json.Marshal(frame)
-	if err != nil {
-		return
-	}
-	for _, gl := range guilds {
-		if err := g.broker.Publish(ctx, pubsub.TopicGuild(gl.ID), raw); err != nil {
-			slog.ErrorContext(ctx, "publish presence", "guild_id", gl.ID, "error", err)
-		}
-	}
 }
 
 func (g *Gateway) Close() {

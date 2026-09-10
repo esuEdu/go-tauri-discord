@@ -225,3 +225,11 @@ WHERE c.guild_id = @guild_id;
 UPDATE guilds SET icon_key = @icon_key
 WHERE id = @id
 RETURNING *;
+
+-- name: GetGuildMemberProfile :one
+SELECT m.joined_at, m.nickname,
+       u.public_id, u.username, u.discriminator, u.avatar_key,
+       u.status, u.custom_status, u.bio
+FROM guild_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.guild_id = @guild_id AND m.user_id = @user_id;

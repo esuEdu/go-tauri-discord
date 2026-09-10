@@ -31,13 +31,17 @@ func readStateFor(ready events.Ready, channelID uuid.UUID) (events.ReadState, bo
 	return events.ReadState{}, false
 }
 
-func isOnline(ready events.Ready, userID events.UserID) bool {
-	for _, id := range ready.Online {
-		if id == userID {
-			return true
+func statusIn(ready events.Ready, userID events.UserID) string {
+	for _, p := range ready.Presence {
+		if p.UserID == userID {
+			return p.Status
 		}
 	}
-	return false
+	return "offline"
+}
+
+func isOnline(ready events.Ready, userID events.UserID) bool {
+	return statusIn(ready, userID) == "online"
 }
 
 func isMember(ready events.Ready, guildID uuid.UUID, userID events.UserID) bool {

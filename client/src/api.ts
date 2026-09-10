@@ -5,6 +5,7 @@ import type {
   Message,
   Overwrite,
   Role,
+  Self,
   User,
 } from "./types/events.gen";
 
@@ -28,13 +29,33 @@ export interface Invite {
   created_at: string;
 }
 
+export interface Account extends User {
+  self: Self;
+}
+
+export type ProfileEdit = {
+  status?: string;
+  custom_status?: string;
+  bio?: string;
+};
+
+export interface MemberProfile {
+  user: User;
+  guild_id: string;
+  nickname: string | null;
+  joined_at: string;
+  bio: string | null;
+  roles: Role[];
+}
+
 export interface GuildMember {
   user_id: string;
   username: string;
   discriminator: string;
   nickname: string | null;
   avatar_key: string | null;
-  online: boolean;
+  status: string;
+  custom_status: string | null;
 }
 
 export interface Ban {
@@ -194,8 +215,19 @@ export class Api {
     this.clear();
   }
 
-  me(): Promise<User> {
-    return this.request<User>("GET", "/api/v1/users/@me");
+  me(): Promise<Account> {
+    return this.request<Account>("GET", "/api/v1/users/@me");
+  }
+
+  memberProfile(guildID: string, userID: string): Promise<MemberProfile> {
+    return this.request<MemberProfile>(
+      "GET",
+      `/api/v1/guilds/${guildID}/members/${userID}/profile`,
+    );
+  }
+
+  updateProfile(edit: ProfileEdit): Promise<Account> {
+    return this.request<Account>("PATCH", "/api/v1/users/@me", edit);
   }
 
   async deleteAccount(password: string): Promise<void> {

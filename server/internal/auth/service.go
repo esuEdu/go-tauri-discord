@@ -22,6 +22,7 @@ type Repository interface {
 	GetUserByEmail(ctx context.Context, email string) (dbgen.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 	SetUserAvatar(ctx context.Context, arg dbgen.SetUserAvatarParams) (dbgen.User, error)
+	UpdateUserProfile(ctx context.Context, arg dbgen.UpdateUserProfileParams) (dbgen.User, error)
 	CreateRefreshToken(ctx context.Context, arg dbgen.CreateRefreshTokenParams) (dbgen.RefreshToken, error)
 	GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (dbgen.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error

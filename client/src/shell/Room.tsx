@@ -36,6 +36,7 @@ export function Room({
   onOpenEmoji,
   onOpenMessageMenu,
   onOpenImage,
+  onOpenProfile,
   onSent,
   onTrouble,
 }: {
@@ -55,6 +56,7 @@ export function Room({
   onOpenEmoji: (messageID: string | null, anchor: DOMRect) => void;
   onOpenMessageMenu: (message: Message, event: MouseEvent<HTMLElement>) => void;
   onOpenImage: (attachment: Attachment, message: Message) => void;
+  onOpenProfile: (userID: string, event: MouseEvent<HTMLElement>) => void;
   onSent: () => void;
   onTrouble: (what: string) => void;
 }) {
@@ -275,6 +277,7 @@ export function Room({
               }}
               onOpenMenu={onOpenMessageMenu}
               onOpenImage={onOpenImage}
+              onOpenProfile={onOpenProfile}
             />
           ),
         )}
@@ -456,6 +459,7 @@ function MessageRow({
   onReply,
   onOpenMenu,
   onOpenImage,
+  onOpenProfile,
 }: {
   message: Message;
   grouped: boolean;
@@ -472,6 +476,7 @@ function MessageRow({
   onReply: () => void;
   onOpenMenu: (message: Message, event: MouseEvent<HTMLElement>) => void;
   onOpenImage: (attachment: Attachment, message: Message) => void;
+  onOpenProfile: (userID: string, event: MouseEvent<HTMLElement>) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const name = nameFor(message.author.id);
@@ -527,7 +532,13 @@ function MessageRow({
 
         {showHead && (
           <div className="message-head">
-            <span className="message-author">{name}</span>
+            <button
+              type="button"
+              className="message-author"
+              onClick={(event) => onOpenProfile(message.author.id, event)}
+            >
+              {name}
+            </button>
             <span className="message-time">{timeOf(message.created_at)}</span>
             {message.edited_at && <span className="message-edited">edited</span>}
           </div>

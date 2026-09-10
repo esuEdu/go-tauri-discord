@@ -225,6 +225,76 @@ Nothing about your own account is addressed this way at all: `@me` resolves
 from the token, which is why no endpoint has ever accepted an id to change an
 account.
 
+### Status
+
+Four values reach other people and there are no others: `online`, `away`,
+`busy`, `offline`. Six things collapse into those four, and the collapsing is
+the feature.
+
+A **chosen** status lives on the account, so it survives a reconnect —
+`online`, `away`, `busy` or `invisible`, set through `PATCH /api/v1/users/@me`.
+A **derived** one comes from the connection and from idleness. `domain.Resolve`
+is the single place they meet:
+
+- no live session, or chosen invisible → **offline**
+- idle and chosen online → **away**
+- otherwise → whatever was chosen
+
+Two consequences worth stating, because both are load-bearing:
+
+**Invisible has no representation anywhere.** It is not a value any payload can
+carry — it becomes `offline` before it reaches a wire type at all. That is what
+makes the lie whole rather than a rule four separate code paths have to
+remember: `PRESENCE_UPDATE`, the `READY` snapshot, the member roster and voice
+all read the same resolved value, and an invisible person's status text is
+dropped along with it, since text that kept flowing would say plainly that
+somebody is there. `TestNothingResolvesToInvisible` asserts the type-level
+version, and `TestInvisibleTellsTheSameLieEverywhere` walks each path; breaking
+the rule fails five assertions across four paths at once.
+
+**Idleness cannot override a choice.** Ten minutes without a pointer, a key or a
+visible window makes an *online* person away; it leaves `busy` alone, because a
+chosen status is a statement and a timer should not contradict it. Idleness is
+reported by the client, since only the client can see activity, and it is
+per-session — you are idle only when every session of yours is.
+
+Your own chosen status reaches only you, in `READY.self` and `SELF_UPDATE`. It
+cannot ride `PRESENCE_UPDATE` for the same reason a reaction's `mine` cannot ride
+`MESSAGE_UPDATE`: **a broadcast cannot carry per-viewer state.** Ask who a
+payload is *for* before putting anything in it.
+
+**The 90-second delay survives.** Going offline still waits out the resume
+window, so a dropped wifi does not flicker somebody offline and back. It falls
+out for free rather than being re-implemented: resolution counts sessions in
+`byUser`, and a detached session stays there until the window expires.
+
+`READY` used to carry an `online` list, and the roster an `online` boolean.
+Both were the smaller thing to send while there were two values; both are now a
+status per person, which is what four values cost.
+
+### Profiles
+
+Clicking a name opens a card: the person, their digits, their picture, whatever
+they are saying, a bio of up to 500 characters, the roles they hold **here**,
+and the day they joined **this** server. It is served by
+`GET /api/v1/guilds/{guildID}/members/{userID}/profile`.
+
+**It is guild-scoped on purpose.** Roles and a joined-at date are only meaningful
+for a server two people share, and scoping the route that way answers the
+awkward question in the issue — *how much of somebody is visible to somebody who
+shares no server with them?* — by never letting it arise: the handler requires
+the viewer to be a member of that guild, so a stranger gets a 404 rather than a
+partial answer. The endpoint for somebody you share nothing with is the one DMs
+will need, and it does not exist yet.
+
+The profile is **per account, not per server**. Discord has both; the per-server
+half multiplies the work and there is no demand for it yet. The one per-server
+thing on the card is the pair that has to be — roles and joined-at.
+
+A bio is user-supplied text shown to other people, so it is trimmed, capped at
+500 characters, refused if it carries control characters, and cleared by saving
+an empty one. The same rules govern the shorter status line, capped at 128.
+
 ### Account deletion
 
 `DELETE /api/v1/users/@me` asks for the password again. An access token is
@@ -1342,6 +1412,9 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [x] Channel order that somebody chose, announced and kept
 - [x] Upload progress, microphone choice, and joining muted
 - [x] Four digits after a name, so two people can share one
+- [x] A public id per person, so the row id and the token subject stay unpublished
+- [x] Away, busy and invisible, with idleness the client reports and a status text
+- [x] A profile behind a name: bio, the roles held here, and the day they joined
 - [x] Who is in a voice channel before you join it, seeded by READY
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide
