@@ -1,6 +1,7 @@
 package guild
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -54,7 +55,11 @@ func (h *Handler) removed(r *http.Request, guildID, userID uuid.UUID, banned boo
 	if h.rooms != nil {
 		h.rooms.LeftGuild(userID, guildID)
 	}
-	departure := events.GuildRemoval{GuildID: guildID, UserID: userID, Banned: banned}
+	who, err := h.svc.Who(r.Context(), userID)
+	if err != nil {
+		return
+	}
+	departure := events.GuildRemoval{GuildID: guildID, UserID: who, Banned: banned}
 	h.pub.ToGuild(r.Context(), guildID, events.EventGuildMemberRemove, departure)
 	h.pub.ToUser(r.Context(), userID, events.EventGuildRemove, departure)
 }
@@ -108,9 +113,15 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	public, err := h.svc.PublicGuild(r.Context(), g)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
 	h.joined(userID, g.ID)
-	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(g))
-	httpx.JSON(w, http.StatusCreated, PublicGuild(g))
+	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, public)
+	httpx.JSON(w, http.StatusCreated, public)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +130,12 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, mapSlice(guilds, PublicGuild))
+	public, err := mapEach(r.Context(), guilds, h.svc.PublicGuild)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, public)
 }
 
 func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
@@ -173,12 +189,18 @@ func (h *Handler) redeemInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	public, err := h.svc.PublicGuild(r.Context(), guild)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
 	h.joined(userID, guild.ID)
 	if member, err := h.svc.NewMember(r.Context(), guild.ID, userID); err == nil {
 		h.pub.ToGuild(r.Context(), guild.ID, events.EventGuildMemberAdd, member)
 	}
-	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, PublicGuild(guild))
-	httpx.JSON(w, http.StatusOK, PublicGuild(guild))
+	h.pub.ToUser(r.Context(), userID, events.EventGuildCreate, public)
+	httpx.JSON(w, http.StatusOK, public)
 }
 
 func (h *Handler) revokeInvite(w http.ResponseWriter, r *http.Request) {
@@ -202,12 +224,12 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type member struct {
-		UserID        string  `json:"user_id"`
-		Username      string  `json:"username"`
-		Discriminator string  `json:"discriminator"`
-		Nickname      *string `json:"nickname"`
-		AvatarKey     *string `json:"avatar_key"`
-		Online        bool    `json:"online"`
+		UserID        events.UserID `json:"user_id"`
+		Username      string        `json:"username"`
+		Discriminator string        `json:"discriminator"`
+		Nickname      *string       `json:"nickname"`
+		AvatarKey     *string       `json:"avatar_key"`
+		Online        bool          `json:"online"`
 	}
 	ids := make([]uuid.UUID, len(rows))
 	for i, m := range rows {
@@ -218,7 +240,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	out := make([]member, len(rows))
 	for i, m := range rows {
 		out[i] = member{
-			UserID:        m.UserID.String(),
+			UserID:        events.UserID(m.PublicID),
 			Username:      m.Username,
 			Discriminator: m.Discriminator,
 			Nickname:      m.Nickname,
@@ -230,7 +252,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) kick(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, err := guildAndMember(r)
+	guildID, memberID, err := h.guildAndMember(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -264,7 +286,12 @@ func (h *Handler) reorder(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, mapSlice(guilds, PublicGuild))
+	public, err := mapEach(r.Context(), guilds, h.svc.PublicGuild)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, public)
 }
 
 func (h *Handler) leave(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +311,7 @@ func (h *Handler) leave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ban(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, err := guildAndMember(r)
+	guildID, memberID, err := h.guildAndMember(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -308,7 +335,7 @@ func (h *Handler) ban(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) unban(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, err := guildAndMember(r)
+	guildID, memberID, err := h.guildAndMember(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -414,15 +441,21 @@ func (h *Handler) updateGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, PublicGuild(updated))
-	httpx.JSON(w, http.StatusOK, PublicGuild(updated))
+	public, err := h.svc.PublicGuild(r.Context(), updated)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	h.pub.ToGuild(r.Context(), guildID, events.EventGuildUpdate, public)
+	httpx.JSON(w, http.StatusOK, public)
 }
 
-func memberTarget(r *http.Request, me uuid.UUID) (uuid.UUID, error) {
+func (h *Handler) memberTarget(r *http.Request, me uuid.UUID) (uuid.UUID, error) {
 	if r.PathValue("userID") == "@me" {
 		return me, nil
 	}
-	return httpx.PathUUID(r, "userID")
+	return h.svc.Whom(r.Context(), events.UserID(r.PathValue("userID")))
 }
 
 func (h *Handler) setNickname(w http.ResponseWriter, r *http.Request) {
@@ -431,7 +464,7 @@ func (h *Handler) setNickname(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	targetID, err := memberTarget(r, auth.MustUserID(r.Context()))
+	targetID, err := h.memberTarget(r, auth.MustUserID(r.Context()))
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -634,7 +667,7 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) memberRoles(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, err := guildAndMember(r)
+	guildID, memberID, err := h.guildAndMember(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -648,7 +681,7 @@ func (h *Handler) memberRoles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) assignRole(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, roleID, err := guildMemberAndRole(r)
+	guildID, memberID, roleID, err := h.guildMemberAndRole(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -661,7 +694,7 @@ func (h *Handler) assignRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) unassignRole(w http.ResponseWriter, r *http.Request) {
-	guildID, memberID, roleID, err := guildMemberAndRole(r)
+	guildID, memberID, roleID, err := h.guildMemberAndRole(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -684,11 +717,16 @@ func (h *Handler) listOverwrites(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, mapSlice(rows, PublicOverwrite))
+	public, err := mapEach(r.Context(), rows, h.svc.PublicOverwrite)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, public)
 }
 
 func (h *Handler) setOverwrite(w http.ResponseWriter, r *http.Request) {
-	channelID, targetID, err := channelAndTarget(r)
+	channelID, targetID, err := h.channelAndTarget(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -712,7 +750,7 @@ func (h *Handler) setOverwrite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) clearOverwrite(w http.ResponseWriter, r *http.Request) {
-	channelID, targetID, err := channelAndTarget(r)
+	channelID, targetID, err := h.channelAndTarget(r)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -724,18 +762,18 @@ func (h *Handler) clearOverwrite(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusNoContent, nil)
 }
 
-func guildAndMember(r *http.Request) (guildID, memberID uuid.UUID, err error) {
+func (h *Handler) guildAndMember(r *http.Request) (guildID, memberID uuid.UUID, err error) {
 	if guildID, err = httpx.PathUUID(r, "guildID"); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-	if memberID, err = httpx.PathUUID(r, "userID"); err != nil {
+	if memberID, err = h.svc.Whom(r.Context(), events.UserID(r.PathValue("userID"))); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 	return guildID, memberID, nil
 }
 
-func guildMemberAndRole(r *http.Request) (guildID, memberID, roleID uuid.UUID, err error) {
-	if guildID, memberID, err = guildAndMember(r); err != nil {
+func (h *Handler) guildMemberAndRole(r *http.Request) (guildID, memberID, roleID uuid.UUID, err error) {
+	if guildID, memberID, err = h.guildAndMember(r); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
 	if roleID, err = httpx.PathUUID(r, "roleID"); err != nil {
@@ -744,11 +782,16 @@ func guildMemberAndRole(r *http.Request) (guildID, memberID, roleID uuid.UUID, e
 	return guildID, memberID, roleID, nil
 }
 
-func channelAndTarget(r *http.Request) (channelID, targetID uuid.UUID, err error) {
+func (h *Handler) channelAndTarget(r *http.Request) (channelID, targetID uuid.UUID, err error) {
 	if channelID, err = httpx.PathUUID(r, "channelID"); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-	if targetID, err = httpx.PathUUID(r, "targetID"); err != nil {
+	raw := r.PathValue("targetID")
+	if parsed, err := uuid.Parse(raw); err == nil {
+		return channelID, parsed, nil
+	}
+	targetID, err = h.svc.Whom(r.Context(), events.UserID(raw))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 	return channelID, targetID, nil
@@ -760,4 +803,16 @@ func mapSlice[T any, R any](in []T, fn func(T) R) []R {
 		out[i] = fn(v)
 	}
 	return out
+}
+
+func mapEach[T any, R any](ctx context.Context, in []T, fn func(context.Context, T) (R, error)) ([]R, error) {
+	out := make([]R, len(in))
+	for i, v := range in {
+		mapped, err := fn(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = mapped
+	}
+	return out, nil
 }

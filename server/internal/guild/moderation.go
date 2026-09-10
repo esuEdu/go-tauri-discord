@@ -11,17 +11,18 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 const maxBanReasonLen = 500
 
 type BanView struct {
-	GuildID   uuid.UUID  `json:"guild_id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	Username  string     `json:"username"`
-	BannedBy  *uuid.UUID `json:"banned_by"`
-	Reason    *string    `json:"reason"`
-	CreatedAt time.Time  `json:"created_at"`
+	GuildID   uuid.UUID      `json:"guild_id"`
+	UserID    events.UserID  `json:"user_id"`
+	Username  string         `json:"username"`
+	BannedBy  *events.UserID `json:"banned_by"`
+	Reason    *string        `json:"reason"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 func (s *Service) Kick(ctx context.Context, actorID, guildID, targetID uuid.UUID) error {
@@ -97,7 +98,7 @@ func (s *Service) Ban(ctx context.Context, actorID, guildID, targetID uuid.UUID,
 	if err != nil {
 		return BanView{}, domain.Internal(err)
 	}
-	return toBanView(banned, user.Username), nil
+	return s.toBanView(ctx, banned, user)
 }
 
 func (s *Service) Unban(ctx context.Context, actorID, guildID, targetID uuid.UUID) error {
@@ -129,11 +130,17 @@ func (s *Service) ListBans(ctx context.Context, actorID, guildID uuid.UUID) ([]B
 	for i, b := range rows {
 		out[i] = BanView{
 			GuildID:   b.GuildID,
-			UserID:    b.UserID,
+			UserID:    events.UserID(b.PublicID),
 			Username:  b.Username,
-			BannedBy:  b.BannedBy,
 			Reason:    b.Reason,
 			CreatedAt: b.CreatedAt,
+		}
+		if b.BannedBy != nil {
+			by, err := s.people.Public(ctx, *b.BannedBy)
+			if err != nil {
+				return nil, err
+			}
+			out[i].BannedBy = &by
 		}
 	}
 	return out, nil
@@ -213,13 +220,20 @@ func validBanReason(reason *string) (*string, error) {
 	return &clean, nil
 }
 
-func toBanView(ban dbgen.GuildBan, username string) BanView {
-	return BanView{
+func (s *Service) toBanView(ctx context.Context, ban dbgen.GuildBan, user dbgen.User) (BanView, error) {
+	view := BanView{
 		GuildID:   ban.GuildID,
-		UserID:    ban.UserID,
-		Username:  username,
-		BannedBy:  ban.BannedBy,
+		UserID:    events.UserID(user.PublicID),
+		Username:  user.Username,
 		Reason:    ban.Reason,
 		CreatedAt: ban.CreatedAt,
 	}
+	if ban.BannedBy != nil {
+		by, err := s.people.Public(ctx, *ban.BannedBy)
+		if err != nil {
+			return BanView{}, err
+		}
+		view.BannedBy = &by
+	}
+	return view, nil
 }

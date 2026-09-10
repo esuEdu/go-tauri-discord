@@ -61,7 +61,7 @@ func TestGuildWideEventsAreNotFiltered(t *testing.T) {
 		kind    events.EventType
 		payload any
 	}{
-		{events.EventPresenceUpdate, events.PresenceUpdate{UserID: uuid.New(), Status: "online"}},
+		{events.EventPresenceUpdate, events.PresenceUpdate{UserID: "k3m9x7q2wp4rt8ab", Status: "online"}},
 		{events.EventGuildCreate, events.Guild{ID: uuid.New(), Name: "Somewhere"}},
 		{events.EventChannelCreate, events.Channel{ID: uuid.New(), GuildID: uuid.New()}},
 	}

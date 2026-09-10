@@ -9,6 +9,7 @@ SELECT * FROM messages WHERE id = @id AND deleted_at IS NULL;
 -- name: ListMessages :many
 SELECT
     m.*,
+    u.public_id  AS author_public_id,
     u.username   AS author_username,
     u.discriminator AS author_discriminator,
     u.avatar_key AS author_avatar_key

@@ -39,9 +39,9 @@ func (s *Service) previewOf(row dbgen.ListMessagePreviewsRow) events.ReplyPrevie
 		HasAttachments: row.HasAttachments,
 		Deleted:        row.Deleted,
 	}
-	if row.AuthorID != nil && row.AuthorUsername != nil {
+	if row.AuthorPublicID != nil && row.AuthorUsername != nil {
 		preview.Author = &events.User{
-			ID:            *row.AuthorID,
+			ID:            events.UserID(*row.AuthorPublicID),
 			Username:      *row.AuthorUsername,
 			Discriminator: value(row.AuthorDiscriminator),
 			AvatarKey:     row.AuthorAvatarKey,

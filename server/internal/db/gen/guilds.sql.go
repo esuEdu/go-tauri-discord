@@ -398,7 +398,7 @@ func (q *Queries) ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]
 }
 
 const listGuildMembers = `-- name: ListGuildMembers :many
-SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, m.position, u.username, u.discriminator, u.avatar_key
+SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, m.position, u.public_id, u.username, u.discriminator, u.avatar_key
 FROM guild_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = $1
@@ -411,6 +411,7 @@ type ListGuildMembersRow struct {
 	Nickname      *string
 	JoinedAt      time.Time
 	Position      int32
+	PublicID      string
 	Username      string
 	Discriminator string
 	AvatarKey     *string
@@ -431,6 +432,7 @@ func (q *Queries) ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]Li
 			&i.Nickname,
 			&i.JoinedAt,
 			&i.Position,
+			&i.PublicID,
 			&i.Username,
 			&i.Discriminator,
 			&i.AvatarKey,

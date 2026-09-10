@@ -4,12 +4,14 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 func TestADeafenedPeerIsSentNoSoundButKeepsThePicture(t *testing.T) {
-	sharer := uuid.New()
+	sharer := publicOf(uuid.New())
 	r := &room{layers: make(map[string]layer)}
-	p := &peer{deafened: true, ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+	p := &peer{deafened: true, ignored: map[events.UserID]bool{}, sizes: map[events.UserID]string{}}
 
 	cases := []struct {
 		track string
@@ -34,9 +36,9 @@ func TestADeafenedPeerIsSentNoSoundButKeepsThePicture(t *testing.T) {
 }
 
 func TestHearingComesBackWhenDeafeningIsLifted(t *testing.T) {
-	speaker := uuid.New()
+	speaker := publicOf(uuid.New())
 	r := &room{layers: make(map[string]layer)}
-	p := &peer{deafened: true, ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+	p := &peer{deafened: true, ignored: map[events.UserID]bool{}, sizes: map[events.UserID]string{}}
 
 	mic := TrackName(SourceMicrophone, speaker, 1)
 	if p.wants(r, mic) {
@@ -69,7 +71,7 @@ func TestDeafeningIsRememberedForWhoeverJoinsNext(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, false); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	if stateOf(t, sfu, channelID, userID).Deafened {

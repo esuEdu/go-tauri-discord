@@ -184,6 +184,47 @@ token** is opaque random bytes stored only as a SHA-256 hash and rotated on
 every use; presenting a revoked token is treated as theft. The desktop client
 keeps the refresh token in the OS keychain, never in `localStorage`.
 
+### Two identifiers per person
+
+Everybody has two ids and they are not interchangeable. `users.id` is the
+uuid the tables are keyed on and the subject of the access token. `public_id`
+is sixteen characters of `[a-z2-7]`, random per account and unique, and it is
+the **only** one that ever leaves the server. Every payload, every event, every
+path parameter that names a person carries the public id; the row id appears in
+no response, no gateway frame, and no URL.
+
+This is defence in depth rather than a lock — authorisation is enforced by the
+permission checks, not by an id being hard to guess. What it buys is that a
+mistake elsewhere cannot be exploited by reading somebody's id off the member
+list, because the value a request would need was never published.
+
+Two decisions make it hold rather than merely intend it:
+
+- **`events.UserID` is a distinct type**, not a `string` and not a `uuid.UUID`.
+  Every user-identifying field on the wire uses it, so putting a row id into a
+  payload does not compile. That catches the whole class at build time — but
+  only where the field is typed, which is why the two places that got it wrong
+  first were both plain strings: the member list stringified `m.UserID`, and
+  the TURN username embedded the row id in a `<expiry>:<id>` pair. `test/e2e`
+  asserts no row id appears anywhere in a READY frame, TURN credentials
+  included, and that test fails if either is reintroduced.
+- **The shape is deliberately not a uuid.** A second uuid would make a leak
+  invisible; sixteen characters of base32 are visibly a different kind of
+  thing. It also carries no hyphen, because the WebRTC track id is
+  `{source}-{owner}-{ssrc}` and the client splits it on the outer two.
+
+The identifier a person *reads* is still `name#1234`, which is a display
+concern and not a key: names are shareable, so a rename would otherwise break
+every stored reference to somebody. The public id is what the protocol uses.
+
+Inbound, the six routes that address another person — kick, ban, unban, assign
+and unassign a role, set a nickname — and the channel-overwrite target resolve
+the public id to a row id before anything else happens. An unknown one is a
+404, and so is a *real row id* sent in its place, since it is not an address.
+Nothing about your own account is addressed this way at all: `@me` resolves
+from the token, which is why no endpoint has ever accepted an id to change an
+account.
+
 ### Account deletion
 
 `DELETE /api/v1/users/@me` asks for the password again. An access token is
@@ -747,7 +788,7 @@ never connects, which looks exactly like a broken microphone.
 `ICE_SERVERS` is a comma-separated list, each entry either a bare url or
 `url|username|credential`. A `turn:` entry given without credentials of its own
 is signed with **`TURN_SECRET`**, using the TURN REST convention that coturn
-implements as `use-auth-secret`: the username is `<expiry>:<user id>` and the
+implements as `use-auth-secret`: the username is `<expiry>:<public id>` and the
 credential is the base64 HMAC-SHA1 of it. `TURN_TTL` sets how long one lasts,
 12 hours by default.
 

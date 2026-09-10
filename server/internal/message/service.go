@@ -11,6 +11,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/internal/identity"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/storage"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
@@ -46,12 +47,13 @@ type Service struct {
 	repo   Repository
 	authz  Authorizer
 	pub    *bus.Publisher
+	people *identity.Directory
 	store  storage.Store
 	signer Signer
 }
 
-func NewService(repo Repository, authz Authorizer, pub *bus.Publisher) *Service {
-	return &Service{repo: repo, authz: authz, pub: pub}
+func NewService(repo Repository, authz Authorizer, pub *bus.Publisher, people *identity.Directory) *Service {
+	return &Service{repo: repo, authz: authz, pub: pub, people: people}
 }
 
 const (
@@ -129,7 +131,7 @@ func (s *Service) Create(ctx context.Context, userID, channelID uuid.UUID, conte
 		ID:        row.ID,
 		ChannelID: row.ChannelID,
 		Author: events.User{
-			ID: author.ID, Username: author.Username,
+			ID: events.UserID(author.PublicID), Username: author.Username,
 			Discriminator: author.Discriminator, AvatarKey: author.AvatarKey,
 		},
 		Content:     row.Content,
@@ -176,7 +178,7 @@ func (s *Service) History(ctx context.Context, userID, channelID uuid.UUID, befo
 			ID:        r.ID,
 			ChannelID: r.ChannelID,
 			Author: events.User{
-				ID:            r.AuthorID,
+				ID:            events.UserID(r.AuthorPublicID),
 				Username:      r.AuthorUsername,
 				Discriminator: r.AuthorDiscriminator,
 				AvatarKey:     r.AuthorAvatarKey,
@@ -270,7 +272,7 @@ func (s *Service) Edit(ctx context.Context, userID, messageID uuid.UUID, content
 		ID:        row.ID,
 		ChannelID: row.ChannelID,
 		Author: events.User{
-			ID: author.ID, Username: author.Username,
+			ID: events.UserID(author.PublicID), Username: author.Username,
 			Discriminator: author.Discriminator, AvatarKey: author.AvatarKey,
 		},
 		Content:     row.Content,
@@ -329,8 +331,12 @@ func (s *Service) Typing(ctx context.Context, userID, channelID uuid.UUID) error
 	if !perms.Has(domain.PermSendMessages) {
 		return domain.Forbidden("missing SendMessages permission")
 	}
+	who, err := s.people.Public(ctx, userID)
+	if err != nil {
+		return err
+	}
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventTypingStart, events.TypingStart{
-		ChannelID: channelID, UserID: userID, Timestamp: time.Now(),
+		ChannelID: channelID, UserID: who, Timestamp: time.Now(),
 	})
 	return nil
 }

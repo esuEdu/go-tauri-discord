@@ -5,6 +5,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 const (
@@ -21,7 +23,7 @@ const (
 )
 
 type Quality struct {
-	UserID uuid.UUID
+	UserID events.UserID
 	Grade  string
 	Loss   float64
 	RTT    time.Duration
@@ -87,7 +89,7 @@ func (s *SFU) qualityChanges() map[uuid.UUID][]Quality {
 
 	out := make(map[uuid.UUID][]Quality)
 	for channelID, r := range s.rooms {
-		for userID, p := range r.peers {
+		for _, p := range r.peers {
 			if p.pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
 				continue
 			}
@@ -96,7 +98,7 @@ func (s *SFU) qualityChanges() map[uuid.UUID][]Quality {
 				continue
 			}
 			p.graded = q.Grade
-			q.UserID = userID
+			q.UserID = p.publicID
 			out[channelID] = append(out[channelID], q)
 		}
 	}

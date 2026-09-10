@@ -9,7 +9,7 @@ RETURNING *;
 SELECT * FROM guild_bans WHERE guild_id = @guild_id AND user_id = @user_id;
 
 -- name: ListGuildBans :many
-SELECT b.*, u.username
+SELECT b.*, u.public_id, u.username
 FROM guild_bans b
 JOIN users u ON u.id = b.user_id
 WHERE b.guild_id = @guild_id
