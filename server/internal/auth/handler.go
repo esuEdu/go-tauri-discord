@@ -13,6 +13,7 @@ import (
 
 type Sessions interface {
 	DisconnectUser(userID uuid.UUID)
+	ProfileChanged(user dbgen.User)
 }
 
 type Handler struct {
@@ -108,9 +109,47 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusNoContent, nil)
 }
 
+type AccountView struct {
+	events.User
+	Self events.Self `json:"self"`
+}
+
+func Account(u dbgen.User) AccountView {
+	return AccountView{User: PublicUser(u), Self: SelfOf(u)}
+}
+
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFrom(r.Context())
-	httpx.JSON(w, http.StatusOK, PublicUser(user))
+	httpx.JSON(w, http.StatusOK, Account(user))
+}
+
+func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFrom(r.Context())
+
+	var in struct {
+		Status       *string `json:"status"`
+		CustomStatus *string `json:"custom_status"`
+		Bio          *string `json:"bio"`
+	}
+	if err := httpx.Decode(w, r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	updated, err := h.svc.UpdateProfile(r.Context(), user.ID, ProfileEdit{
+		Status:       in.Status,
+		CustomStatus: in.CustomStatus,
+		Bio:          in.Bio,
+	})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	if h.sessions != nil {
+		h.sessions.ProfileChanged(updated)
+	}
+	httpx.JSON(w, http.StatusOK, Account(updated))
 }
 
 func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +174,7 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 
 func PublicUser(u dbgen.User) events.User {
 	return events.User{
-		ID:            u.ID,
+		ID:            events.UserID(u.PublicID),
 		Username:      u.Username,
 		Discriminator: u.Discriminator,
 		AvatarKey:     u.AvatarKey,

@@ -31,16 +31,20 @@ func readStateFor(ready events.Ready, channelID uuid.UUID) (events.ReadState, bo
 	return events.ReadState{}, false
 }
 
-func isOnline(ready events.Ready, userID uuid.UUID) bool {
-	for _, id := range ready.Online {
-		if id == userID {
-			return true
+func statusIn(ready events.Ready, userID events.UserID) string {
+	for _, p := range ready.Presence {
+		if p.UserID == userID {
+			return p.Status
 		}
 	}
-	return false
+	return "offline"
 }
 
-func isMember(ready events.Ready, guildID, userID uuid.UUID) bool {
+func isOnline(ready events.Ready, userID events.UserID) bool {
+	return statusIn(ready, userID) == "online"
+}
+
+func isMember(ready events.Ready, guildID uuid.UUID, userID events.UserID) bool {
 	for _, m := range ready.Members {
 		if m.GuildID == guildID && m.User.ID == userID {
 			return true
@@ -133,7 +137,7 @@ func TestReadyCarriesTheReadStateOfAnOpenedChannel(t *testing.T) {
 	}
 }
 
-func awaitPresence(t *testing.T, s *socket, userID uuid.UUID) string {
+func awaitPresence(t *testing.T, s *socket, userID events.UserID) string {
 	t.Helper()
 	for range 10 {
 		var update events.PresenceUpdate

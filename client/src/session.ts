@@ -8,6 +8,7 @@ import type {
   Message,
   PresenceUpdate,
   Ready,
+  Self,
   User,
   VoiceStateUpdate,
   VoiceQuality,
@@ -17,7 +18,9 @@ export type SessionState = {
   names: Record<string, string>;
   tags: Record<string, string>;
   avatars: Record<string, string | null>;
-  online: Record<string, boolean>;
+  status: Record<string, string>;
+  saying: Record<string, string | null>;
+  self: Self;
   unread: Record<string, boolean>;
   guildAllows: Record<string, number>;
   channelAllows: Record<string, number>;
@@ -32,7 +35,9 @@ export const emptySession: SessionState = {
   names: {},
   tags: {},
   avatars: {},
-  online: {},
+  status: {},
+  saying: {},
+  self: { status: "online" },
   unread: {},
   guildAllows: {},
   channelAllows: {},
@@ -47,7 +52,9 @@ class SessionStore {
   private names: Record<string, string> = {};
   private tags: Record<string, string> = {};
   private avatars: Record<string, string | null> = {};
-  private online: Record<string, boolean> = {};
+  private status: Record<string, string> = {};
+  private saying: Record<string, string | null> = {};
+  private self: Self = { status: "online" };
   private newest: Record<string, string> = {};
   private seen: Record<string, string> = {};
   private open: string | null = null;
@@ -63,6 +70,7 @@ class SessionStore {
   constructor() {
     gateway.on("READY", (payload) => this.absorb(payload as Ready));
     gateway.on("PRESENCE_UPDATE", (payload) => this.presence(payload as PresenceUpdate));
+    gateway.on("SELF_UPDATE", (payload) => this.selfChanged(payload as Self));
     gateway.on("MESSAGE_CREATE", (payload) => this.arrived(payload as Message));
     gateway.on("GUILD_MEMBER_ADD", (payload) => {
       const member = payload as Member;
@@ -156,7 +164,9 @@ class SessionStore {
     this.names = {};
     this.tags = {};
     this.avatars = {};
-    this.online = {};
+    this.status = {};
+    this.saying = {};
+    this.self = { status: "online" };
     this.newest = {};
     this.seen = {};
     this.open = null;
@@ -179,7 +189,9 @@ class SessionStore {
       names: this.names,
       tags: this.tags,
       avatars: this.avatars,
-      online: this.online,
+      status: this.status,
+      saying: this.saying,
+      self: this.self,
       unread,
       guildAllows: this.guildAllows,
       channelAllows: this.channelAllows,
@@ -213,8 +225,10 @@ class SessionStore {
       this.remember(member.guild_id, member.user.id);
     }
 
-    this.online = {};
-    for (const id of ready.online) this.online[id] = true;
+    this.self = ready.self;
+    this.status = {};
+    this.saying = {};
+    for (const p of ready.presence) this.absorbPresence(p);
 
     this.newest = {};
     for (const channel of ready.channels) {
@@ -274,18 +288,21 @@ class SessionStore {
     const names = { ...this.names };
     const tags = { ...this.tags };
     const avatars = { ...this.avatars };
-    const online = { ...this.online };
+    const status = { ...this.status };
+    const saying = { ...this.saying };
     for (const member of members) {
       names[member.user_id] = member.username;
       tags[member.user_id] = member.discriminator;
       avatars[member.user_id] = member.avatar_key ?? null;
-      online[member.user_id] = member.online;
+      status[member.user_id] = member.status;
+      saying[member.user_id] = member.custom_status ?? null;
       this.remember(guildID, member.user_id);
     }
     this.names = names;
     this.tags = tags;
     this.avatars = avatars;
-    this.online = online;
+    this.status = status;
+    this.saying = saying;
     this.emit();
   }
 
@@ -319,8 +336,18 @@ class SessionStore {
     this.channelAllows = channels;
   }
 
+  private absorbPresence(update: PresenceUpdate) {
+    this.status = { ...this.status, [update.user_id]: update.status };
+    this.saying = { ...this.saying, [update.user_id]: update.custom_status ?? null };
+  }
+
   private presence(update: PresenceUpdate) {
-    this.online = { ...this.online, [update.user_id]: update.status === "online" };
+    this.absorbPresence(update);
+    this.emit();
+  }
+
+  private selfChanged(self: Self) {
+    this.self = self;
     this.emit();
   }
 

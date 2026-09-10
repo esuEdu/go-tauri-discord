@@ -1,6 +1,6 @@
 -- name: CreateUser :one
-INSERT INTO users (id, username, email, password_hash, discriminator)
-VALUES (@id, @username, @email, @password_hash, @discriminator)
+INSERT INTO users (id, public_id, username, email, password_hash, discriminator)
+VALUES (@id, @public_id, @username, @email, @password_hash, @discriminator)
 RETURNING *;
 
 -- name: TakenDiscriminators :many
@@ -8,6 +8,12 @@ SELECT discriminator FROM users WHERE lower(username) = lower(@username);
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = @id;
+
+-- name: GetUserByPublicID :one
+SELECT * FROM users WHERE public_id = @public_id;
+
+-- name: PublicIDTaken :one
+SELECT EXISTS (SELECT 1 FROM users WHERE public_id = @public_id);
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE lower(email) = lower(@email);
@@ -45,5 +51,16 @@ DELETE FROM users WHERE id = @id;
 
 -- name: SetUserAvatar :one
 UPDATE users SET avatar_key = @avatar_key, updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: UpdateUserProfile :one
+UPDATE users
+SET status        = coalesce(sqlc.narg('status'), status),
+    custom_status = CASE WHEN @clear_custom_status::bool THEN NULL
+                         ELSE coalesce(sqlc.narg('custom_status'), custom_status) END,
+    bio           = CASE WHEN @clear_bio::bool THEN NULL
+                         ELSE coalesce(sqlc.narg('bio'), bio) END,
+    updated_at    = now()
 WHERE id = @id
 RETURNING *;

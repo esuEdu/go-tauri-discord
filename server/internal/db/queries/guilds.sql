@@ -72,7 +72,7 @@ SELECT count(*) FROM guild_members WHERE user_id = @user_id;
 SELECT * FROM guild_members WHERE guild_id = @guild_id AND user_id = @user_id;
 
 -- name: ListGuildMembers :many
-SELECT m.*, u.username, u.discriminator, u.avatar_key
+SELECT m.*, u.public_id, u.username, u.discriminator, u.avatar_key
 FROM guild_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = @guild_id
@@ -225,3 +225,11 @@ WHERE c.guild_id = @guild_id;
 UPDATE guilds SET icon_key = @icon_key
 WHERE id = @id
 RETURNING *;
+
+-- name: GetGuildMemberProfile :one
+SELECT m.joined_at, m.nickname,
+       u.public_id, u.username, u.discriminator, u.avatar_key,
+       u.status, u.custom_status, u.bio
+FROM guild_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.guild_id = @guild_id AND m.user_id = @user_id;

@@ -28,6 +28,7 @@ const (
 	OpScreenPublish  Opcode = 15
 	OpScreenAnswer   Opcode = 16
 	OpScreenIce      Opcode = 17
+	OpPresence       Opcode = 18
 )
 
 type EventType string
@@ -47,6 +48,7 @@ const (
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
 	EventUserUpdate        EventType = "USER_UPDATE"
+	EventSelfUpdate        EventType = "SELF_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
 	EventGuildMemberAdd    EventType = "GUILD_MEMBER_ADD"
 	EventGuildMemberUpdate EventType = "GUILD_MEMBER_UPDATE"
@@ -78,17 +80,27 @@ type Resume struct {
 	Seq       int64  `json:"seq"`
 }
 
+type UserID string
+
+func (u UserID) String() string { return string(u) }
+
 type User struct {
-	ID            uuid.UUID `json:"id"`
-	Username      string    `json:"username"`
-	Discriminator string    `json:"discriminator"`
-	AvatarKey     *string   `json:"avatar_key"`
+	ID            UserID  `json:"id"`
+	Username      string  `json:"username"`
+	Discriminator string  `json:"discriminator"`
+	AvatarKey     *string `json:"avatar_key"`
+}
+
+type Self struct {
+	Status       string  `json:"status"`
+	CustomStatus *string `json:"custom_status"`
+	Bio          *string `json:"bio"`
 }
 
 type Guild struct {
 	ID      uuid.UUID `json:"id"`
 	Name    string    `json:"name"`
-	OwnerID uuid.UUID `json:"owner_id"`
+	OwnerID UserID    `json:"owner_id"`
 	IconKey *string   `json:"icon_key"`
 }
 
@@ -111,7 +123,7 @@ type Member struct {
 
 type GuildRemoval struct {
 	GuildID uuid.UUID `json:"guild_id"`
-	UserID  uuid.UUID `json:"user_id"`
+	UserID  UserID    `json:"user_id"`
 	Banned  bool      `json:"banned"`
 }
 
@@ -142,7 +154,7 @@ type Role struct {
 
 type Overwrite struct {
 	ChannelID  uuid.UUID `json:"channel_id"`
-	TargetID   uuid.UUID `json:"target_id"`
+	TargetID   string    `json:"target_id"`
 	TargetType string    `json:"target_type"`
 	Allow      int64     `json:"allow"`
 	Deny       int64     `json:"deny"`
@@ -186,12 +198,13 @@ type Message struct {
 type Ready struct {
 	SessionID  string             `json:"session_id"`
 	User       User               `json:"user"`
+	Self       Self               `json:"self"`
 	Guilds     []Guild            `json:"guilds"`
 	Channels   []Channel          `json:"channels"`
 	Members    []Member           `json:"members"`
 	ReadStates []ReadState        `json:"read_states"`
 	Allowed    []GuildPermissions `json:"allowed"`
-	Online     []uuid.UUID        `json:"online"`
+	Presence   []PresenceUpdate   `json:"presence"`
 	ICEServers []ICEServer        `json:"ice_servers"`
 	Voice      []VoiceStateUpdate `json:"voice"`
 }
@@ -210,19 +223,24 @@ type MessageDelete struct {
 type MessageReaction struct {
 	MessageID uuid.UUID `json:"message_id"`
 	ChannelID uuid.UUID `json:"channel_id"`
-	UserID    uuid.UUID `json:"user_id"`
+	UserID    UserID    `json:"user_id"`
 	Emoji     string    `json:"emoji"`
 }
 
 type TypingStart struct {
 	ChannelID uuid.UUID `json:"channel_id"`
-	UserID    uuid.UUID `json:"user_id"`
+	UserID    UserID    `json:"user_id"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type PresenceRequest struct {
+	Idle bool `json:"idle"`
+}
+
 type PresenceUpdate struct {
-	UserID uuid.UUID `json:"user_id"`
-	Status string    `json:"status"`
+	UserID       UserID  `json:"user_id"`
+	Status       string  `json:"status"`
+	CustomStatus *string `json:"custom_status"`
 }
 
 type VoiceStateRequest struct {
@@ -246,7 +264,7 @@ type ICECandidate struct {
 type VoiceStateUpdate struct {
 	GuildID   uuid.UUID  `json:"guild_id"`
 	ChannelID *uuid.UUID `json:"channel_id"`
-	UserID    uuid.UUID  `json:"user_id"`
+	UserID    UserID     `json:"user_id"`
 	SelfMute  bool       `json:"self_mute"`
 	SelfDeaf  bool       `json:"self_deaf"`
 }
@@ -256,9 +274,9 @@ type ScreenPublish struct {
 }
 
 type VoiceWatchRequest struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Watching bool      `json:"watching"`
-	Size     string    `json:"size"`
+	UserID   UserID `json:"user_id"`
+	Watching bool   `json:"watching"`
+	Size     string `json:"size"`
 }
 
 type VoiceMuteRequest struct {
@@ -269,7 +287,7 @@ type VoiceMuteRequest struct {
 type VoiceQuality struct {
 	GuildID   uuid.UUID `json:"guild_id"`
 	ChannelID uuid.UUID `json:"channel_id"`
-	UserID    uuid.UUID `json:"user_id"`
+	UserID    UserID    `json:"user_id"`
 	Quality   string    `json:"quality"`
 	LossPct   float64   `json:"loss_pct"`
 	RTTMillis int64     `json:"rtt_ms"`
@@ -282,7 +300,7 @@ type VoiceScreenRequest struct {
 type VoiceScreenUpdate struct {
 	GuildID   uuid.UUID `json:"guild_id"`
 	ChannelID uuid.UUID `json:"channel_id"`
-	UserID    uuid.UUID `json:"user_id"`
+	UserID    UserID    `json:"user_id"`
 	StreamID  string    `json:"stream_id"`
 	Active    bool      `json:"active"`
 }

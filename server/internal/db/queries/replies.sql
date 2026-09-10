@@ -6,7 +6,7 @@ SELECT
     m.id,
     m.channel_id,
     (m.deleted_at IS NOT NULL)::bool AS deleted,
-    u.id                             AS author_id,
+    u.public_id                      AS author_public_id,
     u.username                       AS author_username,
     u.discriminator                  AS author_discriminator,
     u.avatar_key                     AS author_avatar_key,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDismiss } from "../dismiss";
 import { onDesktop } from "../capture";
 import { Toggle } from "../ui/Toggle";
 import { Avatar, initialsOf } from "../ui/Avatar";
@@ -22,6 +23,10 @@ export function YourBar({
   me,
   meAvatarURL,
   presence,
+  chosen,
+  saying,
+  onChooseStatus,
+  onSay,
   call,
   watching,
   muted,
@@ -38,6 +43,10 @@ export function YourBar({
   me: string;
   meAvatarURL: string | null;
   presence: string;
+  chosen: string;
+  saying: string | null;
+  onChooseStatus: (status: string) => void;
+  onSay: (text: string) => void;
   call: CallSummary | null;
   watching: WatchSummary | null;
   muted: boolean;
@@ -110,11 +119,15 @@ export function YourBar({
       )}
 
       <div className="bar-you">
-        <Avatar name={me} url={meAvatarURL} size={34} tone="accent" />
-        <div className="bar-text">
-          <span className="bar-you-name">{me}</span>
-          <span className="bar-status">{presence}</span>
-        </div>
+        <StatusButton
+          me={me}
+          meAvatarURL={meAvatarURL}
+          presence={presence}
+          chosen={chosen}
+          saying={saying}
+          onChooseStatus={onChooseStatus}
+          onSay={onSay}
+        />
         <div className="bar-buttons">
           <IconButton
             name={muted ? "microphone-slash" : "microphone"}
@@ -191,6 +204,128 @@ function NoiseButton({
             Everybody else hears the difference, so try it while you type.
           </p>
           <span className="noise-credit">Powered by RNNoise</span>
+        </div>
+      )}
+    </span>
+  );
+}
+
+const CHOICES: { value: string; label: string; hint: string }[] = [
+  { value: "online", label: "Online", hint: "Here and available" },
+  { value: "away", label: "Away", hint: "Around, but not at the keyboard" },
+  { value: "busy", label: "Busy", hint: "Here, and would rather not be interrupted" },
+  { value: "invisible", label: "Invisible", hint: "You look offline to everybody else" },
+];
+
+function StatusButton({
+  me,
+  meAvatarURL,
+  presence,
+  chosen,
+  saying,
+  onChooseStatus,
+  onSay,
+}: {
+  me: string;
+  meAvatarURL: string | null;
+  presence: string;
+  chosen: string;
+  saying: string | null;
+  onChooseStatus: (status: string) => void;
+  onSay: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(saying ?? "");
+  const anchor = useDismiss<HTMLSpanElement>(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) setDraft(saying ?? "");
+  }, [open, saying]);
+
+  const dot = chosen === "invisible" ? "offline" : chosen;
+
+  return (
+    <span className="status-anchor" ref={anchor}>
+      <button
+        type="button"
+        className="bar-you-button"
+        aria-expanded={open}
+        aria-label="Your status"
+        onClick={() => setOpen((was) => !was)}
+      >
+        <span className="avatar-slot">
+          <Avatar name={me} url={meAvatarURL} size={34} tone="accent" />
+          <span className="presence-dot" data-status={dot} />
+        </span>
+        <span className="bar-text">
+          <span className="bar-you-name">{me}</span>
+          <span className="bar-status">{saying ?? presence}</span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="status-popover">
+          <span className="status-kicker">Status</span>
+          {CHOICES.map((choice) => (
+            <button
+              key={choice.value}
+              type="button"
+              className="status-choice"
+              data-chosen={choice.value === chosen}
+              onClick={() => {
+                onChooseStatus(choice.value);
+                setOpen(false);
+              }}
+            >
+              <span
+                className="presence-dot"
+                data-status={choice.value === "invisible" ? "offline" : choice.value}
+              />
+              <span className="status-choice-text">
+                <span className="status-choice-label">{choice.label}</span>
+                <span className="status-choice-hint">{choice.hint}</span>
+              </span>
+            </button>
+          ))}
+
+          <span className="status-kicker">Saying</span>
+          <div className="status-saying">
+            <input
+              className="status-input"
+              value={draft}
+              maxLength={128}
+              placeholder="What are you up to?"
+              aria-label="Custom status"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                onSay(draft);
+                setOpen(false);
+              }}
+            />
+            <button
+              type="button"
+              className="status-save"
+              onClick={() => {
+                onSay(draft);
+                setOpen(false);
+              }}
+            >
+              Save
+            </button>
+          </div>
+          {saying && (
+            <button
+              type="button"
+              className="status-clear"
+              onClick={() => {
+                onSay("");
+                setOpen(false);
+              }}
+            >
+              Clear it
+            </button>
+          )}
         </div>
       )}
     </span>

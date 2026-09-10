@@ -30,6 +30,7 @@ const defaultTestDatabaseURL = "postgres://vocalis:vocalis@localhost:5432/vocali
 type harness struct {
 	t      *testing.T
 	server *httptest.Server
+	pool   *db.Pool
 	token  string
 	email  string
 }
@@ -85,12 +86,12 @@ func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 		pool.Close()
 	})
 
-	return &harness{t: t, server: server}
+	return &harness{t: t, server: server, pool: pool}
 }
 
 func (h *harness) newUser() *harness {
 	h.t.Helper()
-	other := &harness{t: h.t, server: h.server}
+	other := &harness{t: h.t, server: h.server, pool: h.pool}
 	other.registerUser()
 	return other
 }
@@ -168,7 +169,7 @@ func (h *harness) mustDo(method, path string, wantStatus int, body, out any) {
 	}
 }
 
-func (h *harness) registerUser() (userID uuid.UUID, refreshToken string) {
+func (h *harness) registerUser() (userID events.UserID, refreshToken string) {
 	h.t.Helper()
 
 	name := "e2e" + randomSuffix()
@@ -301,6 +302,14 @@ func (s *socket) send(frame events.Frame) error {
 func (s *socket) identify(token string) events.Ready {
 	s.t.Helper()
 
+	var ready events.Ready
+	decode(s.t, s.identifyRaw(token).D, &ready)
+	return ready
+}
+
+func (s *socket) identifyRaw(token string) events.Frame {
+	s.t.Helper()
+
 	if op := s.read().Op; op != events.OpHello {
 		s.t.Fatalf("first frame op = %d, want HELLO (%d)", op, events.OpHello)
 	}
@@ -313,10 +322,7 @@ func (s *socket) identify(token string) events.Ready {
 	if frame.S != 1 {
 		s.t.Errorf("READY sequence = %d, want 1", frame.S)
 	}
-
-	var ready events.Ready
-	decode(s.t, frame.D, &ready)
-	return ready
+	return frame
 }
 
 func decode(t *testing.T, raw json.RawMessage, out any) {

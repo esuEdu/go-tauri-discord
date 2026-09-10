@@ -121,12 +121,30 @@ be shown, because it does not exist.
 | --- | --- |
 | **Username** | 2–32 characters, chosen at sign-up. Cannot be changed anywhere in the app. Shared with anybody else who picked it |
 | **Number** | Four digits the server assigns, `0001`–`9999`. Not chosen, not changeable. What makes `Carla#0417` a different person from `Carla#2258` |
-| **Status** | **Online or offline. That is all.** |
+| **Status** | Online, away or busy, chosen or derived. Invisible is chosen and shows as offline |
 | **Picture** | Optional. Uploaded, cropped to a square and served at 256×256. Most people will not have one |
+| **Saying** | Optional line of up to 128 characters somebody writes about themselves. Cleared by emptying it |
+| **Bio** | Optional, up to 500 characters. Seen only by opening somebody's card, never in a list |
 
-**Status is only two values.** Idle, do-not-disturb, invisible, custom status,
-"playing something" — none of these exist. If any of them should, that is new
-work on the server, not just a design.
+**Status is four values on the wire and no more**: `online`, `away`, `busy`,
+`offline`. Two of them can arrive two different ways, and the difference is
+invisible to a design:
+
+- **Away** is either chosen by hand or derived from ten minutes without a
+  pointer, a key or a visible window. Both look identical, deliberately.
+- **Offline** is either the app being closed or somebody choosing **invisible**.
+  Also identical, and that is the entire point of invisible — there is no fifth
+  value a design could use to tell them apart, because there is no fifth value
+  on the wire at all.
+
+So a design needs **four dots and no more**, and must not offer any affordance
+that would distinguish a chosen away from a derived one, or an invisible person
+from an absent one.
+
+What somebody sees about *themselves* is different: their own chosen status
+reaches only them, so the place where you pick a status shows "Invisible" while
+everybody else's copy of you says offline. "Playing something" still does not
+exist.
 
 **The number is shown only when it is needed.** In a server with one Carla she
 is "Carla"; the moment a second Carla arrives, both become "Carla#0417" and
@@ -504,9 +522,7 @@ These need server work before they can be designed as anything real:
   reason: they are preferences with nowhere to live. They are kept in the
   browser rather than on the account, so they do not follow somebody to another
   machine, and the panel says a change applies the next time you join
-- Profiles — clicking a name does nothing
 - An emoji picker worth the name, and custom per-server emoji
 - Search, pins, threads
 - Direct messages
 - Recovering a forgotten password
-- Statuses beyond online and offline

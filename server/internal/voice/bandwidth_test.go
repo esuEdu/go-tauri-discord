@@ -48,7 +48,7 @@ func TestJoinAttachesABandwidthEstimator(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, true); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestEveryPeerGetsAnEstimatorOfItsOwn(t *testing.T) {
 	channelID := uuid.New()
 	first, second := uuid.New(), uuid.New()
 	for _, userID := range []uuid.UUID{first, second} {
-		if err := sfu.Join(channelID, userID, true); err != nil {
+		if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 			t.Fatalf("join %s: %v", userID, err)
 		}
 	}
@@ -104,7 +104,7 @@ func TestViewerBandwidthLeavesTheSharerOut(t *testing.T) {
 	channelID := uuid.New()
 	sharer, viewer := uuid.New(), uuid.New()
 	for _, userID := range []uuid.UUID{sharer, viewer} {
-		if err := sfu.Join(channelID, userID, true); err != nil {
+		if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 			t.Fatalf("join %s: %v", userID, err)
 		}
 	}

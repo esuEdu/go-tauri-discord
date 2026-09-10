@@ -3,7 +3,6 @@ package voice
 import (
 	"errors"
 	"log/slog"
-	"maps"
 	"sync"
 	"time"
 
@@ -14,6 +13,8 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/internal/ice"
+
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 var ErrNotConnected = errors.New("voice: peer is not connected")
@@ -23,8 +24,8 @@ var ErrNotAllowed = errors.New("voice: not allowed to share a screen here")
 type Signaler interface {
 	SendOffer(userID uuid.UUID, sdp webrtc.SessionDescription)
 	SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateInit)
-	VoiceClosed(channelID, userID uuid.UUID)
-	ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool)
+	VoiceClosed(channelID uuid.UUID, who events.UserID)
+	ScreenChanged(channelID uuid.UUID, who events.UserID, streamID string, active bool)
 	QualityChanged(channelID uuid.UUID, quality Quality)
 }
 
@@ -58,12 +59,13 @@ type room struct {
 }
 
 type layer struct {
-	owner uuid.UUID
+	owner events.UserID
 	rid   string
 }
 
 type peer struct {
 	userID           uuid.UUID
+	publicID         events.UserID
 	pc               *webrtc.PeerConnection
 	owned            map[string]bool
 	mayStream        bool
@@ -74,8 +76,8 @@ type peer struct {
 	muted            bool
 	deafened         bool
 	graded           string
-	ignored          map[uuid.UUID]bool
-	sizes            map[uuid.UUID]string
+	ignored          map[events.UserID]bool
+	sizes            map[events.UserID]string
 	redo             bool
 
 	mu         sync.Mutex
@@ -193,7 +195,7 @@ func (s *SFU) iceConfig() webrtc.Configuration {
 	return webrtc.Configuration{ICEServers: servers}
 }
 
-func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
+func (s *SFU) Join(channelID, userID uuid.UUID, publicID events.UserID, mayStream bool) error {
 	s.Leave(userID)
 
 	pc, estimator, err := s.newPeerConnection()
@@ -207,9 +209,9 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 	}
 
 	p := &peer{
-		userID: userID, pc: pc, owned: make(map[string]bool),
-		estimate: estimator, ignored: make(map[uuid.UUID]bool),
-		sizes: make(map[uuid.UUID]string), mayStream: mayStream,
+		userID: userID, publicID: publicID, pc: pc, owned: make(map[string]bool),
+		estimate: estimator, ignored: make(map[events.UserID]bool),
+		sizes: make(map[events.UserID]string), mayStream: mayStream,
 	}
 
 	s.mu.Lock()
@@ -238,7 +240,7 @@ func (s *SFU) Join(channelID, userID uuid.UUID, mayStream bool) error {
 
 	watchConnection(pc, userID, "microphone", func() {
 		if channelID, left := s.leave(userID, p); left {
-			s.signaler.VoiceClosed(channelID, userID)
+			s.signaler.VoiceClosed(channelID, publicID)
 		}
 	})
 
@@ -257,7 +259,7 @@ func (s *SFU) forward(r *room, p *peer, remote *webrtc.TrackRemote, source Sourc
 }
 
 func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote *webrtc.TrackRemote, source Source, rid string) {
-	trackID := TrackName(source, p.userID, uint32(remote.SSRC()))
+	trackID := TrackName(source, p.publicID, uint32(remote.SSRC()))
 
 	local, err := webrtc.NewTrackLocalStaticRTP(
 		remote.Codec().RTPCodecCapability, trackID, trackID)
@@ -276,7 +278,7 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 	case SourceScreen:
 		r.screens[p.userID] = local.StreamID()
 		r.keyframes[local.ID()] = (&keyframeRequester{pc: from, ssrc: remote.SSRC()}).ask
-		r.layers[local.ID()] = layer{owner: p.userID, rid: rid}
+		r.layers[local.ID()] = layer{owner: p.publicID, rid: rid}
 		p.screenTrack = local
 		p.screenAsk = r.keyframes[local.ID()]
 	case SourceScreenAudio:
@@ -286,7 +288,7 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 	s.mu.Unlock()
 
 	if source == SourceScreen {
-		s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), true)
+		s.signaler.ScreenChanged(r.channelID, p.publicID, local.StreamID(), true)
 	}
 
 	defer func() {
@@ -314,7 +316,7 @@ func (s *SFU) forwardLayer(r *room, p *peer, from *webrtc.PeerConnection, remote
 		s.mu.Unlock()
 
 		if source == SourceScreen && wasLive {
-			s.signaler.ScreenChanged(r.channelID, p.userID, local.StreamID(), false)
+			s.signaler.ScreenChanged(r.channelID, p.publicID, local.StreamID(), false)
 		}
 	}()
 
@@ -354,6 +356,11 @@ func (s *SFU) leave(userID uuid.UUID, only *peer) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 
+	var public events.UserID
+	if p != nil {
+		public = p.publicID
+	}
+
 	streamID, wasSharing := s.forgetLocked(r, userID, p)
 	if s.rooms[channelID] == r {
 		s.signalLocked(r)
@@ -364,8 +371,8 @@ func (s *SFU) leave(userID uuid.UUID, only *peer) (uuid.UUID, bool) {
 		p.pc.Close()
 	}
 	s.StopPublishing(userID)
-	if wasSharing {
-		s.signaler.ScreenChanged(channelID, userID, streamID, false)
+	if wasSharing && public != "" {
+		s.signaler.ScreenChanged(channelID, public, streamID, false)
 	}
 	return channelID, true
 }
@@ -549,7 +556,7 @@ func (s *SFU) SetScreenActive(userID uuid.UUID, active bool) error {
 	s.mu.Unlock()
 
 	if changed {
-		s.signaler.ScreenChanged(channelID, userID, video.StreamID(), active)
+		s.signaler.ScreenChanged(channelID, p.publicID, video.StreamID(), active)
 	}
 	return nil
 }
@@ -576,14 +583,14 @@ func (p *peer) wants(r *room, trackID string) bool {
 	return known.rid == p.sizeFor(owner)
 }
 
-func (p *peer) sizeFor(owner uuid.UUID) string {
+func (p *peer) sizeFor(owner events.UserID) string {
 	if chosen := p.sizes[owner]; chosen != "" {
 		return chosen
 	}
 	return DefaultLayer
 }
 
-func (s *SFU) SetWatching(viewerID, sharerID uuid.UUID, watching bool, size string) error {
+func (s *SFU) SetWatching(viewerID uuid.UUID, sharerID events.UserID, watching bool, size string) error {
 	s.mu.Lock()
 
 	channelID, ok := s.homes[viewerID]
@@ -646,7 +653,7 @@ func (p *peer) sharedTracks() []*webrtc.TrackLocalStaticRTP {
 	return out
 }
 
-func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
+func (s *SFU) Sharers(channelID uuid.UUID) map[events.UserID]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -654,8 +661,12 @@ func (s *SFU) Sharers(channelID uuid.UUID) map[uuid.UUID]string {
 	if r == nil {
 		return nil
 	}
-	out := make(map[uuid.UUID]string, len(r.screens))
-	maps.Copy(out, r.screens)
+	out := make(map[events.UserID]string, len(r.screens))
+	for userID, streamID := range r.screens {
+		if p := r.peers[userID]; p != nil {
+			out[p.publicID] = streamID
+		}
+	}
 	return out
 }
 
@@ -683,6 +694,7 @@ func (s *SFU) Participants(channelID uuid.UUID) []uuid.UUID {
 
 type Participant struct {
 	UserID   uuid.UUID
+	PublicID events.UserID
 	Muted    bool
 	Deafened bool
 }
@@ -697,7 +709,7 @@ func (s *SFU) States(channelID uuid.UUID) []Participant {
 	}
 	out := make([]Participant, 0, len(r.peers))
 	for id, p := range r.peers {
-		out = append(out, Participant{UserID: id, Muted: p.muted, Deafened: p.deafened})
+		out = append(out, Participant{UserID: id, PublicID: p.publicID, Muted: p.muted, Deafened: p.deafened})
 	}
 	return out
 }
@@ -850,13 +862,14 @@ func (s *SFU) syncLocked(r *room) bool {
 	for userID, p := range r.peers {
 		if p.pc.ConnectionState() == webrtc.PeerConnectionStateClosed {
 			channelID := r.channelID
+			public := p.publicID
 			streamID, wasSharing := s.forgetLocked(r, userID, p)
 			go func() {
 				s.StopPublishing(userID)
 				if wasSharing {
-					s.signaler.ScreenChanged(channelID, userID, streamID, false)
+					s.signaler.ScreenChanged(channelID, public, streamID, false)
 				}
-				s.signaler.VoiceClosed(channelID, userID)
+				s.signaler.VoiceClosed(channelID, public)
 			}()
 			return false
 		}

@@ -7,12 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-func (h *harness) whoAmI() uuid.UUID {
+func (h *harness) whoAmI() events.UserID {
 	h.t.Helper()
 	var me events.User
 	h.mustDo(http.MethodGet, "/api/v1/users/@me", http.StatusOK, nil, &me)

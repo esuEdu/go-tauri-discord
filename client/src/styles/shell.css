@@ -547,6 +547,136 @@ button {
   background: var(--color-neutral-900);
 }
 
+.status-anchor {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.bar-you-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-popover {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(260px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+}
+
+.status-kicker {
+  color: var(--color-neutral-600);
+  font: var(--kicker);
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+}
+
+.status-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-choice:hover {
+  background: var(--color-neutral-900);
+}
+
+.status-choice[data-chosen="true"] {
+  background: var(--color-accent-900);
+}
+
+.status-choice .presence-dot {
+  position: static;
+  flex-shrink: 0;
+  border-color: transparent;
+}
+
+.status-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.status-choice-label {
+  color: var(--color-text);
+  font: var(--body-small);
+  line-height: 1.3;
+}
+
+.status-choice-hint {
+  color: var(--color-neutral-600);
+  font: var(--micro);
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.status-saying {
+  display: flex;
+  gap: 6px;
+}
+
+.status-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: var(--body-small);
+}
+
+.status-save {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-900);
+  color: var(--color-text);
+  font: var(--body-small);
+  cursor: pointer;
+}
+
+.status-clear {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--color-neutral-600);
+  font: var(--micro);
+  cursor: pointer;
+}
+
+.status-clear:hover {
+  color: var(--color-text);
+}
+
 .bar-you-name {
   overflow: hidden;
   color: var(--color-text);
@@ -632,6 +762,18 @@ button {
   border: 2px solid var(--color-bg);
   border-radius: 50%;
   background: var(--good);
+}
+
+.presence-dot[data-status="away"] {
+  background: var(--fair);
+}
+
+.presence-dot[data-status="busy"] {
+  background: var(--bad);
+}
+
+.presence-dot[data-status="offline"] {
+  background: var(--color-neutral-600);
 }
 
 .avatar-slot {

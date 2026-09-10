@@ -6,14 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/esuEdu/go-tauri-discord/internal/voice"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-func awaitShareAnnounced(t *testing.T, s *socket, sharer uuid.UUID) {
+func awaitShareAnnounced(t *testing.T, s *socket, sharer events.UserID) {
 	t.Helper()
 	for range 10 {
 		var update events.VoiceScreenUpdate
@@ -356,7 +355,7 @@ func TestViewerKeyframeRequestReachesThePublisher(t *testing.T) {
 	}
 }
 
-func (c *voiceClient) watch(sharer uuid.UUID, watching bool) {
+func (c *voiceClient) watch(sharer events.UserID, watching bool) {
 	c.sock.write(events.Frame{
 		Op: events.OpVoiceWatch,
 		D:  mustJSON(c.t, events.VoiceWatchRequest{UserID: sharer, Watching: watching}),

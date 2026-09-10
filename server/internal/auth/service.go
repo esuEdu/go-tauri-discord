@@ -22,6 +22,7 @@ type Repository interface {
 	GetUserByEmail(ctx context.Context, email string) (dbgen.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (dbgen.User, error)
 	SetUserAvatar(ctx context.Context, arg dbgen.SetUserAvatarParams) (dbgen.User, error)
+	UpdateUserProfile(ctx context.Context, arg dbgen.UpdateUserProfileParams) (dbgen.User, error)
 	CreateRefreshToken(ctx context.Context, arg dbgen.CreateRefreshTokenParams) (dbgen.RefreshToken, error)
 	GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (dbgen.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
@@ -70,6 +71,7 @@ const (
 	deletedUsername            = "deleted user"
 	discriminatorRaces         = 3
 	usernameDiscriminatorIndex = "users_username_lower_discriminator_key"
+	publicIDIndex              = "users_public_id_key"
 
 	minPasswordLen = 8
 	maxPasswordLen = 72
@@ -124,8 +126,14 @@ func (s *Service) createWithDiscriminator(ctx context.Context, username, email, 
 				"that name has been taken nine thousand times over; pick another")
 		}
 
+		publicID, err := newPublicID()
+		if err != nil {
+			return dbgen.User{}, err
+		}
+
 		user, err := s.repo.CreateUser(ctx, dbgen.CreateUserParams{
 			ID:            uuid.Must(uuid.NewV7()),
+			PublicID:      string(publicID),
 			Username:      username,
 			Email:         email,
 			PasswordHash:  hash,
@@ -137,7 +145,9 @@ func (s *Service) createWithDiscriminator(ctx context.Context, username, email, 
 		if !db.IsUniqueViolation(err) {
 			return dbgen.User{}, domain.Internal(err)
 		}
-		if db.ViolatedConstraint(err) != usernameDiscriminatorIndex {
+		switch db.ViolatedConstraint(err) {
+		case usernameDiscriminatorIndex, publicIDIndex:
+		default:
 			return dbgen.User{}, domain.Conflict("that email already has an account")
 		}
 	}
@@ -313,10 +323,5 @@ func (s *Service) SetAvatar(ctx context.Context, userID uuid.UUID, key *string) 
 	if err != nil {
 		return events.User{}, domain.Internal(err)
 	}
-	return events.User{
-		ID:            updated.ID,
-		Username:      updated.Username,
-		Discriminator: updated.Discriminator,
-		AvatarKey:     updated.AvatarKey,
-	}, nil
+	return PublicUser(updated), nil
 }

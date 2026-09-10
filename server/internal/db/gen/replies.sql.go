@@ -16,7 +16,7 @@ SELECT
     m.id,
     m.channel_id,
     (m.deleted_at IS NOT NULL)::bool AS deleted,
-    u.id                             AS author_id,
+    u.public_id                      AS author_public_id,
     u.username                       AS author_username,
     u.discriminator                  AS author_discriminator,
     u.avatar_key                     AS author_avatar_key,
@@ -43,7 +43,7 @@ type ListMessagePreviewsRow struct {
 	ID                  uuid.UUID
 	ChannelID           uuid.UUID
 	Deleted             bool
-	AuthorID            *uuid.UUID
+	AuthorPublicID      *string
 	AuthorUsername      *string
 	AuthorDiscriminator *string
 	AuthorAvatarKey     *string
@@ -68,7 +68,7 @@ func (q *Queries) ListMessagePreviews(ctx context.Context, arg ListMessagePrevie
 			&i.ID,
 			&i.ChannelID,
 			&i.Deleted,
-			&i.AuthorID,
+			&i.AuthorPublicID,
 			&i.AuthorUsername,
 			&i.AuthorDiscriminator,
 			&i.AuthorAvatarKey,

@@ -15,19 +15,19 @@ import (
 )
 
 type banView struct {
-	GuildID   uuid.UUID  `json:"guild_id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	Username  string     `json:"username"`
-	BannedBy  *uuid.UUID `json:"banned_by"`
-	Reason    *string    `json:"reason"`
-	CreatedAt time.Time  `json:"created_at"`
+	GuildID   uuid.UUID      `json:"guild_id"`
+	UserID    events.UserID  `json:"user_id"`
+	Username  string         `json:"username"`
+	BannedBy  *events.UserID `json:"banned_by"`
+	Reason    *string        `json:"reason"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
-func memberPath(guildID, userID uuid.UUID) string {
+func memberPath(guildID uuid.UUID, userID events.UserID) string {
 	return "/api/v1/guilds/" + guildID.String() + "/members/" + userID.String()
 }
 
-func banPath(guildID, userID uuid.UUID) string {
+func banPath(guildID uuid.UUID, userID events.UserID) string {
 	return "/api/v1/guilds/" + guildID.String() + "/bans/" + userID.String()
 }
 
@@ -223,7 +223,7 @@ func TestModerationRespectsTheHierarchy(t *testing.T) {
 		"permissions": perm(domain.PermKickMembers),
 		"position":    5,
 	})
-	for _, id := range []uuid.UUID{modID, peerID} {
+	for _, id := range []events.UserID{modID, peerID} {
 		owner.mustDo(http.MethodPut, memberRolesPath(guild.ID, id, staff.ID),
 			http.StatusNoContent, nil, nil)
 	}

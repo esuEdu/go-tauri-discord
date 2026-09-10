@@ -305,7 +305,7 @@ func (c *voiceClient) awaitScreen(timeout time.Duration) *webrtc.TrackRemote {
 	})
 }
 
-func (c *voiceClient) awaitTrack(source voice.Source, owner uuid.UUID, timeout time.Duration) *webrtc.TrackRemote {
+func (c *voiceClient) awaitTrack(source voice.Source, owner events.UserID, timeout time.Duration) *webrtc.TrackRemote {
 	c.t.Helper()
 	return c.awaitAny(timeout, fmt.Sprintf("%s track owned by %s", source, owner),
 		func(track *webrtc.TrackRemote) bool {
@@ -653,7 +653,7 @@ func (c *voiceClient) setMuted(muted bool) {
 	})
 }
 
-func awaitVoiceState(t *testing.T, s *socket, userID uuid.UUID) events.VoiceStateUpdate {
+func awaitVoiceState(t *testing.T, s *socket, userID events.UserID) events.VoiceStateUpdate {
 	t.Helper()
 	for range 10 {
 		var state events.VoiceStateUpdate
@@ -814,7 +814,7 @@ func (c *voiceClient) setDeafened(deafened bool) {
 	})
 }
 
-func voiceStateFor(ready events.Ready, userID uuid.UUID) (events.VoiceStateUpdate, bool) {
+func voiceStateFor(ready events.Ready, userID events.UserID) (events.VoiceStateUpdate, bool) {
 	for _, state := range ready.Voice {
 		if state.UserID == userID {
 			return state, true
@@ -865,7 +865,7 @@ func TestReadySaysNothingAboutAVoiceChannelYouCannotSee(t *testing.T) {
 	member := owner.inviteMember(guild.ID)
 	everyone := owner.everyone(guild.ID)
 
-	owner.denyView(voiceChannel, everyone.ID, "role")
+	owner.denyView(voiceChannel, everyone.ID.String(), "role")
 
 	speaker := newVoiceClient(t, owner)
 	speaker.pump()
@@ -986,7 +986,7 @@ func TestLosingConnectEndsTheCallYouAreAlreadyIn(t *testing.T) {
 	}
 }
 
-func sawDeparture(s *socket, userID uuid.UUID, within time.Duration) bool {
+func sawDeparture(s *socket, userID events.UserID, within time.Duration) bool {
 	return !s.quietFor(within, func(f events.Frame) bool {
 		if f.T != events.EventVoiceStateUpdate {
 			return false

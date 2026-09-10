@@ -3,18 +3,18 @@ package voice
 import (
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 func TestTrackNameSpellsOutTheOwner(t *testing.T) {
-	userID := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	userID := events.UserID("k3m9x7q2wp4rt8ab")
 
 	cases := []struct {
 		source Source
 		want   string
 	}{
-		{SourceMicrophone, "mic-11111111-2222-3333-4444-555555555555-42"},
-		{SourceScreen, "screen-11111111-2222-3333-4444-555555555555-42"},
+		{SourceMicrophone, "mic-k3m9x7q2wp4rt8ab-42"},
+		{SourceScreen, "screen-k3m9x7q2wp4rt8ab-42"},
 	}
 
 	for _, c := range cases {
@@ -26,7 +26,7 @@ func TestTrackNameSpellsOutTheOwner(t *testing.T) {
 }
 
 func TestParseTrackNameRecoversWhatTrackNameWrote(t *testing.T) {
-	userID := uuid.New()
+	userID := events.UserID("abcdefghijklmn23")
 
 	source, owner, ok := ParseTrackName(TrackName(SourceMicrophone, userID, 7))
 	if !ok {
@@ -41,7 +41,13 @@ func TestParseTrackNameRecoversWhatTrackNameWrote(t *testing.T) {
 }
 
 func TestParseTrackNameRejectsForeignNames(t *testing.T) {
-	for _, name := range []string{"", "audio", "mic-not-a-uuid-1", "vocalis"} {
+	names := []string{
+		"", "audio", "mic-not-a-public-id-1", "vocalis",
+		"mic-11111111-2222-3333-4444-555555555555-42",
+		"mic-ABCDEFGHIJKLMN23-1",
+		"mic-abcdefghijklmn2-1",
+	}
+	for _, name := range names {
 		if _, _, ok := ParseTrackName(name); ok {
 			t.Errorf("ParseTrackName(%q) claimed to find an owner", name)
 		}

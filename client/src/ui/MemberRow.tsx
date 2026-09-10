@@ -14,7 +14,7 @@ export function MemberRow({
   name: string;
   tag?: string;
   url?: string | null;
-  presence?: "online" | "offline";
+  presence?: string;
   mine?: boolean;
   trailing?: ReactNode;
   onClick?: () => void;
@@ -30,8 +30,10 @@ export function MemberRow({
     >
       <Avatar name={name} url={url} size={28} tone={mine ? "accent" : "neutral"} />
       <span className="member-row-identity">
-        <span className="member-row-name">{name}</span>
-        {tag && <span className="member-row-tag">{tag}</span>}
+        <span className="member-row-line">
+          <span className="member-row-name">{name}</span>
+          {tag && <span className="member-row-tag">{tag}</span>}
+        </span>
       </span>
       {trailing}
     </button>

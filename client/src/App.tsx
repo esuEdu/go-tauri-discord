@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
+import { watchForIdleness } from "./idle";
 import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
 import {
@@ -65,6 +66,7 @@ import { Icon } from "./ui/Icon";
 import { Sheet } from "./ui/Sheet";
 import { Toggle } from "./ui/Toggle";
 import { ContextMenu, type Anchor } from "./ui/ContextMenu";
+import { ProfileCard } from "./screens/ProfileCard";
 import { MenuItem, MenuSeparator } from "./ui/Menu";
 
 type Menu =
@@ -168,6 +170,7 @@ export default function App() {
   const [editingChannel, setEditingChannel] = useState<{ channel: Channel; name: string } | null>(null);
   const [droppingChannel, setDroppingChannel] = useState<Channel | null>(null);
   const [serverMenu, setServerMenu] = useState<Anchor | null>(null);
+  const [profile, setProfile] = useState<{ at: Anchor; userID: string } | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [leaving, setLeaving] = useState(false);
@@ -277,7 +280,11 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     gateway.connect(api.token!);
-    return () => gateway.close();
+    const stopWatchingForIdleness = watchForIdleness();
+    return () => {
+      stopWatchingForIdleness();
+      gateway.close();
+    };
   }, [user]);
 
   const loadGuilds = useCallback(async () => {
@@ -697,7 +704,15 @@ export default function App() {
         <YourBar
           me={user.username}
           meAvatarURL={fileURL(user.avatar_key)}
-          presence={callChannel ? "In voice" : "Online"}
+          presence={callChannel ? "In voice" : labelFor(state.self.status)}
+          chosen={state.self.status}
+          saying={state.self.custom_status ?? null}
+          onChooseStatus={(status) => {
+            void api.updateProfile({ status });
+          }}
+          onSay={(text) => {
+            void api.updateProfile({ custom_status: text });
+          }}
           call={
             callChannel
               ? {
@@ -842,6 +857,9 @@ export default function App() {
             });
           }}
           onOpenImage={(file, message) => setLightbox({ file, message })}
+          onOpenProfile={(userID, event) =>
+            setProfile({ at: { x: event.clientX, y: event.clientY }, userID })
+          }
           insert={draftEmoji}
           historyFailed={historyFailed}
           onReload={() => void reload()}
@@ -891,6 +909,21 @@ export default function App() {
             }
             setMenu({ kind: "person", at: { x: event.clientX, y: event.clientY }, userID });
           }}
+          onOpenProfile={(userID, event) => {
+            setProfile({ at: { x: event.clientX, y: event.clientY }, userID });
+          }}
+        />
+      )}
+
+      {profile && activeGuild && (
+        <ProfileCard
+          at={profile.at}
+          guildID={activeGuild.id}
+          userID={profile.userID}
+          status={state.status[profile.userID] ?? "offline"}
+          saying={state.saying[profile.userID] ?? null}
+          avatarURL={avatarURL(profile.userID)}
+          onClose={() => setProfile(null)}
         />
       )}
 
@@ -1045,7 +1078,7 @@ export default function App() {
           channels={channels}
           permissions={permissions}
           iconURL={fileURL(activeGuild.icon_key)}
-          online={state.online}
+          status={state.status}
           onClose={() => setServerSettings(false)}
           onChanged={() => void loadGuilds()}
         />
@@ -1054,6 +1087,7 @@ export default function App() {
       {profileSettings && (
         <ProfileSettings
           user={user}
+          bio={state.self.bio ?? null}
           avatarURL={fileURL(user.avatar_key)}
           onClose={() => {
             setProfileSettings(false);
@@ -1407,4 +1441,17 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function labelFor(status: string): string {
+  switch (status) {
+    case "away":
+      return "Away";
+    case "busy":
+      return "Busy";
+    case "invisible":
+      return "Invisible";
+    default:
+      return "Online";
+  }
 }

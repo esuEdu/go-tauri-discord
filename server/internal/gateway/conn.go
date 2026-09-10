@@ -13,6 +13,7 @@ import (
 
 	"github.com/esuEdu/go-tauri-discord/internal/auth"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
+	"github.com/esuEdu/go-tauri-discord/internal/domain"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
@@ -140,15 +141,21 @@ func (g *Gateway) handshake(ctx context.Context, conn *websocket.Conn) (*session
 func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.Guild) error {
 	ready := events.Ready{
 		SessionID: sess.id,
-		User:      auth.PublicUser(sess.user),
+		User:      auth.PublicUser(sess.account()),
+		Self:      auth.SelfOf(sess.account()),
 		Guilds:    make([]events.Guild, 0, len(guilds)),
 		Channels:  make([]events.Channel, 0),
 		Members:   make([]events.Member, 0),
 		Allowed:   make([]events.GuildPermissions, 0, len(guilds)),
 		Voice:     make([]events.VoiceStateUpdate, 0),
 	}
+	everyone := make(map[uuid.UUID]events.UserID)
 	for _, gl := range guilds {
-		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
+		public, err := g.guilds.PublicGuild(ctx, gl)
+		if err != nil {
+			return err
+		}
+		ready.Guilds = append(ready.Guilds, public)
 		access, err := g.guilds.ResolveAccess(ctx, sess.userID, gl.ID)
 		if err != nil {
 			return err
@@ -165,10 +172,11 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 			return err
 		}
 		for _, m := range members {
+			everyone[m.UserID] = events.UserID(m.PublicID)
 			ready.Members = append(ready.Members, events.Member{
 				GuildID: gl.ID,
 				User: events.User{
-					ID: m.UserID, Username: m.Username,
+					ID: events.UserID(m.PublicID), Username: m.Username,
 					Discriminator: m.Discriminator, AvatarKey: m.AvatarKey,
 				},
 				Nickname: m.Nickname,
@@ -179,8 +187,8 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 	if err := g.attachReadState(ctx, sess, &ready); err != nil {
 		return err
 	}
-	ready.Online = g.onlineAmong(sess.userID, ready.Members)
-	ready.ICEServers = g.iceServersFor(sess.userID)
+	ready.Presence = g.presenceAmong(sess.userID, sess.standing(), everyone)
+	ready.ICEServers = g.iceServersFor(sess.publicID())
 
 	frame, err := events.NewDispatch(events.EventReady, ready)
 	if err != nil {
@@ -236,20 +244,22 @@ func (g *Gateway) attachReadState(ctx context.Context, sess *session, ready *eve
 	return nil
 }
 
-func (g *Gateway) onlineAmong(self uuid.UUID, members []events.Member) []uuid.UUID {
+func (g *Gateway) presenceAmong(self uuid.UUID, mine standing, everyone map[uuid.UUID]events.UserID) []events.PresenceUpdate {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	online := []uuid.UUID{self}
-	seen := map[uuid.UUID]bool{self: true}
-	for _, m := range members {
-		if seen[m.User.ID] || len(g.byUser[m.User.ID]) == 0 {
+	out := []events.PresenceUpdate{resolved(mine, true)}
+	for userID, public := range everyone {
+		if userID == self {
 			continue
 		}
-		seen[m.User.ID] = true
-		online = append(online, m.User.ID)
+		presence := g.presenceOfLocked(userID, standing{public: public, chosen: domain.StatusOnline})
+		if presence.Status == string(domain.StatusOffline) {
+			continue
+		}
+		out = append(out, presence)
 	}
-	return online
+	return out
 }
 
 func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *session) {
@@ -266,7 +276,7 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			// for. Anything else is the socket itself ending, and a call
 			// cannot outlive the window that was in it.
 			if !errors.Is(err, context.DeadlineExceeded) && sess.hasTheCall() {
-				g.leaveVoice(sess.userID)
+				g.leaveVoice(sess.userID, sess.publicID())
 			}
 			return
 		}
@@ -290,6 +300,8 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			g.handleVoiceWatch(sess, frame.D)
 		case events.OpScreenPublish:
 			g.handleScreenPublish(sess, frame.D)
+		case events.OpPresence:
+			g.handlePresence(sess, frame.D)
 		case events.OpScreenIce:
 			g.handleScreenIce(sess, frame.D)
 		}

@@ -45,13 +45,14 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, username, email, password_hash, discriminator)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator
+INSERT INTO users (id, public_id, username, email, password_hash, discriminator)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio
 `
 
 type CreateUserParams struct {
 	ID            uuid.UUID
+	PublicID      string
 	Username      string
 	Email         string
 	PasswordHash  string
@@ -61,6 +62,7 @@ type CreateUserParams struct {
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.ID,
+		arg.PublicID,
 		arg.Username,
 		arg.Email,
 		arg.PasswordHash,
@@ -76,6 +78,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
 	)
 	return i, err
 }
@@ -120,7 +126,7 @@ func (q *Queries) GetActiveRefreshToken(ctx context.Context, tokenHash []byte) (
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE lower(email) = lower($1)
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio FROM users WHERE lower(email) = lower($1)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -135,12 +141,16 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE id = $1
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -155,12 +165,40 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
+	)
+	return i, err
+}
+
+const getUserByPublicID = `-- name: GetUserByPublicID :one
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio FROM users WHERE public_id = $1
+`
+
+func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByPublicID, publicID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.AvatarKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
 	)
 	return i, err
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator FROM users WHERE id = ANY ($1::uuid[])
+SELECT id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio FROM users WHERE id = ANY ($1::uuid[])
 `
 
 func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, error) {
@@ -181,6 +219,10 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Discriminator,
+			&i.PublicID,
+			&i.Status,
+			&i.CustomStatus,
+			&i.Bio,
 		); err != nil {
 			return nil, err
 		}
@@ -190,6 +232,17 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]User, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const publicIDTaken = `-- name: PublicIDTaken :one
+SELECT EXISTS (SELECT 1 FROM users WHERE public_id = $1)
+`
+
+func (q *Queries) PublicIDTaken(ctx context.Context, publicID string) (bool, error) {
+	row := q.db.QueryRow(ctx, publicIDTaken, publicID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const reassignMessagesToUser = `-- name: ReassignMessagesToUser :exec
@@ -229,7 +282,7 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID)
 const setUserAvatar = `-- name: SetUserAvatar :one
 UPDATE users SET avatar_key = $1, updated_at = now()
 WHERE id = $2
-RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio
 `
 
 type SetUserAvatarParams struct {
@@ -249,6 +302,10 @@ func (q *Queries) SetUserAvatar(ctx context.Context, arg SetUserAvatarParams) (U
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
 	)
 	return i, err
 }
@@ -275,4 +332,52 @@ func (q *Queries) TakenDiscriminators(ctx context.Context, username string) ([]s
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET status        = coalesce($1, status),
+    custom_status = CASE WHEN $2::bool THEN NULL
+                         ELSE coalesce($3, custom_status) END,
+    bio           = CASE WHEN $4::bool THEN NULL
+                         ELSE coalesce($5, bio) END,
+    updated_at    = now()
+WHERE id = $6
+RETURNING id, username, email, password_hash, avatar_key, created_at, updated_at, discriminator, public_id, status, custom_status, bio
+`
+
+type UpdateUserProfileParams struct {
+	Status            *string
+	ClearCustomStatus bool
+	CustomStatus      *string
+	ClearBio          bool
+	Bio               *string
+	ID                uuid.UUID
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.Status,
+		arg.ClearCustomStatus,
+		arg.CustomStatus,
+		arg.ClearBio,
+		arg.Bio,
+		arg.ID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.AvatarKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Discriminator,
+		&i.PublicID,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
+	)
+	return i, err
 }

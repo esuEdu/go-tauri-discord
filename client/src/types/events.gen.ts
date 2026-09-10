@@ -23,6 +23,7 @@ export const OpVoiceWatch: Opcode = 14;
 export const OpScreenPublish: Opcode = 15;
 export const OpScreenAnswer: Opcode = 16;
 export const OpScreenIce: Opcode = 17;
+export const OpPresence: Opcode = 18;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -38,6 +39,7 @@ export const EventReactionRemove: EventType = "MESSAGE_REACTION_REMOVE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventUserUpdate: EventType = "USER_UPDATE";
+export const EventSelfUpdate: EventType = "SELF_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
 export const EventGuildMemberUpdate: EventType = "GUILD_MEMBER_UPDATE";
@@ -63,16 +65,22 @@ export interface Resume {
   session_id: string;
   seq: number /* int64 */;
 }
+export type UserID = string;
 export interface User {
-  id: string;
+  id: UserID;
   username: string;
   discriminator: string;
   avatar_key?: string;
 }
+export interface Self {
+  status: string;
+  custom_status?: string;
+  bio?: string;
+}
 export interface Guild {
   id: string;
   name: string;
-  owner_id: string;
+  owner_id: UserID;
   icon_key?: string;
 }
 export interface Channel {
@@ -92,7 +100,7 @@ export interface Member {
 }
 export interface GuildRemoval {
   guild_id: string;
-  user_id: string;
+  user_id: UserID;
   banned: boolean;
 }
 export interface ChannelPermission {
@@ -157,12 +165,13 @@ export interface Message {
 export interface Ready {
   session_id: string;
   user: User;
+  self: Self;
   guilds: Guild[];
   channels: Channel[];
   members: Member[];
   read_states: ReadState[];
   allowed: GuildPermissions[];
-  online: string[];
+  presence: PresenceUpdate[];
   ice_servers: ICEServer[];
   voice: VoiceStateUpdate[];
 }
@@ -178,17 +187,21 @@ export interface MessageDelete {
 export interface MessageReaction {
   message_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   emoji: string;
 }
 export interface TypingStart {
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   timestamp: string;
 }
+export interface PresenceRequest {
+  idle: boolean;
+}
 export interface PresenceUpdate {
-  user_id: string;
+  user_id: UserID;
   status: string;
+  custom_status?: string;
 }
 export interface VoiceStateRequest {
   channel_id?: string;
@@ -208,7 +221,7 @@ export interface ICECandidate {
 export interface VoiceStateUpdate {
   guild_id: string;
   channel_id?: string;
-  user_id: string;
+  user_id: UserID;
   self_mute: boolean;
   self_deaf: boolean;
 }
@@ -216,7 +229,7 @@ export interface ScreenPublish {
   sdp: string;
 }
 export interface VoiceWatchRequest {
-  user_id: string;
+  user_id: UserID;
   watching: boolean;
   size: string;
 }
@@ -227,7 +240,7 @@ export interface VoiceMuteRequest {
 export interface VoiceQuality {
   guild_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   quality: string;
   loss_pct: number /* float64 */;
   rtt_ms: number /* int64 */;
@@ -238,7 +251,7 @@ export interface VoiceScreenRequest {
 export interface VoiceScreenUpdate {
   guild_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   stream_id: string;
   active: boolean;
 }

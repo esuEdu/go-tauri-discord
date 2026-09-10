@@ -36,6 +36,7 @@ type session struct {
 	hidden    map[uuid.UUID]uuid.UUID
 	connected bool
 	inCall    bool
+	idle      bool
 	expiry    *time.Timer
 }
 

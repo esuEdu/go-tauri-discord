@@ -292,6 +292,49 @@ func (q *Queries) GetGuildMember(ctx context.Context, arg GetGuildMemberParams) 
 	return i, err
 }
 
+const getGuildMemberProfile = `-- name: GetGuildMemberProfile :one
+SELECT m.joined_at, m.nickname,
+       u.public_id, u.username, u.discriminator, u.avatar_key,
+       u.status, u.custom_status, u.bio
+FROM guild_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.guild_id = $1 AND m.user_id = $2
+`
+
+type GetGuildMemberProfileParams struct {
+	GuildID uuid.UUID
+	UserID  uuid.UUID
+}
+
+type GetGuildMemberProfileRow struct {
+	JoinedAt      time.Time
+	Nickname      *string
+	PublicID      string
+	Username      string
+	Discriminator string
+	AvatarKey     *string
+	Status        string
+	CustomStatus  *string
+	Bio           *string
+}
+
+func (q *Queries) GetGuildMemberProfile(ctx context.Context, arg GetGuildMemberProfileParams) (GetGuildMemberProfileRow, error) {
+	row := q.db.QueryRow(ctx, getGuildMemberProfile, arg.GuildID, arg.UserID)
+	var i GetGuildMemberProfileRow
+	err := row.Scan(
+		&i.JoinedAt,
+		&i.Nickname,
+		&i.PublicID,
+		&i.Username,
+		&i.Discriminator,
+		&i.AvatarKey,
+		&i.Status,
+		&i.CustomStatus,
+		&i.Bio,
+	)
+	return i, err
+}
+
 const getRole = `-- name: GetRole :one
 SELECT id, guild_id, name, permissions, position, is_default FROM roles WHERE id = $1
 `
@@ -398,7 +441,7 @@ func (q *Queries) ListGuildMemberIDs(ctx context.Context, guildID uuid.UUID) ([]
 }
 
 const listGuildMembers = `-- name: ListGuildMembers :many
-SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, m.position, u.username, u.discriminator, u.avatar_key
+SELECT m.guild_id, m.user_id, m.nickname, m.joined_at, m.position, u.public_id, u.username, u.discriminator, u.avatar_key
 FROM guild_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.guild_id = $1
@@ -411,6 +454,7 @@ type ListGuildMembersRow struct {
 	Nickname      *string
 	JoinedAt      time.Time
 	Position      int32
+	PublicID      string
 	Username      string
 	Discriminator string
 	AvatarKey     *string
@@ -431,6 +475,7 @@ func (q *Queries) ListGuildMembers(ctx context.Context, guildID uuid.UUID) ([]Li
 			&i.Nickname,
 			&i.JoinedAt,
 			&i.Position,
+			&i.PublicID,
 			&i.Username,
 			&i.Discriminator,
 			&i.AvatarKey,

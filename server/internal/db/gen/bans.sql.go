@@ -85,7 +85,7 @@ func (q *Queries) GetGuildBan(ctx context.Context, arg GetGuildBanParams) (Guild
 }
 
 const listGuildBans = `-- name: ListGuildBans :many
-SELECT b.guild_id, b.user_id, b.banned_by, b.reason, b.created_at, u.username
+SELECT b.guild_id, b.user_id, b.banned_by, b.reason, b.created_at, u.public_id, u.username
 FROM guild_bans b
 JOIN users u ON u.id = b.user_id
 WHERE b.guild_id = $1
@@ -98,6 +98,7 @@ type ListGuildBansRow struct {
 	BannedBy  *uuid.UUID
 	Reason    *string
 	CreatedAt time.Time
+	PublicID  string
 	Username  string
 }
 
@@ -116,6 +117,7 @@ func (q *Queries) ListGuildBans(ctx context.Context, guildID uuid.UUID) ([]ListG
 			&i.BannedBy,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.PublicID,
 			&i.Username,
 		); err != nil {
 			return nil, err

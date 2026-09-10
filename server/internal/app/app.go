@@ -14,6 +14,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/gateway"
 	"github.com/esuEdu/go-tauri-discord/internal/guild"
 	"github.com/esuEdu/go-tauri-discord/internal/ice"
+	"github.com/esuEdu/go-tauri-discord/internal/identity"
 	"github.com/esuEdu/go-tauri-discord/internal/message"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/httpx"
@@ -42,8 +43,9 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 		loginThrottle = lim.loginAccount
 	}
 	authSvc := auth.NewService(pool, pool, tokens, cfg.RefreshTokenTTL, loginThrottle, cfg.PasswordHashCost)
-	guildSvc := guild.NewService(pool, pool, pool, publisher)
-	messageSvc := message.NewService(pool, guildSvc, publisher)
+	people := identity.NewDirectory(pool)
+	guildSvc := guild.NewService(pool, pool, pool, publisher, people)
+	messageSvc := message.NewService(pool, guildSvc, publisher, people)
 
 	gw := gateway.New(authSvc, guildSvc, messageSvc, broker, cfg.HeartbeatInterval, OriginHosts(cfg.CORSOrigins), cfg.MaxSessionsPerUser)
 
@@ -62,6 +64,7 @@ func New(cfg config.Config, pool *db.Pool, broker pubsub.Broker) *App {
 	authHandler := auth.NewHandler(authSvc, gw)
 	authHandler.Routes(mux)
 	protected.HandleFunc("GET /api/v1/users/@me", authHandler.Me)
+	protected.HandleFunc("PATCH /api/v1/users/@me", authHandler.PatchMe)
 	protected.HandleFunc("DELETE /api/v1/users/@me", authHandler.DeleteMe)
 	guildHandler := guild.NewHandler(guildSvc, publisher, gw)
 	guildHandler.Routes(protected)
