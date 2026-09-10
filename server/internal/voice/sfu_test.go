@@ -8,15 +8,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+
+	"encoding/base32"
+	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
 type departure struct {
 	channelID uuid.UUID
-	userID    uuid.UUID
+	userID    events.UserID
 }
 
 type screenChange struct {
-	userID   uuid.UUID
+	userID   events.UserID
 	streamID string
 	active   bool
 }
@@ -52,7 +55,7 @@ func (r *recordingSignaler) offersTo(userID uuid.UUID) int {
 func (r *recordingSignaler) SendCandidate(uuid.UUID, webrtc.ICECandidateInit) {}
 func (r *recordingSignaler) QualityChanged(uuid.UUID, Quality)                {}
 
-func (r *recordingSignaler) ScreenChanged(_, userID uuid.UUID, streamID string, active bool) {
+func (r *recordingSignaler) ScreenChanged(_ uuid.UUID, userID events.UserID, streamID string, active bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.screens = append(r.screens, screenChange{userID: userID, streamID: streamID, active: active})
@@ -69,7 +72,7 @@ func (r *recordingSignaler) sawScreen(want screenChange) bool {
 	return false
 }
 
-func (r *recordingSignaler) VoiceClosed(channelID, userID uuid.UUID) {
+func (r *recordingSignaler) VoiceClosed(channelID uuid.UUID, userID events.UserID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.departures = append(r.departures, departure{channelID: channelID, userID: userID})
@@ -79,7 +82,7 @@ func (r *recordingSignaler) departed(channelID, userID uuid.UUID) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, d := range r.departures {
-		if d.channelID == channelID && d.userID == userID {
+		if d.channelID == channelID && d.userID == publicOf(userID) {
 			return true
 		}
 	}
@@ -141,7 +144,7 @@ func TestMuteIsRememberedForWhoeverJoinsNext(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, false); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -185,7 +188,7 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, false); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	if err := sfu.SetMuted(userID, true); err != nil {
@@ -193,7 +196,7 @@ func TestLeavingForgetsTheMute(t *testing.T) {
 	}
 
 	sfu.Leave(userID)
-	if err := sfu.Join(channelID, userID, false); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), false); err != nil {
 		t.Fatalf("rejoin: %v", err)
 	}
 
@@ -212,7 +215,7 @@ func TestResyncResendsAnOfferThatNeverArrived(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, true); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	if got := signaler.offersTo(userID); got != 1 {
@@ -240,7 +243,7 @@ func TestAConnectionThatClosesOnItsOwnIsAnnouncedAsALeave(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, true); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -274,7 +277,7 @@ func TestLosingStreamTakesTheScreenDownMidShare(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, sharer := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, sharer, true); err != nil {
+	if err := sfu.Join(channelID, sharer, publicOf(sharer), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	const streamID = "screen-being-shared"
@@ -284,7 +287,7 @@ func TestLosingStreamTakesTheScreenDownMidShare(t *testing.T) {
 		t.Fatalf("revoke stream: %v", err)
 	}
 
-	if !signaler.sawScreen(screenChange{userID: sharer, streamID: streamID, active: false}) {
+	if !signaler.sawScreen(screenChange{userID: publicOf(sharer), streamID: streamID, active: false}) {
 		t.Error("stream was taken away from somebody in the middle of sharing and the screen kept " +
 			"going: the permission is only read when a share starts, so a share already running " +
 			"outlives the permission that allowed it")
@@ -303,7 +306,7 @@ func TestGettingStreamBackAllowsSharingAgain(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, sharer := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, sharer, false); err != nil {
+	if err := sfu.Join(channelID, sharer, publicOf(sharer), false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	share(t, sfu, channelID, sharer, "screen-being-shared")
@@ -324,7 +327,7 @@ func share(t *testing.T, sfu *SFU, channelID, sharer uuid.UUID, streamID string)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8},
-		TrackName(SourceScreen, sharer, 1), streamID)
+		TrackName(SourceScreen, publicOf(sharer), 1), streamID)
 	if err != nil {
 		t.Fatalf("create screen track: %v", err)
 	}
@@ -349,10 +352,10 @@ func TestLeavingWhileSharingTakesTheScreenDown(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, sharer, viewer := uuid.New(), uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, sharer, true); err != nil {
+	if err := sfu.Join(channelID, sharer, publicOf(sharer), true); err != nil {
 		t.Fatalf("join sharer: %v", err)
 	}
-	if err := sfu.Join(channelID, viewer, true); err != nil {
+	if err := sfu.Join(channelID, viewer, publicOf(viewer), true); err != nil {
 		t.Fatalf("join viewer: %v", err)
 	}
 
@@ -363,7 +366,7 @@ func TestLeavingWhileSharingTakesTheScreenDown(t *testing.T) {
 
 	sfu.Leave(sharer)
 
-	if !signaler.sawScreen(screenChange{userID: sharer, streamID: streamID, active: false}) {
+	if !signaler.sawScreen(screenChange{userID: publicOf(sharer), streamID: streamID, active: false}) {
 		t.Error("somebody left mid-share and nobody was told the screen went away, so the tile and " +
 			"its owner linger for every viewer")
 	}
@@ -372,18 +375,18 @@ func TestLeavingWhileSharingTakesTheScreenDown(t *testing.T) {
 func TestDroppingAShareOnlyDropsThatPersonsScreen(t *testing.T) {
 	sharer, other := uuid.New(), uuid.New()
 	r := &room{layers: make(map[string]layer)}
-	p := &peer{ignored: map[uuid.UUID]bool{sharer: true}, sizes: map[uuid.UUID]string{}}
+	p := &peer{ignored: map[events.UserID]bool{publicOf(sharer): true}, sizes: map[events.UserID]string{}}
 
 	cases := []struct {
 		track string
 		want  bool
 		why   string
 	}{
-		{TrackName(SourceScreen, sharer, 1), false, "the screen that was dropped is still sent"},
-		{TrackName(SourceScreen, other, 2), true, "dropping one screen took another with it"},
-		{TrackName(SourceMicrophone, sharer, 3), true,
+		{TrackName(SourceScreen, publicOf(sharer), 1), false, "the screen that was dropped is still sent"},
+		{TrackName(SourceScreen, publicOf(other), 2), true, "dropping one screen took another with it"},
+		{TrackName(SourceMicrophone, publicOf(sharer), 3), true,
 			"dropping a screen silenced the person sharing it, so closing a tile leaves you unable to hear them"},
-		{TrackName(SourceScreenAudio, sharer, 4), true,
+		{TrackName(SourceScreenAudio, publicOf(sharer), 4), true,
 			"dropping a screen took its sound too; the sound is cheap and has a volume control of its own"},
 		{"something-else", true, "a track this package did not name was withheld"},
 	}
@@ -397,9 +400,9 @@ func TestDroppingAShareOnlyDropsThatPersonsScreen(t *testing.T) {
 
 func TestAViewerWhoDroppedNothingWantsEverything(t *testing.T) {
 	r := &room{layers: make(map[string]layer)}
-	p := &peer{ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+	p := &peer{ignored: map[events.UserID]bool{}, sizes: map[events.UserID]string{}}
 
-	if !p.wants(r, TrackName(SourceScreen, uuid.New(), 1)) {
+	if !p.wants(r, TrackName(SourceScreen, publicOf(uuid.New()), 1)) {
 		t.Error("a viewer who dropped nothing was refused a screen")
 	}
 }
@@ -411,7 +414,7 @@ func TestWatchingSomebodyWhileNotInACallFails(t *testing.T) {
 	}
 	t.Cleanup(sfu.Close)
 
-	if err := sfu.SetWatching(uuid.New(), uuid.New(), false, ""); err != ErrNotConnected {
+	if err := sfu.SetWatching(uuid.New(), publicOf(uuid.New()), false, ""); err != ErrNotConnected {
 		t.Errorf("SetWatching error = %v, want %v", err, ErrNotConnected)
 	}
 }
@@ -424,27 +427,27 @@ func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, viewer, true); err != nil {
+	if err := sfu.Join(channelID, viewer, publicOf(viewer), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, false, ""); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), false, ""); err != nil {
 		t.Fatalf("stop watching: %v", err)
 	}
 
 	sfu.mu.Lock()
-	dropped := sfu.rooms[channelID].peers[viewer].ignored[sharer]
+	dropped := sfu.rooms[channelID].peers[viewer].ignored[publicOf(sharer)]
 	sfu.mu.Unlock()
 	if !dropped {
 		t.Fatal("a dropped share was not recorded, so the next renegotiation sends it again")
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, true, ""); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), true, ""); err != nil {
 		t.Fatalf("resume watching: %v", err)
 	}
 
 	sfu.mu.Lock()
-	stillDropped := sfu.rooms[channelID].peers[viewer].ignored[sharer]
+	stillDropped := sfu.rooms[channelID].peers[viewer].ignored[publicOf(sharer)]
 	sfu.mu.Unlock()
 	if stillDropped {
 		t.Error("resuming left the share dropped")
@@ -453,26 +456,26 @@ func TestDroppingAndResumingAShareIsRemembered(t *testing.T) {
 
 func TestAViewerIsSentOneSizeOfAScreenAndNotTheOther(t *testing.T) {
 	sharer, viewer := uuid.New(), uuid.New()
-	full := TrackName(SourceScreen, sharer, 1)
-	half := TrackName(SourceScreen, sharer, 2)
+	full := TrackName(SourceScreen, publicOf(sharer), 1)
+	half := TrackName(SourceScreen, publicOf(sharer), 2)
 
 	r := &room{layers: map[string]layer{
-		full: {owner: sharer, rid: DefaultLayer},
-		half: {owner: sharer, rid: SmallerLayer},
+		full: {owner: publicOf(sharer), rid: DefaultLayer},
+		half: {owner: publicOf(sharer), rid: SmallerLayer},
 	}}
-	p := &peer{userID: viewer, ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+	p := &peer{userID: viewer, ignored: map[events.UserID]bool{}, sizes: map[events.UserID]string{}}
 
 	if !p.wants(r, full) || p.wants(r, half) {
 		t.Fatal("a viewer who has asked for nothing is not being sent exactly one size; sending " +
 			"both is the whole cost of simulcast with none of the benefit")
 	}
 
-	p.sizes[sharer] = SmallerLayer
+	p.sizes[publicOf(sharer)] = SmallerLayer
 	if p.wants(r, full) || !p.wants(r, half) {
 		t.Error("asking for the smaller size did not switch which one is sent")
 	}
 
-	p.ignored[sharer] = true
+	p.ignored[publicOf(sharer)] = true
 	if p.wants(r, full) || p.wants(r, half) {
 		t.Error("dropping a screen left one of its sizes still being sent")
 	}
@@ -480,10 +483,10 @@ func TestAViewerIsSentOneSizeOfAScreenAndNotTheOther(t *testing.T) {
 
 func TestAScreenWithNoLayersIsStillSent(t *testing.T) {
 	sharer := uuid.New()
-	only := TrackName(SourceScreen, sharer, 1)
+	only := TrackName(SourceScreen, publicOf(sharer), 1)
 
 	r := &room{layers: map[string]layer{}}
-	p := &peer{ignored: map[uuid.UUID]bool{}, sizes: map[uuid.UUID]string{}}
+	p := &peer{ignored: map[events.UserID]bool{}, sizes: map[events.UserID]string{}}
 
 	if !p.wants(r, only) {
 		t.Error("a screen published in one size was withheld; a browser that will not do " +
@@ -499,27 +502,27 @@ func TestAskingForASmallerScreenIsRemembered(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, viewer, true); err != nil {
+	if err := sfu.Join(channelID, viewer, publicOf(viewer), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, true, SmallerLayer); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), true, SmallerLayer); err != nil {
 		t.Fatalf("ask for the smaller size: %v", err)
 	}
 
 	sfu.mu.Lock()
-	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(publicOf(sharer))
 	sfu.mu.Unlock()
 	if chosen != SmallerLayer {
 		t.Fatalf("chosen size = %q, want %q", chosen, SmallerLayer)
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, true, "enormous"); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), true, "enormous"); err != nil {
 		t.Fatalf("ask for a size that does not exist: %v", err)
 	}
 
 	sfu.mu.Lock()
-	after := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	after := sfu.rooms[channelID].peers[viewer].sizeFor(publicOf(sharer))
 	sfu.mu.Unlock()
 	if after != SmallerLayer {
 		t.Errorf("a size the server does not publish overwrote a real choice: %q", after)
@@ -534,22 +537,22 @@ func TestTakingAShareBackKeepsTheSizeYouChose(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, viewer, sharer := uuid.New(), uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, viewer, true); err != nil {
+	if err := sfu.Join(channelID, viewer, publicOf(viewer), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
-	if err := sfu.SetWatching(viewer, sharer, true, SmallerLayer); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), true, SmallerLayer); err != nil {
 		t.Fatalf("choose smaller: %v", err)
 	}
-	if err := sfu.SetWatching(viewer, sharer, false, ""); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), false, ""); err != nil {
 		t.Fatalf("stop watching: %v", err)
 	}
-	if err := sfu.SetWatching(viewer, sharer, true, ""); err != nil {
+	if err := sfu.SetWatching(viewer, publicOf(sharer), true, ""); err != nil {
 		t.Fatalf("watch again: %v", err)
 	}
 
 	sfu.mu.Lock()
-	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(sharer)
+	chosen := sfu.rooms[channelID].peers[viewer].sizeFor(publicOf(sharer))
 	sfu.mu.Unlock()
 	if chosen != SmallerLayer {
 		t.Error("watching again reset somebody to the full size, so a viewer who chose smaller " +
@@ -570,7 +573,7 @@ func TestAMemberWhoMayNotStreamCannotPublishAScreen(t *testing.T) {
 	})
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, false); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -589,7 +592,7 @@ func TestJoiningOffersOnlyAMicrophone(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	userID := uuid.New()
-	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+	if err := sfu.Join(uuid.New(), userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -610,7 +613,7 @@ func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, userID := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, userID, true); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	first := sfu.peerFor(userID)
@@ -618,7 +621,7 @@ func TestAStaleCloseDoesNotEvictSomebodyWhoRejoined(t *testing.T) {
 		t.Fatal("joining left nobody in the room")
 	}
 
-	if err := sfu.Join(channelID, userID, true); err != nil {
+	if err := sfu.Join(channelID, userID, publicOf(userID), true); err != nil {
 		t.Fatalf("rejoin: %v", err)
 	}
 	second := sfu.peerFor(userID)
@@ -646,7 +649,7 @@ func TestLeavingTakesTheScreenConnectionWithIt(t *testing.T) {
 	sfu.AttachPublishSignaler(signals)
 
 	userID := uuid.New()
-	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+	if err := sfu.Join(uuid.New(), userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	publishOneScreen(t, sfu, userID)
@@ -681,7 +684,7 @@ func TestATrackThatArrivesMidNegotiationIsStillOffered(t *testing.T) {
 	t.Cleanup(sfu.Close)
 
 	channelID, viewer := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, viewer, true); err != nil {
+	if err := sfu.Join(channelID, viewer, publicOf(viewer), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	first := signaler.offerFor(t, viewer).sdp
@@ -691,7 +694,7 @@ func TestATrackThatArrivesMidNegotiationIsStillOffered(t *testing.T) {
 
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
-		TrackName(SourceScreenAudio, uuid.New(), 1), "share")
+		TrackName(SourceScreenAudio, publicOf(uuid.New()), 1), "share")
 	if err != nil {
 		t.Fatalf("create track: %v", err)
 	}
@@ -740,4 +743,9 @@ func answerOffer(t *testing.T, sfu *SFU, userID uuid.UUID, offer webrtc.SessionD
 	if err := sfu.Answer(userID, answer); err != nil {
 		t.Fatalf("answer: %v", err)
 	}
+}
+
+func publicOf(userID uuid.UUID) events.UserID {
+	return events.UserID(strings.ToLower(
+		base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(userID[:10])))
 }

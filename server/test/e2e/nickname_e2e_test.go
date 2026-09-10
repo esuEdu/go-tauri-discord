@@ -12,7 +12,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-func (h *harness) setNickname(guildID, userID uuid.UUID, body map[string]any, want int) events.Member {
+func (h *harness) setNickname(guildID uuid.UUID, userID events.UserID, body map[string]any, want int) events.Member {
 	h.t.Helper()
 	path := "/api/v1/guilds/" + guildID.String() + "/members/" + userID.String()
 	var member events.Member
@@ -24,11 +24,11 @@ func (h *harness) setNickname(guildID, userID uuid.UUID, body map[string]any, wa
 	return member
 }
 
-func (h *harness) nicknameOf(guildID, userID uuid.UUID) *string {
+func (h *harness) nicknameOf(guildID uuid.UUID, userID events.UserID) *string {
 	h.t.Helper()
 	var members []struct {
-		UserID   uuid.UUID `json:"user_id"`
-		Nickname *string   `json:"nickname"`
+		UserID   events.UserID `json:"user_id"`
+		Nickname *string       `json:"nickname"`
 	}
 	h.mustDo(http.MethodGet, "/api/v1/guilds/"+guildID.String()+"/members",
 		http.StatusOK, nil, &members)

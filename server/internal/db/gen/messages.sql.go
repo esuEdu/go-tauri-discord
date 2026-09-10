@@ -222,6 +222,7 @@ func (q *Queries) ListLatestMessageIDs(ctx context.Context, channelIds []uuid.UU
 const listMessages = `-- name: ListMessages :many
 SELECT
     m.id, m.channel_id, m.author_id, m.content, m.created_at, m.edited_at, m.deleted_at, m.reply_to_message_id,
+    u.public_id  AS author_public_id,
     u.username   AS author_username,
     u.discriminator AS author_discriminator,
     u.avatar_key AS author_avatar_key
@@ -249,6 +250,7 @@ type ListMessagesRow struct {
 	EditedAt            *time.Time
 	DeletedAt           *time.Time
 	ReplyToMessageID    *uuid.UUID
+	AuthorPublicID      string
 	AuthorUsername      string
 	AuthorDiscriminator string
 	AuthorAvatarKey     *string
@@ -272,6 +274,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 			&i.EditedAt,
 			&i.DeletedAt,
 			&i.ReplyToMessageID,
+			&i.AuthorPublicID,
 			&i.AuthorUsername,
 			&i.AuthorDiscriminator,
 			&i.AuthorAvatarKey,

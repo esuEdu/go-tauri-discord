@@ -33,7 +33,7 @@ func TestTheServerAcceptsAScreenPublishedInSeveralSizes(t *testing.T) {
 	sfu.AttachPublishSignaler(signals)
 
 	userID := uuid.New()
-	if err := sfu.Join(uuid.New(), userID, true); err != nil {
+	if err := sfu.Join(uuid.New(), userID, publicOf(userID), true); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestPublishingWhileOthersJoinKeepsTheirEstimatesApart(t *testing.T) {
 	})
 
 	channelID, sharer := uuid.New(), uuid.New()
-	if err := sfu.Join(channelID, sharer, true); err != nil {
+	if err := sfu.Join(channelID, sharer, publicOf(sharer), true); err != nil {
 		t.Fatalf("join sharer: %v", err)
 	}
 
@@ -163,7 +163,8 @@ func TestPublishingWhileOthersJoinKeepsTheirEstimatesApart(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 8 {
-			if err := sfu.Join(channelID, uuid.New(), false); err != nil {
+			listener := uuid.New()
+			if err := sfu.Join(channelID, listener, publicOf(listener), false); err != nil {
 				t.Errorf("join listener: %v", err)
 			}
 		}

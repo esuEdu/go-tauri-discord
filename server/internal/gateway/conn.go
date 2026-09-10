@@ -147,8 +147,13 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 		Allowed:   make([]events.GuildPermissions, 0, len(guilds)),
 		Voice:     make([]events.VoiceStateUpdate, 0),
 	}
+	everyone := make(map[uuid.UUID]events.UserID)
 	for _, gl := range guilds {
-		ready.Guilds = append(ready.Guilds, guild.PublicGuild(gl))
+		public, err := g.guilds.PublicGuild(ctx, gl)
+		if err != nil {
+			return err
+		}
+		ready.Guilds = append(ready.Guilds, public)
 		access, err := g.guilds.ResolveAccess(ctx, sess.userID, gl.ID)
 		if err != nil {
 			return err
@@ -165,10 +170,11 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 			return err
 		}
 		for _, m := range members {
+			everyone[m.UserID] = events.UserID(m.PublicID)
 			ready.Members = append(ready.Members, events.Member{
 				GuildID: gl.ID,
 				User: events.User{
-					ID: m.UserID, Username: m.Username,
+					ID: events.UserID(m.PublicID), Username: m.Username,
 					Discriminator: m.Discriminator, AvatarKey: m.AvatarKey,
 				},
 				Nickname: m.Nickname,
@@ -179,8 +185,8 @@ func (g *Gateway) queueReady(ctx context.Context, sess *session, guilds []dbgen.
 	if err := g.attachReadState(ctx, sess, &ready); err != nil {
 		return err
 	}
-	ready.Online = g.onlineAmong(sess.userID, ready.Members)
-	ready.ICEServers = g.iceServersFor(sess.userID)
+	ready.Online = g.onlineAmong(sess.userID, events.UserID(sess.user.PublicID), everyone)
+	ready.ICEServers = g.iceServersFor(events.UserID(sess.user.PublicID))
 
 	frame, err := events.NewDispatch(events.EventReady, ready)
 	if err != nil {
@@ -236,18 +242,16 @@ func (g *Gateway) attachReadState(ctx context.Context, sess *session, ready *eve
 	return nil
 }
 
-func (g *Gateway) onlineAmong(self uuid.UUID, members []events.Member) []uuid.UUID {
+func (g *Gateway) onlineAmong(self uuid.UUID, selfPublic events.UserID, everyone map[uuid.UUID]events.UserID) []events.UserID {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	online := []uuid.UUID{self}
-	seen := map[uuid.UUID]bool{self: true}
-	for _, m := range members {
-		if seen[m.User.ID] || len(g.byUser[m.User.ID]) == 0 {
+	online := []events.UserID{selfPublic}
+	for userID, public := range everyone {
+		if userID == self || len(g.byUser[userID]) == 0 {
 			continue
 		}
-		seen[m.User.ID] = true
-		online = append(online, m.User.ID)
+		online = append(online, public)
 	}
 	return online
 }
@@ -266,7 +270,7 @@ func (g *Gateway) readPump(ctx context.Context, conn *websocket.Conn, sess *sess
 			// for. Anything else is the socket itself ending, and a call
 			// cannot outlive the window that was in it.
 			if !errors.Is(err, context.DeadlineExceeded) && sess.hasTheCall() {
-				g.leaveVoice(sess.userID)
+				g.leaveVoice(sess.userID, events.UserID(sess.user.PublicID))
 			}
 			return
 		}

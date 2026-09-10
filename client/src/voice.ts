@@ -42,7 +42,7 @@ export type TrackOwner = { source: TrackSource; userID: string };
 
 const SOURCES: TrackSource[] = ["mic", "screen", "screenaudio"];
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PUBLIC_ID = /^[a-z2-7]{16}$/;
 
 export function parseTrackName(name: string): TrackOwner | null {
   const first = name.indexOf("-");
@@ -51,7 +51,7 @@ export function parseTrackName(name: string): TrackOwner | null {
 
   const source = SOURCES.find((s) => s === name.slice(0, first));
   const userID = name.slice(first + 1, last);
-  if (!source || !UUID.test(userID)) return null;
+  if (!source || !PUBLIC_ID.test(userID)) return null;
 
   return { source, userID };
 }

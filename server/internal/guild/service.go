@@ -11,6 +11,7 @@ import (
 	"github.com/esuEdu/go-tauri-discord/internal/db"
 	dbgen "github.com/esuEdu/go-tauri-discord/internal/db/gen"
 	"github.com/esuEdu/go-tauri-discord/internal/domain"
+	"github.com/esuEdu/go-tauri-discord/internal/identity"
 	"github.com/esuEdu/go-tauri-discord/internal/platform/bus"
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
@@ -63,10 +64,19 @@ type Service struct {
 	invites InviteRepository
 	tx      TxRunner
 	pub     *bus.Publisher
+	people  *identity.Directory
 }
 
-func NewService(repo Repository, invites InviteRepository, tx TxRunner, pub *bus.Publisher) *Service {
-	return &Service{repo: repo, invites: invites, tx: tx, pub: pub}
+func NewService(repo Repository, invites InviteRepository, tx TxRunner, pub *bus.Publisher, people *identity.Directory) *Service {
+	return &Service{repo: repo, invites: invites, tx: tx, pub: pub, people: people}
+}
+
+func (s *Service) Who(ctx context.Context, userID uuid.UUID) (events.UserID, error) {
+	return s.people.Public(ctx, userID)
+}
+
+func (s *Service) Whom(ctx context.Context, public events.UserID) (uuid.UUID, error) {
+	return s.people.Resolve(ctx, public)
 }
 
 func (s *Service) permissionsChanged(ctx context.Context, guildID uuid.UUID) {
@@ -565,7 +575,7 @@ func (s *Service) NewMember(ctx context.Context, guildID, userID uuid.UUID) (eve
 	return events.Member{
 		GuildID: guildID,
 		User: events.User{
-			ID: user.ID, Username: user.Username,
+			ID: events.UserID(user.PublicID), Username: user.Username,
 			Discriminator: user.Discriminator, AvatarKey: user.AvatarKey,
 		},
 		Nickname: member.Nickname,
@@ -745,8 +755,12 @@ func (s *Service) requireMember(ctx context.Context, guildID, userID uuid.UUID) 
 	return member, nil
 }
 
-func PublicGuild(g dbgen.Guild) events.Guild {
-	return events.Guild{ID: g.ID, Name: g.Name, OwnerID: g.OwnerID, IconKey: g.IconKey}
+func (s *Service) PublicGuild(ctx context.Context, g dbgen.Guild) (events.Guild, error) {
+	owner, err := s.people.Public(ctx, g.OwnerID)
+	if err != nil {
+		return events.Guild{}, err
+	}
+	return events.Guild{ID: g.ID, Name: g.Name, OwnerID: owner, IconKey: g.IconKey}, nil
 }
 
 func PublicRole(r dbgen.Role) events.Role {
@@ -756,11 +770,19 @@ func PublicRole(r dbgen.Role) events.Role {
 	}
 }
 
-func PublicOverwrite(o dbgen.ChannelOverwrite) events.Overwrite {
-	return events.Overwrite{
-		ChannelID: o.ChannelID, TargetID: o.TargetID,
-		TargetType: o.TargetType, Allow: o.Allow, Deny: o.Deny,
+func (s *Service) PublicOverwrite(ctx context.Context, o dbgen.ChannelOverwrite) (events.Overwrite, error) {
+	target := o.TargetID.String()
+	if o.TargetType == domain.OverwriteMember {
+		public, err := s.people.Public(ctx, o.TargetID)
+		if err != nil {
+			return events.Overwrite{}, err
+		}
+		target = string(public)
 	}
+	return events.Overwrite{
+		ChannelID: o.ChannelID, TargetID: target,
+		TargetType: o.TargetType, Allow: o.Allow, Deny: o.Deny,
+	}, nil
 }
 
 func PublicChannel(c dbgen.Channel) events.Channel {
@@ -793,5 +815,5 @@ func (s *Service) SetIcon(ctx context.Context, actorID, guildID uuid.UUID, key *
 	if err != nil {
 		return events.Guild{}, domain.Internal(err)
 	}
-	return PublicGuild(updated), nil
+	return s.PublicGuild(ctx, updated)
 }

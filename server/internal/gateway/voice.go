@@ -38,10 +38,10 @@ func (g *Gateway) SendCandidate(userID uuid.UUID, candidate webrtc.ICECandidateI
 	})
 }
 
-func (g *Gateway) VoiceClosed(channelID, userID uuid.UUID) {
+func (g *Gateway) VoiceClosed(channelID uuid.UUID, who events.UserID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	g.announceDeparture(ctx, channelID, userID)
+	g.announceDeparture(ctx, channelID, who)
 }
 
 func (g *Gateway) sendToUser(userID uuid.UUID, frame events.Frame) {
@@ -69,9 +69,11 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	me := events.UserID(sess.user.PublicID)
+
 	if payload.ChannelID == nil {
 		sess.holdsTheCall(false)
-		g.leaveVoice(sess.userID)
+		g.leaveVoice(sess.userID, me)
 		return
 	}
 
@@ -87,10 +89,10 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	previous, wasConnected := g.voice.ChannelOf(sess.userID)
 	if wasConnected && previous != *payload.ChannelID {
-		g.announceVoice(ctx, sess.userID, previous, nil, payload.SelfMute, payload.SelfDeaf)
+		g.announceVoice(ctx, me, previous, nil, payload.SelfMute, payload.SelfDeaf)
 	}
 
-	if err := g.voice.Join(*payload.ChannelID, sess.userID, perms.Has(domain.PermStream)); err != nil {
+	if err := g.voice.Join(*payload.ChannelID, sess.userID, me, perms.Has(domain.PermStream)); err != nil {
 		slog.ErrorContext(ctx, "voice join", "user_id", sess.userID, "error", err)
 		g.refuseVoice(sess, channel.GuildID)
 		return
@@ -98,7 +100,7 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 
 	g.claimTheCall(sess)
 	g.sendExistingParticipants(sess, channel.GuildID, *payload.ChannelID)
-	g.announceVoice(ctx, sess.userID, *payload.ChannelID, payload.ChannelID, payload.SelfMute, payload.SelfDeaf)
+	g.announceVoice(ctx, me, *payload.ChannelID, payload.ChannelID, payload.SelfMute, payload.SelfDeaf)
 }
 
 func (g *Gateway) claimTheCall(sess *session) {
@@ -118,7 +120,7 @@ func (g *Gateway) claimTheCall(sess *session) {
 func (g *Gateway) refuseVoice(sess *session, guildID uuid.UUID) {
 	frame, err := events.NewDispatch(events.EventVoiceStateUpdate, events.VoiceStateUpdate{
 		GuildID: guildID,
-		UserID:  sess.userID,
+		UserID:  events.UserID(sess.user.PublicID),
 	})
 	if err != nil {
 		return
@@ -138,7 +140,7 @@ func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uui
 		frame, err := events.NewDispatch(events.EventVoiceStateUpdate, events.VoiceStateUpdate{
 			GuildID:   guildID,
 			ChannelID: &channelID,
-			UserID:    participant.UserID,
+			UserID:    participant.PublicID,
 			SelfMute:  participant.Muted,
 			SelfDeaf:  participant.Deafened,
 		})
@@ -153,7 +155,7 @@ func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uui
 	}
 
 	for participant, streamID := range g.voice.Sharers(channelID) {
-		if participant == sess.userID {
+		if participant == events.UserID(sess.user.PublicID) {
 			continue
 		}
 		frame, err := events.NewDispatch(events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{
@@ -213,7 +215,7 @@ func (g *Gateway) handleVoiceMute(sess *session, raw json.RawMessage) {
 	g.publishVoice(ctx, channel.GuildID, events.VoiceStateUpdate{
 		GuildID:   channel.GuildID,
 		ChannelID: &channelID,
-		UserID:    sess.userID,
+		UserID:    events.UserID(sess.user.PublicID),
 		SelfMute:  payload.SelfMute,
 		SelfDeaf:  payload.SelfDeaf,
 	})
@@ -301,7 +303,7 @@ func (g *Gateway) handleVoiceScreen(sess *session, raw json.RawMessage) {
 	}
 }
 
-func (g *Gateway) ScreenChanged(channelID, userID uuid.UUID, streamID string, active bool) {
+func (g *Gateway) ScreenChanged(channelID uuid.UUID, who events.UserID, streamID string, active bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -313,7 +315,7 @@ func (g *Gateway) ScreenChanged(channelID, userID uuid.UUID, streamID string, ac
 	frame, err := events.NewDispatch(events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{
 		GuildID:   channel.GuildID,
 		ChannelID: channelID,
-		UserID:    userID,
+		UserID:    who,
 		StreamID:  streamID,
 		Active:    active,
 	})
@@ -392,7 +394,7 @@ func (g *Gateway) handleVoiceCandidate(sess *session, raw json.RawMessage) {
 	}
 }
 
-func (g *Gateway) leaveVoice(userID uuid.UUID) {
+func (g *Gateway) leaveVoice(userID uuid.UUID, who events.UserID) {
 	if g.voice == nil {
 		return
 	}
@@ -405,10 +407,10 @@ func (g *Gateway) leaveVoice(userID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	g.announceDeparture(ctx, channelID, userID)
+	g.announceDeparture(ctx, channelID, who)
 }
 
-func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, byChannel map[uuid.UUID]domain.Permission) {
+func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, who events.UserID, byChannel map[uuid.UUID]domain.Permission) {
 	if g.voice == nil {
 		return
 	}
@@ -421,7 +423,7 @@ func (g *Gateway) enforceVoiceAccess(userID uuid.UUID, byChannel map[uuid.UUID]d
 		return
 	}
 	if !perms.Has(domain.PermViewChannel) || !perms.Has(domain.PermConnect) {
-		g.leaveVoice(userID)
+		g.leaveVoice(userID, who)
 		return
 	}
 	if err := g.voice.SetMayStream(userID, perms.Has(domain.PermStream)); err != nil {
@@ -441,23 +443,23 @@ func (g *Gateway) ClosedChannel(guildID, channelID uuid.UUID) {
 		g.voice.Leave(participant.UserID)
 		g.publishVoice(ctx, guildID, events.VoiceStateUpdate{
 			GuildID: guildID,
-			UserID:  participant.UserID,
+			UserID:  participant.PublicID,
 		})
 	}
 }
 
-func (g *Gateway) announceDeparture(ctx context.Context, channelID, userID uuid.UUID) {
+func (g *Gateway) announceDeparture(ctx context.Context, channelID uuid.UUID, who events.UserID) {
 	channel, err := g.guilds.Channel(ctx, channelID)
 	if err != nil {
 		return
 	}
 	g.publishVoice(ctx, channel.GuildID, events.VoiceStateUpdate{
 		GuildID: channel.GuildID,
-		UserID:  userID,
+		UserID:  who,
 	})
 }
 
-func (g *Gateway) announceVoice(ctx context.Context, userID, channelID uuid.UUID, target *uuid.UUID, mute, deaf bool) {
+func (g *Gateway) announceVoice(ctx context.Context, who events.UserID, channelID uuid.UUID, target *uuid.UUID, mute, deaf bool) {
 	channel, err := g.guilds.Channel(ctx, channelID)
 	if err != nil {
 		return
@@ -465,7 +467,7 @@ func (g *Gateway) announceVoice(ctx context.Context, userID, channelID uuid.UUID
 	g.publishVoice(ctx, channel.GuildID, events.VoiceStateUpdate{
 		GuildID:   channel.GuildID,
 		ChannelID: target,
-		UserID:    userID,
+		UserID:    who,
 		SelfMute:  mute,
 		SelfDeaf:  deaf,
 	})

@@ -206,7 +206,7 @@ func (h *Handler) setAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.forget(r, previous)
-	h.announceUser(r, updated)
+	h.announceUser(r, userID, updated)
 	httpx.JSON(w, http.StatusOK, map[string]string{"avatar_key": key})
 }
 
@@ -225,17 +225,17 @@ func (h *Handler) clearAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.forget(r, previous)
-	h.announceUser(r, updated)
+	h.announceUser(r, userID, updated)
 	httpx.JSON(w, http.StatusNoContent, nil)
 }
 
-func (h *Handler) announceUser(r *http.Request, who events.User) {
-	h.pub.ToUser(r.Context(), who.ID, events.EventUserUpdate, who)
+func (h *Handler) announceUser(r *http.Request, userID uuid.UUID, who events.User) {
+	h.pub.ToUser(r.Context(), userID, events.EventUserUpdate, who)
 
-	guilds, err := h.guilds.ListForUser(r.Context(), who.ID)
+	guilds, err := h.guilds.ListForUser(r.Context(), userID)
 	if err != nil {
 		slog.WarnContext(r.Context(), "files: cannot announce a new picture",
-			"user_id", who.ID, "error", err)
+			"user_id", userID, "error", err)
 		return
 	}
 	for _, g := range guilds {

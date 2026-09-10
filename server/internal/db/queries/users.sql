@@ -1,6 +1,6 @@
 -- name: CreateUser :one
-INSERT INTO users (id, username, email, password_hash, discriminator)
-VALUES (@id, @username, @email, @password_hash, @discriminator)
+INSERT INTO users (id, public_id, username, email, password_hash, discriminator)
+VALUES (@id, @public_id, @username, @email, @password_hash, @discriminator)
 RETURNING *;
 
 -- name: TakenDiscriminators :many
@@ -8,6 +8,12 @@ SELECT discriminator FROM users WHERE lower(username) = lower(@username);
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = @id;
+
+-- name: GetUserByPublicID :one
+SELECT * FROM users WHERE public_id = @public_id;
+
+-- name: PublicIDTaken :one
+SELECT EXISTS (SELECT 1 FROM users WHERE public_id = @public_id);
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE lower(email) = lower(@email);

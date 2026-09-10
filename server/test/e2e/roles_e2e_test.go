@@ -50,9 +50,9 @@ func (h *harness) inviteMember(guildID uuid.UUID) *harness {
 }
 
 type memberView struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
-	Online   bool      `json:"online"`
+	UserID   events.UserID `json:"user_id"`
+	Username string        `json:"username"`
+	Online   bool          `json:"online"`
 }
 
 func (h *harness) listMembers(guildID uuid.UUID) []memberView {
@@ -63,7 +63,7 @@ func (h *harness) listMembers(guildID uuid.UUID) []memberView {
 	return out
 }
 
-func memberRolesPath(guildID, memberID, roleID uuid.UUID) string {
+func memberRolesPath(guildID uuid.UUID, memberID events.UserID, roleID uuid.UUID) string {
 	return "/api/v1/guilds/" + guildID.String() + "/members/" + memberID.String() +
 		"/roles/" + roleID.String()
 }
@@ -407,10 +407,10 @@ func (h *harness) newTextChannel(guildID uuid.UUID, name string) uuid.UUID {
 	return ch.ID
 }
 
-func (h *harness) denyView(channelID, targetID uuid.UUID, targetType string) {
+func (h *harness) denyView(channelID uuid.UUID, targetID string, targetType string) {
 	h.t.Helper()
 	h.mustDo(http.MethodPut,
-		"/api/v1/channels/"+channelID.String()+"/overwrites/"+targetID.String(),
+		"/api/v1/channels/"+channelID.String()+"/overwrites/"+targetID,
 		http.StatusNoContent, map[string]any{
 			"target_type": targetType,
 			"deny":        perm(domain.PermViewChannel),
@@ -434,7 +434,7 @@ func TestGatewayWithholdsAHiddenChannelsMessages(t *testing.T) {
 	member := owner.inviteMember(guild.ID)
 	everyone := owner.everyone(guild.ID)
 
-	owner.denyView(secret, everyone.ID, "role")
+	owner.denyView(secret, everyone.ID.String(), "role")
 
 	sock := member.dial()
 	sock.identify(member.token)
@@ -464,7 +464,7 @@ func TestRevokingViewChannelSilencesALiveSession(t *testing.T) {
 		t.Fatalf("first message = %q, want the one sent before the denial", got.Content)
 	}
 
-	owner.denyView(secret, everyone.ID, "role")
+	owner.denyView(secret, everyone.ID.String(), "role")
 
 	owner.post(secret, "must never reach them")
 	owner.post(open, "this one may")
@@ -482,7 +482,7 @@ func TestGrantingViewChannelReachesALiveSession(t *testing.T) {
 	secret, _ := owner.textAndVoice(guild.ID)
 	everyone := owner.everyone(guild.ID)
 
-	owner.denyView(secret, everyone.ID, "role")
+	owner.denyView(secret, everyone.ID.String(), "role")
 
 	sock := member.dial()
 	sock.identify(member.token)
@@ -533,7 +533,7 @@ func TestVoiceEventsRespectChannelVisibility(t *testing.T) {
 	blockedID, _ := memberIdentity(t, blocked)
 	_, voice := owner.textAndVoice(guild.ID)
 
-	owner.denyView(voice, blockedID, "member")
+	owner.denyView(voice, blockedID.String(), "member")
 
 	watching := watcher.dial()
 	watching.identify(watcher.token)
@@ -570,7 +570,7 @@ func seesChannel(channels []events.Channel, id uuid.UUID) bool {
 	return false
 }
 
-func memberIdentity(t *testing.T, h *harness) (uuid.UUID, string) {
+func memberIdentity(t *testing.T, h *harness) (events.UserID, string) {
 	t.Helper()
 	var me events.User
 	h.mustDo(http.MethodGet, "/api/v1/users/@me", http.StatusOK, nil, &me)
@@ -661,7 +661,7 @@ func TestTheMemberListSaysWhoIsOnline(t *testing.T) {
 		t.Fatalf("guild has %d members, want 2", len(members))
 	}
 
-	online := make(map[uuid.UUID]bool, len(members))
+	online := make(map[events.UserID]bool, len(members))
 	for _, m := range members {
 		online[m.UserID] = m.Online
 	}

@@ -63,8 +63,9 @@ export interface Resume {
   session_id: string;
   seq: number /* int64 */;
 }
+export type UserID = string;
 export interface User {
-  id: string;
+  id: UserID;
   username: string;
   discriminator: string;
   avatar_key?: string;
@@ -72,7 +73,7 @@ export interface User {
 export interface Guild {
   id: string;
   name: string;
-  owner_id: string;
+  owner_id: UserID;
   icon_key?: string;
 }
 export interface Channel {
@@ -92,7 +93,7 @@ export interface Member {
 }
 export interface GuildRemoval {
   guild_id: string;
-  user_id: string;
+  user_id: UserID;
   banned: boolean;
 }
 export interface ChannelPermission {
@@ -162,7 +163,7 @@ export interface Ready {
   members: Member[];
   read_states: ReadState[];
   allowed: GuildPermissions[];
-  online: string[];
+  online: UserID[];
   ice_servers: ICEServer[];
   voice: VoiceStateUpdate[];
 }
@@ -178,16 +179,16 @@ export interface MessageDelete {
 export interface MessageReaction {
   message_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   emoji: string;
 }
 export interface TypingStart {
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   timestamp: string;
 }
 export interface PresenceUpdate {
-  user_id: string;
+  user_id: UserID;
   status: string;
 }
 export interface VoiceStateRequest {
@@ -208,7 +209,7 @@ export interface ICECandidate {
 export interface VoiceStateUpdate {
   guild_id: string;
   channel_id?: string;
-  user_id: string;
+  user_id: UserID;
   self_mute: boolean;
   self_deaf: boolean;
 }
@@ -216,7 +217,7 @@ export interface ScreenPublish {
   sdp: string;
 }
 export interface VoiceWatchRequest {
-  user_id: string;
+  user_id: UserID;
   watching: boolean;
   size: string;
 }
@@ -227,7 +228,7 @@ export interface VoiceMuteRequest {
 export interface VoiceQuality {
   guild_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   quality: string;
   loss_pct: number /* float64 */;
   rtt_ms: number /* int64 */;
@@ -238,7 +239,7 @@ export interface VoiceScreenRequest {
 export interface VoiceScreenUpdate {
   guild_id: string;
   channel_id: string;
-  user_id: string;
+  user_id: UserID;
   stream_id: string;
   active: boolean;
 }

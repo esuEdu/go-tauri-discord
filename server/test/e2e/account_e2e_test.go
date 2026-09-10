@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/esuEdu/go-tauri-discord/pkg/events"
 )
 
-const deletedUsername = "Deleted User"
+const (
+	deletedUsername = "Deleted User"
+	deletedPublicID = events.UserID("deleteduser22222")
+)
 
 func (h *harness) deleteAccount(password string, wantStatus int) {
 	h.t.Helper()
@@ -43,7 +44,7 @@ func TestDeletingAnAccountKeepsWhatItSaid(t *testing.T) {
 	if history[0].Content != "something worth keeping" {
 		t.Errorf("content = %q, want it kept verbatim", history[0].Content)
 	}
-	if history[0].Author.ID != uuid.Nil {
+	if history[0].Author.ID != deletedPublicID {
 		t.Errorf("author = %s, want the deleted-user tombstone", history[0].Author.ID)
 	}
 	if history[0].Author.Username != deletedUsername {
@@ -96,7 +97,7 @@ func TestDeletingAnOwnerHandsTheGuildOn(t *testing.T) {
 	if len(guilds) != 1 || guilds[0].ID != guild.ID {
 		t.Fatalf("the remaining member lost the guild: %v", guilds)
 	}
-	if guilds[0].OwnerID == uuid.Nil {
+	if guilds[0].OwnerID == deletedPublicID {
 		t.Fatal("ownership went to the tombstone rather than to a member")
 	}
 

@@ -132,4 +132,5 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Discriminator string
+	PublicID      string
 }

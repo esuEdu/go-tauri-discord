@@ -92,7 +92,7 @@ func (q *Queries) ListReactionsForMessages(ctx context.Context, arg ListReaction
 }
 
 const listReactors = `-- name: ListReactors :many
-SELECT u.id, u.username, u.discriminator, u.avatar_key
+SELECT u.public_id, u.username, u.discriminator, u.avatar_key
 FROM message_reactions r
 JOIN users u ON u.id = r.user_id
 WHERE r.message_id = $1 AND r.emoji = $2
@@ -105,7 +105,7 @@ type ListReactorsParams struct {
 }
 
 type ListReactorsRow struct {
-	ID            uuid.UUID
+	PublicID      string
 	Username      string
 	Discriminator string
 	AvatarKey     *string
@@ -121,7 +121,7 @@ func (q *Queries) ListReactors(ctx context.Context, arg ListReactorsParams) ([]L
 	for rows.Next() {
 		var i ListReactorsRow
 		if err := rows.Scan(
-			&i.ID,
+			&i.PublicID,
 			&i.Username,
 			&i.Discriminator,
 			&i.AvatarKey,

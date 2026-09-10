@@ -64,8 +64,12 @@ func (s *Service) React(ctx context.Context, userID, messageID uuid.UUID, emoji 
 		return nil
 	}
 
+	who, err := s.people.Public(ctx, userID)
+	if err != nil {
+		return err
+	}
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventReactionAdd, events.MessageReaction{
-		MessageID: msg.ID, ChannelID: msg.ChannelID, UserID: userID, Emoji: emoji,
+		MessageID: msg.ID, ChannelID: msg.ChannelID, UserID: who, Emoji: emoji,
 	})
 	return nil
 }
@@ -90,8 +94,12 @@ func (s *Service) Unreact(ctx context.Context, userID, messageID uuid.UUID, emoj
 		return nil
 	}
 
+	who, err := s.people.Public(ctx, userID)
+	if err != nil {
+		return err
+	}
 	s.pub.ToGuild(ctx, channel.GuildID, events.EventReactionRemove, events.MessageReaction{
-		MessageID: msg.ID, ChannelID: msg.ChannelID, UserID: userID, Emoji: emoji,
+		MessageID: msg.ID, ChannelID: msg.ChannelID, UserID: who, Emoji: emoji,
 	})
 	return nil
 }
@@ -112,7 +120,7 @@ func (s *Service) Reactors(ctx context.Context, userID, messageID uuid.UUID, emo
 	people := make([]events.User, len(rows))
 	for i, r := range rows {
 		people[i] = events.User{
-			ID: r.ID, Username: r.Username,
+			ID: events.UserID(r.PublicID), Username: r.Username,
 			Discriminator: r.Discriminator, AvatarKey: r.AvatarKey,
 		}
 	}

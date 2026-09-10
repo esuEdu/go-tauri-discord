@@ -167,7 +167,7 @@ func TestAReactionInAHiddenChannelStaysHidden(t *testing.T) {
 	memberID, _ := memberIdentity(t, member)
 
 	secret := owner.newTextChannel(guild.ID, "secret")
-	owner.denyView(secret, memberID, domain.OverwriteMember)
+	owner.denyView(secret, memberID.String(), domain.OverwriteMember)
 
 	watcher := member.dial()
 	watcher.identify(member.token)
