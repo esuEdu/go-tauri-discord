@@ -76,7 +76,7 @@ export function Channels({
   const clickable = useRef(true);
 
   const members = state.membersByGuild[guild.id] ?? [];
-  const onlineCount = members.filter((id) => state.online[id]).length;
+  const onlineCount = members.filter((id) => (state.status[id] ?? "offline") !== "offline").length;
 
   const byPosition = (a: Channel, b: Channel) => a.position - b.position;
   const top = channels.filter((c) => !c.parent_id).sort(byPosition);

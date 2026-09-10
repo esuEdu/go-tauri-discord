@@ -21,8 +21,9 @@ export function Members({
   onOpenMenu: (userID: string, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const named = ids.filter((id) => state.names[id]);
-  const online = named.filter((id) => state.online[id]);
-  const offline = named.filter((id) => !state.online[id]);
+  const statusOf = (id: string) => state.status[id] ?? "offline";
+  const here = named.filter((id) => statusOf(id) !== "offline");
+  const away = named.filter((id) => statusOf(id) === "offline");
   const shared = sharedNames(named, nameFor);
 
   function group(title: string, list: string[], presence: "online" | "offline") {
@@ -47,12 +48,19 @@ export function Members({
                 size={28}
                 tone={id === meID ? "accent" : "neutral"}
               />
-              {presence === "online" && <span className="presence-dot" />}
+              {presence === "online" && (
+                <span className="presence-dot" data-status={statusOf(id)} />
+              )}
             </span>
             <span className="member-row-identity">
-              <span className="member-row-name">{nameFor(id)}</span>
-              {shared.has(nameFor(id)) && state.tags[id] && (
-                <span className="member-row-tag">#{state.tags[id]}</span>
+              <span className="member-row-line">
+                <span className="member-row-name">{nameFor(id)}</span>
+                {shared.has(nameFor(id)) && state.tags[id] && (
+                  <span className="member-row-tag">#{state.tags[id]}</span>
+                )}
+              </span>
+              {state.saying[id] && (
+                <span className="member-row-saying">{state.saying[id]}</span>
               )}
             </span>
             {live.has(id) && <LiveBadge />}
@@ -64,8 +72,8 @@ export function Members({
 
   return (
     <aside className="members panel" aria-label="Members">
-      {group("Online", online, "online")}
-      {group("Offline", offline, "offline")}
+      {group("Online", here, "online")}
+      {group("Offline", away, "offline")}
     </aside>
   );
 }

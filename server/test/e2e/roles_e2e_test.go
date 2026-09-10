@@ -52,7 +52,7 @@ func (h *harness) inviteMember(guildID uuid.UUID) *harness {
 type memberView struct {
 	UserID   events.UserID `json:"user_id"`
 	Username string        `json:"username"`
-	Online   bool          `json:"online"`
+	Status   string        `json:"status"`
 }
 
 func (h *harness) listMembers(guildID uuid.UUID) []memberView {
@@ -663,7 +663,7 @@ func TestTheMemberListSaysWhoIsOnline(t *testing.T) {
 
 	online := make(map[events.UserID]bool, len(members))
 	for _, m := range members {
-		online[m.UserID] = m.Online
+		online[m.UserID] = m.Status == "online"
 	}
 	if !online[ownerID] {
 		t.Error("the connected owner is reported offline, so a fresh roster shows everyone away")

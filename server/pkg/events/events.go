@@ -28,6 +28,7 @@ const (
 	OpScreenPublish  Opcode = 15
 	OpScreenAnswer   Opcode = 16
 	OpScreenIce      Opcode = 17
+	OpPresence       Opcode = 18
 )
 
 type EventType string
@@ -47,6 +48,7 @@ const (
 	EventTypingStart       EventType = "TYPING_START"
 	EventPresenceUpdate    EventType = "PRESENCE_UPDATE"
 	EventUserUpdate        EventType = "USER_UPDATE"
+	EventSelfUpdate        EventType = "SELF_UPDATE"
 	EventPermissionsUpdate EventType = "PERMISSIONS_UPDATE"
 	EventGuildMemberAdd    EventType = "GUILD_MEMBER_ADD"
 	EventGuildMemberUpdate EventType = "GUILD_MEMBER_UPDATE"
@@ -87,6 +89,12 @@ type User struct {
 	Username      string  `json:"username"`
 	Discriminator string  `json:"discriminator"`
 	AvatarKey     *string `json:"avatar_key"`
+}
+
+type Self struct {
+	Status       string  `json:"status"`
+	CustomStatus *string `json:"custom_status"`
+	Bio          *string `json:"bio"`
 }
 
 type Guild struct {
@@ -190,12 +198,13 @@ type Message struct {
 type Ready struct {
 	SessionID  string             `json:"session_id"`
 	User       User               `json:"user"`
+	Self       Self               `json:"self"`
 	Guilds     []Guild            `json:"guilds"`
 	Channels   []Channel          `json:"channels"`
 	Members    []Member           `json:"members"`
 	ReadStates []ReadState        `json:"read_states"`
 	Allowed    []GuildPermissions `json:"allowed"`
-	Online     []UserID           `json:"online"`
+	Presence   []PresenceUpdate   `json:"presence"`
 	ICEServers []ICEServer        `json:"ice_servers"`
 	Voice      []VoiceStateUpdate `json:"voice"`
 }
@@ -224,9 +233,14 @@ type TypingStart struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type PresenceRequest struct {
+	Idle bool `json:"idle"`
+}
+
 type PresenceUpdate struct {
-	UserID UserID `json:"user_id"`
-	Status string `json:"status"`
+	UserID       UserID  `json:"user_id"`
+	Status       string  `json:"status"`
+	CustomStatus *string `json:"custom_status"`
 }
 
 type VoiceStateRequest struct {

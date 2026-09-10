@@ -69,7 +69,7 @@ func (g *Gateway) handleVoiceState(sess *session, raw json.RawMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	me := events.UserID(sess.user.PublicID)
+	me := sess.publicID()
 
 	if payload.ChannelID == nil {
 		sess.holdsTheCall(false)
@@ -120,7 +120,7 @@ func (g *Gateway) claimTheCall(sess *session) {
 func (g *Gateway) refuseVoice(sess *session, guildID uuid.UUID) {
 	frame, err := events.NewDispatch(events.EventVoiceStateUpdate, events.VoiceStateUpdate{
 		GuildID: guildID,
-		UserID:  events.UserID(sess.user.PublicID),
+		UserID:  sess.publicID(),
 	})
 	if err != nil {
 		return
@@ -155,7 +155,7 @@ func (g *Gateway) sendExistingParticipants(sess *session, guildID, channelID uui
 	}
 
 	for participant, streamID := range g.voice.Sharers(channelID) {
-		if participant == events.UserID(sess.user.PublicID) {
+		if participant == sess.publicID() {
 			continue
 		}
 		frame, err := events.NewDispatch(events.EventVoiceScreenUpdate, events.VoiceScreenUpdate{
@@ -215,7 +215,7 @@ func (g *Gateway) handleVoiceMute(sess *session, raw json.RawMessage) {
 	g.publishVoice(ctx, channel.GuildID, events.VoiceStateUpdate{
 		GuildID:   channel.GuildID,
 		ChannelID: &channelID,
-		UserID:    events.UserID(sess.user.PublicID),
+		UserID:    sess.publicID(),
 		SelfMute:  payload.SelfMute,
 		SelfDeaf:  payload.SelfDeaf,
 	})

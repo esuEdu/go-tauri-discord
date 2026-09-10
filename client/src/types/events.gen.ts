@@ -23,6 +23,7 @@ export const OpVoiceWatch: Opcode = 14;
 export const OpScreenPublish: Opcode = 15;
 export const OpScreenAnswer: Opcode = 16;
 export const OpScreenIce: Opcode = 17;
+export const OpPresence: Opcode = 18;
 export type EventType = string;
 export const EventReady: EventType = "READY";
 export const EventGuildCreate: EventType = "GUILD_CREATE";
@@ -38,6 +39,7 @@ export const EventReactionRemove: EventType = "MESSAGE_REACTION_REMOVE";
 export const EventTypingStart: EventType = "TYPING_START";
 export const EventPresenceUpdate: EventType = "PRESENCE_UPDATE";
 export const EventUserUpdate: EventType = "USER_UPDATE";
+export const EventSelfUpdate: EventType = "SELF_UPDATE";
 export const EventPermissionsUpdate: EventType = "PERMISSIONS_UPDATE";
 export const EventGuildMemberAdd: EventType = "GUILD_MEMBER_ADD";
 export const EventGuildMemberUpdate: EventType = "GUILD_MEMBER_UPDATE";
@@ -69,6 +71,11 @@ export interface User {
   username: string;
   discriminator: string;
   avatar_key?: string;
+}
+export interface Self {
+  status: string;
+  custom_status?: string;
+  bio?: string;
 }
 export interface Guild {
   id: string;
@@ -158,12 +165,13 @@ export interface Message {
 export interface Ready {
   session_id: string;
   user: User;
+  self: Self;
   guilds: Guild[];
   channels: Channel[];
   members: Member[];
   read_states: ReadState[];
   allowed: GuildPermissions[];
-  online: UserID[];
+  presence: PresenceUpdate[];
   ice_servers: ICEServer[];
   voice: VoiceStateUpdate[];
 }
@@ -187,9 +195,13 @@ export interface TypingStart {
   user_id: UserID;
   timestamp: string;
 }
+export interface PresenceRequest {
+  idle: boolean;
+}
 export interface PresenceUpdate {
   user_id: UserID;
   status: string;
+  custom_status?: string;
 }
 export interface VoiceStateRequest {
   channel_id?: string;

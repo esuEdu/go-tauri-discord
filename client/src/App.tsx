@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./api";
+import { watchForIdleness } from "./idle";
 import { gateway, type ConnectionState } from "./gateway";
 import { joinsMuted, setJoinsMuted } from "./audioPrefs";
 import {
@@ -277,7 +278,11 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     gateway.connect(api.token!);
-    return () => gateway.close();
+    const stopWatchingForIdleness = watchForIdleness();
+    return () => {
+      stopWatchingForIdleness();
+      gateway.close();
+    };
   }, [user]);
 
   const loadGuilds = useCallback(async () => {
@@ -697,7 +702,15 @@ export default function App() {
         <YourBar
           me={user.username}
           meAvatarURL={fileURL(user.avatar_key)}
-          presence={callChannel ? "In voice" : "Online"}
+          presence={callChannel ? "In voice" : labelFor(state.self.status)}
+          chosen={state.self.status}
+          saying={state.self.custom_status ?? null}
+          onChooseStatus={(status) => {
+            void api.updateProfile({ status });
+          }}
+          onSay={(text) => {
+            void api.updateProfile({ custom_status: text });
+          }}
           call={
             callChannel
               ? {
@@ -1045,7 +1058,7 @@ export default function App() {
           channels={channels}
           permissions={permissions}
           iconURL={fileURL(activeGuild.icon_key)}
-          online={state.online}
+          status={state.status}
           onClose={() => setServerSettings(false)}
           onChanged={() => void loadGuilds()}
         />
@@ -1407,4 +1420,17 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function labelFor(status: string): string {
+  switch (status) {
+    case "away":
+      return "Away";
+    case "busy":
+      return "Busy";
+    case "invisible":
+      return "Invisible";
+    default:
+      return "Online";
+  }
 }

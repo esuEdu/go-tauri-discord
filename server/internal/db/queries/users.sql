@@ -53,3 +53,14 @@ DELETE FROM users WHERE id = @id;
 UPDATE users SET avatar_key = @avatar_key, updated_at = now()
 WHERE id = @id
 RETURNING *;
+
+-- name: UpdateUserProfile :one
+UPDATE users
+SET status        = coalesce(sqlc.narg('status'), status),
+    custom_status = CASE WHEN @clear_custom_status::bool THEN NULL
+                         ELSE coalesce(sqlc.narg('custom_status'), custom_status) END,
+    bio           = CASE WHEN @clear_bio::bool THEN NULL
+                         ELSE coalesce(sqlc.narg('bio'), bio) END,
+    updated_at    = now()
+WHERE id = @id
+RETURNING *;
