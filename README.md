@@ -272,6 +272,29 @@ out for free rather than being re-implemented: resolution counts sessions in
 Both were the smaller thing to send while there were two values; both are now a
 status per person, which is what four values cost.
 
+### Profiles
+
+Clicking a name opens a card: the person, their digits, their picture, whatever
+they are saying, a bio of up to 500 characters, the roles they hold **here**,
+and the day they joined **this** server. It is served by
+`GET /api/v1/guilds/{guildID}/members/{userID}/profile`.
+
+**It is guild-scoped on purpose.** Roles and a joined-at date are only meaningful
+for a server two people share, and scoping the route that way answers the
+awkward question in the issue — *how much of somebody is visible to somebody who
+shares no server with them?* — by never letting it arise: the handler requires
+the viewer to be a member of that guild, so a stranger gets a 404 rather than a
+partial answer. The endpoint for somebody you share nothing with is the one DMs
+will need, and it does not exist yet.
+
+The profile is **per account, not per server**. Discord has both; the per-server
+half multiplies the work and there is no demand for it yet. The one per-server
+thing on the card is the pair that has to be — roles and joined-at.
+
+A bio is user-supplied text shown to other people, so it is trimmed, capped at
+500 characters, refused if it carries control characters, and cleared by saving
+an empty one. The same rules govern the shorter status line, capped at 128.
+
 ### Account deletion
 
 `DELETE /api/v1/users/@me` asks for the password again. An access token is
@@ -1391,6 +1414,7 @@ For an evening rather than a deployment, `make share` is still the answer.
 - [x] Four digits after a name, so two people can share one
 - [x] A public id per person, so the row id and the token subject stay unpublished
 - [x] Away, busy and invisible, with idleness the client reports and a status text
+- [x] A profile behind a name: bio, the roles held here, and the day they joined
 - [x] Who is in a voice channel before you join it, seeded by READY
 - [x] Screen capture in the macOS desktop app, by enabling it in WKWebView
 - [x] CI builds *and launches* the desktop app, so a WebKit rename cannot hide

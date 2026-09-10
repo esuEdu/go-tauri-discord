@@ -40,6 +40,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function ProfileSettings({
   user,
+  bio,
   avatarURL,
   onClose,
   onChanged,
@@ -49,6 +50,7 @@ export function ProfileSettings({
   onNameplate,
 }: {
   user: User;
+  bio: string | null;
   avatarURL: string | null;
   onClose: () => void;
   onChanged: () => void;
@@ -93,6 +95,7 @@ export function ProfileSettings({
           {tab === "account" && (
             <AccountTab
               user={user}
+              bio={bio}
               avatarURL={avatarURL}
               onChanged={onChanged}
               onSignOut={onSignOut}
@@ -113,12 +116,14 @@ export function ProfileSettings({
 
 function AccountTab({
   user,
+  bio,
   avatarURL,
   onChanged,
   onSignOut,
   onDeleteAccount,
 }: {
   user: User;
+  bio: string | null;
   avatarURL: string | null;
   onChanged: () => void;
   onSignOut: () => void;
@@ -126,6 +131,20 @@ function AccountTab({
 }) {
   const [placing, setPlacing] = useState<File | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [draft, setDraft] = useState(bio ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setDraft(bio ?? ""), [bio]);
+
+  async function saveBio() {
+    setSaving(true);
+    try {
+      await api.updateProfile({ bio: draft });
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function pickPicture() {
     const picker = document.createElement("input");
@@ -158,6 +177,27 @@ function AccountTab({
           <p className="profile-hint">
             5 MB and 24 megapixels at most. The middle is kept, squared, shrunk to 256px.
           </p>
+        </div>
+      </div>
+
+      <div className="profile-bio-block">
+        <label className="profile-field-label" htmlFor="bio">
+          About you
+        </label>
+        <textarea
+          id="bio"
+          className="profile-bio-input"
+          value={draft}
+          maxLength={500}
+          rows={3}
+          placeholder="A line or two, shown to anybody who clicks your name."
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <div className="profile-bio-foot">
+          <span className="profile-hint">{draft.length}/500</span>
+          <Button disabled={saving || draft === (bio ?? "")} onClick={saveBio}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </div>
       </div>
 

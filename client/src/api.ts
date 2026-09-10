@@ -39,6 +39,15 @@ export type ProfileEdit = {
   bio?: string;
 };
 
+export interface MemberProfile {
+  user: User;
+  guild_id: string;
+  nickname: string | null;
+  joined_at: string;
+  bio: string | null;
+  roles: Role[];
+}
+
 export interface GuildMember {
   user_id: string;
   username: string;
@@ -208,6 +217,13 @@ export class Api {
 
   me(): Promise<Account> {
     return this.request<Account>("GET", "/api/v1/users/@me");
+  }
+
+  memberProfile(guildID: string, userID: string): Promise<MemberProfile> {
+    return this.request<MemberProfile>(
+      "GET",
+      `/api/v1/guilds/${guildID}/members/${userID}/profile`,
+    );
   }
 
   updateProfile(edit: ProfileEdit): Promise<Account> {

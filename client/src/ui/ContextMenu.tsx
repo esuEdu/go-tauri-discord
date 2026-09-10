@@ -5,11 +5,13 @@ export type Anchor = { x: number; y: number };
 export function ContextMenu({
   at,
   width = 220,
+  role = "menu",
   onClose,
   children,
 }: {
   at: Anchor;
   width?: number;
+  role?: "menu" | "dialog";
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -54,7 +56,7 @@ export function ContextMenu({
     <div
       ref={ref}
       className="context-menu"
-      role="menu"
+      role={role}
       style={{ left: place.left, top: place.top, width }}
     >
       {children}

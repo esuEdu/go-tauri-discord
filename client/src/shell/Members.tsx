@@ -11,6 +11,7 @@ export function Members({
   live,
   avatarURL,
   onOpenMenu,
+  onOpenProfile,
 }: {
   ids: string[];
   state: SessionState;
@@ -19,6 +20,7 @@ export function Members({
   live: Set<string>;
   avatarURL: (id: string) => string | null;
   onOpenMenu: (userID: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onOpenProfile: (userID: string, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const named = ids.filter((id) => state.names[id]);
   const statusOf = (id: string) => state.status[id] ?? "offline";
@@ -39,6 +41,7 @@ export function Members({
             type="button"
             className="member-row"
             data-presence={presence}
+            onClick={(event) => onOpenProfile(id, event)}
             onContextMenu={(event) => onOpenMenu(id, event)}
           >
             <span className="avatar-slot">

@@ -468,3 +468,99 @@
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-size: contain;
 }
+
+.person-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+}
+
+.person-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.person-head .presence-dot {
+  right: 1px;
+  bottom: 1px;
+  width: 13px;
+  height: 13px;
+}
+
+.person-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.person-name {
+  overflow: hidden;
+  color: var(--color-text);
+  font: var(--body);
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person-tag {
+  color: var(--color-neutral-600);
+  font: var(--micro);
+  line-height: 1.25;
+}
+
+.person-saying {
+  margin: 0;
+  color: var(--color-text);
+  font: var(--body-small);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.person-bio {
+  margin: 0;
+  color: var(--color-neutral-400);
+  font: var(--body-small);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.person-empty {
+  margin: 0;
+  color: var(--color-neutral-600);
+  font: var(--micro);
+  line-height: 1.4;
+}
+
+.person-kicker {
+  color: var(--color-neutral-600);
+  font: var(--kicker);
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+}
+
+.person-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.person-role {
+  padding: 2px 8px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: 999px;
+  color: var(--color-neutral-400);
+  font: var(--micro);
+  line-height: 1.5;
+}
+
+.person-joined {
+  color: var(--color-neutral-400);
+  font: var(--body-small);
+  line-height: 1.4;
+}

@@ -124,6 +124,7 @@ be shown, because it does not exist.
 | **Status** | Online, away or busy, chosen or derived. Invisible is chosen and shows as offline |
 | **Picture** | Optional. Uploaded, cropped to a square and served at 256×256. Most people will not have one |
 | **Saying** | Optional line of up to 128 characters somebody writes about themselves. Cleared by emptying it |
+| **Bio** | Optional, up to 500 characters. Seen only by opening somebody's card, never in a list |
 
 **Status is four values on the wire and no more**: `online`, `away`, `busy`,
 `offline`. Two of them can arrive two different ways, and the difference is

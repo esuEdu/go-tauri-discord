@@ -92,6 +92,7 @@ func (h *Handler) Routes(mux httpx.Router) {
 	mux.HandleFunc("PATCH /api/v1/roles/{roleID}", h.updateRole)
 	mux.HandleFunc("DELETE /api/v1/roles/{roleID}", h.deleteRole)
 	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/roles", h.memberRoles)
+	mux.HandleFunc("GET /api/v1/guilds/{guildID}/members/{userID}/profile", h.memberProfile)
 	mux.HandleFunc("PUT /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.assignRole)
 	mux.HandleFunc("DELETE /api/v1/guilds/{guildID}/members/{userID}/roles/{roleID}", h.unassignRole)
 	mux.HandleFunc("PATCH /api/v1/guilds/{guildID}", h.updateGuild)
@@ -687,6 +688,20 @@ func (h *Handler) memberRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, mapSlice(roles, PublicRole))
+}
+
+func (h *Handler) memberProfile(w http.ResponseWriter, r *http.Request) {
+	guildID, memberID, err := h.guildAndMember(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	profile, err := h.svc.MemberProfile(r.Context(), auth.MustUserID(r.Context()), guildID, memberID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, profile)
 }
 
 func (h *Handler) assignRole(w http.ResponseWriter, r *http.Request) {

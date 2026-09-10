@@ -66,6 +66,7 @@ import { Icon } from "./ui/Icon";
 import { Sheet } from "./ui/Sheet";
 import { Toggle } from "./ui/Toggle";
 import { ContextMenu, type Anchor } from "./ui/ContextMenu";
+import { ProfileCard } from "./screens/ProfileCard";
 import { MenuItem, MenuSeparator } from "./ui/Menu";
 
 type Menu =
@@ -169,6 +170,7 @@ export default function App() {
   const [editingChannel, setEditingChannel] = useState<{ channel: Channel; name: string } | null>(null);
   const [droppingChannel, setDroppingChannel] = useState<Channel | null>(null);
   const [serverMenu, setServerMenu] = useState<Anchor | null>(null);
+  const [profile, setProfile] = useState<{ at: Anchor; userID: string } | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [leaving, setLeaving] = useState(false);
@@ -855,6 +857,9 @@ export default function App() {
             });
           }}
           onOpenImage={(file, message) => setLightbox({ file, message })}
+          onOpenProfile={(userID, event) =>
+            setProfile({ at: { x: event.clientX, y: event.clientY }, userID })
+          }
           insert={draftEmoji}
           historyFailed={historyFailed}
           onReload={() => void reload()}
@@ -904,6 +909,21 @@ export default function App() {
             }
             setMenu({ kind: "person", at: { x: event.clientX, y: event.clientY }, userID });
           }}
+          onOpenProfile={(userID, event) => {
+            setProfile({ at: { x: event.clientX, y: event.clientY }, userID });
+          }}
+        />
+      )}
+
+      {profile && activeGuild && (
+        <ProfileCard
+          at={profile.at}
+          guildID={activeGuild.id}
+          userID={profile.userID}
+          status={state.status[profile.userID] ?? "offline"}
+          saying={state.saying[profile.userID] ?? null}
+          avatarURL={avatarURL(profile.userID)}
+          onClose={() => setProfile(null)}
         />
       )}
 
@@ -1067,6 +1087,7 @@ export default function App() {
       {profileSettings && (
         <ProfileSettings
           user={user}
+          bio={state.self.bio ?? null}
           avatarURL={fileURL(user.avatar_key)}
           onClose={() => {
             setProfileSettings(false);

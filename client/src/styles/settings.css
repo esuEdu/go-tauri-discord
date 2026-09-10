@@ -1134,3 +1134,28 @@
   color: var(--color-neutral-500);
   font: var(--body-small);
 }
+
+.profile-bio-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.profile-bio-input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: var(--body-small);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.profile-bio-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}

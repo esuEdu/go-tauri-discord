@@ -98,8 +98,16 @@
 }
 
 .message-author {
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--color-text);
   font: var(--title-message);
+  cursor: pointer;
+}
+
+.message-author:hover {
+  text-decoration: underline;
 }
 
 .message-time {
