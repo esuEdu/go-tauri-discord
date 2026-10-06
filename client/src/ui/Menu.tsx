@@ -1,19 +1,30 @@
-import type { ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import type { CSSProperties, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
 export function Menu({
   children,
   style,
-  onPointerDown,
+  align = "end",
+  sideOffset = 6,
 }: {
   children: ReactNode;
-  style?: React.CSSProperties;
-  onPointerDown?: (event: React.PointerEvent) => void;
+  style?: CSSProperties;
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
 }) {
   return (
-    <div className="menu" role="menu" style={style} onPointerDown={onPointerDown}>
-      {children}
-    </div>
+    <DropdownMenu.Portal>
+      <DropdownMenu.Content
+        className="menu"
+        style={style}
+        align={align}
+        sideOffset={sideOffset}
+        collisionPadding={8}
+      >
+        {children}
+      </DropdownMenu.Content>
+    </DropdownMenu.Portal>
   );
 }
 
@@ -33,27 +44,22 @@ export function MenuItem({
   onClick?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="menu-item"
-      role="menuitem"
-      data-kind={kind}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {icon && <Icon name={icon} size={16} />}
-      <span className="menu-item-label">
-        {label}
-        {hint && (
-          <span className="menu-item-hint" title={hint}>
-            {hint}
-          </span>
-        )}
-      </span>
-    </button>
+    <DropdownMenu.Item asChild disabled={disabled} onSelect={() => onClick?.()}>
+      <button type="button" className="menu-item" data-kind={kind} disabled={disabled}>
+        {icon && <Icon name={icon} size={16} />}
+        <span className="menu-item-label">
+          {label}
+          {hint && (
+            <span className="menu-item-hint" title={hint}>
+              {hint}
+            </span>
+          )}
+        </span>
+      </button>
+    </DropdownMenu.Item>
   );
 }
 
 export function MenuSeparator() {
-  return <div className="menu-separator" role="separator" />;
+  return <DropdownMenu.Separator className="menu-separator" />;
 }

@@ -1,7 +1,9 @@
 .context-menu {
-  position: fixed;
   z-index: 70;
   display: flex;
+  max-height: var(--radix-dropdown-menu-content-available-height, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 4px;
   padding: 6px;

@@ -1,6 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Popover from "@radix-ui/react-popover";
+import { useState, type ReactNode } from "react";
 
 export type Anchor = { x: number; y: number };
+
+function anchorStyle(at: Anchor) {
+  return {
+    position: "fixed" as const,
+    left: at.x,
+    top: at.y,
+    width: 1,
+    height: 1,
+    pointerEvents: "none" as const,
+  };
+}
 
 export function ContextMenu({
   at,
@@ -15,51 +28,60 @@ export function ContextMenu({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number }>({
-    left: at.x,
-    top: at.y,
-  });
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
 
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const margin = 8;
-    const box = node.getBoundingClientRect();
-    const left = Math.max(
-      margin,
-      Math.min(at.x, window.innerWidth - box.width - margin),
-    );
-    const top = Math.max(
-      margin,
-      Math.min(at.y, window.innerHeight - box.height - margin),
-    );
-    setPlace({ left, top });
-  }, [at.x, at.y]);
+  function closed(open: boolean) {
+    if (!open) onClose();
+  }
 
-  useEffect(() => {
-    function away(event: PointerEvent) {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("pointerdown", away);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", away);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  function restore(event: Event) {
+    event.preventDefault();
+    opener?.focus?.();
+  }
+
+  if (role === "dialog") {
+    return (
+      <Popover.Root open onOpenChange={closed}>
+        <Popover.Anchor asChild>
+          <span aria-hidden style={anchorStyle(at)} />
+        </Popover.Anchor>
+        <Popover.Portal>
+          <Popover.Content
+            className="context-menu"
+            style={{ width }}
+            side="bottom"
+            align="start"
+            sideOffset={0}
+            collisionPadding={8}
+            onCloseAutoFocus={restore}
+          >
+            {children}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+    );
+  }
 
   return (
-    <div
-      ref={ref}
-      className="context-menu"
-      role={role}
-      style={{ left: place.left, top: place.top, width }}
-    >
-      {children}
-    </div>
+    <DropdownMenu.Root open onOpenChange={closed} modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <span aria-hidden style={anchorStyle(at)} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="context-menu"
+          style={{ width }}
+          side="bottom"
+          align="start"
+          sideOffset={0}
+          collisionPadding={8}
+          onCloseAutoFocus={restore}
+        >
+          {children}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
