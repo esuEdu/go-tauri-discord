@@ -412,8 +412,25 @@ server is born with letters where its icon goes.
 channel. A role has a name, a position that decides what it outranks, and
 fourteen permissions. Per channel, each permission can be **allowed, denied, or
 left to inherit** from the role itself, which is three states rather than two and
-is the hardest thing here to make legible. Deny beats allow. The everyone role
-cannot be renamed, moved or removed, and cannot be taken away from anybody.
+is the hardest thing here to make legible. The everyone role cannot be renamed,
+moved or removed, and cannot be taken away from anybody.
+
+**Allow beats deny**, and that is the whole reason a private channel can exist.
+Somebody's roles are merged first, then every channel rule aimed at any of those
+roles is merged as well — all the denials together, all the allowances together
+— and the allowances are applied last. So denying everyone the right to see a
+channel and allowing it to one role leaves exactly that role able to see it.
+Position does not break the tie: ranking decides what a role outranks when
+somebody edits it, not which rule wins inside a channel. A rule aimed at one
+person, should it ever get an interface, is applied after the role rules and in
+the same order.
+
+**Two people are immune to all of it.** The owner, and anybody holding
+Administrator, keep every permission in every channel — the channel rules are
+never consulted for them at all. Since managing a server is what gets somebody
+into this screen in the first place, the person writing a channel rule is
+usually the one person who cannot watch it take effect. A design that does not
+say so will be read as broken.
 
 Every one of these actions can be refused: you cannot edit a role that outranks
 you, and you cannot grant a permission you do not hold. Those two refusals still
