@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -139,5 +140,64 @@ func TestLimitsAreScopedPerAccount(t *testing.T) {
 
 	if status := quiet.do(http.MethodPost, "/api/v1/channels/"+quietText.String()+"/typing", nil, nil); status != http.StatusNoContent {
 		t.Errorf("a second account got %d; one user's flood throttled another", status)
+	}
+}
+
+func TestCreatingRolesIsNotChargedToTheGuildBudget(t *testing.T) {
+	h := newHarness(t)
+	h.registerUser()
+	guild := h.createGuild("Many roles")
+
+	for i := range 12 {
+		status := h.do(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/roles", map[string]any{
+			"name":        fmt.Sprintf("Role %d", i),
+			"permissions": 1,
+		}, nil)
+		if status == http.StatusTooManyRequests {
+			t.Fatalf("role %d was rate limited; creating a role must not spend the "+
+				"guild-creation budget of 20 per hour", i+1)
+		}
+		if status != http.StatusCreated {
+			t.Fatalf("role %d returned %d, want %d", i+1, status, http.StatusCreated)
+		}
+	}
+}
+
+func TestCreatingChannelsIsNotChargedToTheGuildBudget(t *testing.T) {
+	h := newHarness(t)
+	h.registerUser()
+	guild := h.createGuild("Many channels")
+
+	for i := range 12 {
+		status := h.do(http.MethodPost, "/api/v1/guilds/"+guild.ID.String()+"/channels", map[string]any{
+			"name": fmt.Sprintf("room-%d", i),
+			"kind": "text",
+		}, nil)
+		if status == http.StatusTooManyRequests {
+			t.Fatalf("channel %d was rate limited; creating a channel must not spend "+
+				"the guild-creation budget", i+1)
+		}
+		if status != http.StatusCreated {
+			t.Fatalf("channel %d returned %d, want %d", i+1, status, http.StatusCreated)
+		}
+	}
+}
+
+func TestCreatingGuildsIsStillRateLimited(t *testing.T) {
+	h := newHarness(t)
+	h.registerUser()
+
+	limited := false
+	for i := range 30 {
+		status := h.do(http.MethodPost, "/api/v1/guilds", map[string]string{
+			"name": fmt.Sprintf("Guild %d", i),
+		}, nil)
+		if status == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Error("guild creation accepted 30 requests; its own limit should still bite")
 	}
 }
