@@ -2,21 +2,28 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, type Ban, type GuildMember, type Invite } from "../api";
 import { inviteLink } from "../invites";
 import {
+  ADMINISTRATOR,
   allows,
   BAN_MEMBERS,
+  has,
   KICK_MEMBERS,
   MANAGE_GUILD,
   MANAGE_ROLES,
   PERMISSIONS,
+  summarise,
   VIEW_CHANNEL,
 } from "../permissions";
 import type { Channel, Guild, Overwrite, Role } from "../types/events.gen";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 import { IconButton } from "../ui/IconButton";
+import { Menu, MenuItem } from "../ui/Menu";
 import { Sheet } from "../ui/Sheet";
 import { SettingsPanel, type SettingsTab } from "../ui/SettingsPanel";
 import { Toggle } from "../ui/Toggle";
+import { TriState, type Stance } from "../ui/TriState";
 import { PlacePicture } from "./PlacePicture";
 
 type Tab = "overview" | "roles" | "people" | "access" | "bans" | "links";
@@ -56,8 +63,13 @@ export function ServerSettings({
   const [bans, setBans] = useState<Ban[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [placing, setPlacing] = useState<File | null>(null);
-  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [sheets, setSheets] = useState<Record<string, Overwrite[]>>({});
+  const [pickedChannel, setPickedChannel] = useState<string | null>(null);
+  const [pickedTarget, setPickedTarget] = useState<string | null>(null);
+  const [hideUnseen, setHideUnseen] = useState(false);
   const [naming, setNaming] = useState<{ role: Role | null; name: string } | null>(null);
+  const [pickedID, setPickedID] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const [dropping, setDropping] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
   const [load, setLoad] = useState<Load>("ready");
@@ -71,6 +83,151 @@ export function ServerSettings({
     if (a.is_default !== b.is_default) return a.is_default ? 1 : -1;
     return b.position - a.position;
   });
+
+  const picked = ranked.find((role) => role.id === pickedID) ?? ranked[0];
+  const rankable = ranked.filter((role) => !role.is_default);
+  const rankOf = (role: Role) => rankable.findIndex((entry) => entry.id === role.id);
+
+  const openable = channels.filter((channel) => channel.kind !== "category");
+  const channelPick =
+    openable.find((channel) => channel.id === pickedChannel) ?? openable[0];
+
+  const listFor = (channelID: string) => sheets[channelID] ?? [];
+
+  const carries = (channelID: string, roleID: string) =>
+    listFor(channelID).some(
+      (entry) => entry.target_id === roleID && (entry.allow !== 0 || entry.deny !== 0),
+    );
+
+  const shapedBy = (channelID: string) => {
+    const touched = listFor(channelID).filter((e) => e.allow !== 0 || e.deny !== 0);
+    if (touched.length === 0) return "Open to everybody the role allows";
+    return `${touched.length} ${touched.length === 1 ? "role is" : "roles are"} shaped here`;
+  };
+
+  const everyone = roles.find((role) => role.is_default);
+  const targets = channelPick
+    ? [
+        ...(everyone ? [everyone] : []),
+        ...ranked.filter(
+          (role) => !role.is_default && carries(channelPick.id, role.id),
+        ),
+        ...(pickedTarget &&
+        !carries(channelPick.id, pickedTarget) &&
+        !roles.find((r) => r.id === pickedTarget)?.is_default
+          ? roles.filter((r) => r.id === pickedTarget)
+          : []),
+      ]
+    : [];
+  const targetPick =
+    targets.find((role) => role.id === pickedTarget) ?? targets[0];
+  const spare = channelPick
+    ? ranked.filter(
+        (role) => !role.is_default && !targets.some((t) => t.id === role.id),
+      )
+    : [];
+
+  const shutTo = (channelID: string) =>
+    everyone ? stanceOf(channelID, everyone.id, VIEW_CHANNEL) === "deny" : false;
+
+  const letIn = (channelID: string, roleID: string) =>
+    stanceOf(channelID, roleID, VIEW_CHANNEL) === "allow";
+
+  async function setPrivate(channelID: string, shut: boolean) {
+    if (!everyone) return;
+    await setStance(channelID, everyone.id, VIEW_CHANNEL, shut ? "deny" : "inherit");
+  }
+
+  const unseen = targetPick
+    ? openable.filter((channel) => !canSee(channel.id, targetPick))
+    : [];
+  const listed =
+    hideUnseen && targetPick
+      ? openable.filter((channel) => canSee(channel.id, targetPick))
+      : openable;
+
+  const bypasses = has(permissions, ADMINISTRATOR);
+
+  function canSee(channelID: string, role: Role | undefined): boolean {
+    if (!role) return true;
+    if (has(role.permissions, ADMINISTRATOR)) return true;
+    const stance = stanceOf(channelID, role.id, VIEW_CHANNEL);
+    if (stance === "allow") return true;
+    if (stance === "deny") return false;
+    return has(role.permissions, VIEW_CHANNEL);
+  }
+
+  function effect(role: Role, channelID: string, bit: number, about: string): string {
+    if (has(role.permissions, ADMINISTRATOR)) {
+      return `${role.name} has Administrator, so this applies whatever is set here`;
+    }
+    const stance = stanceOf(channelID, role.id, bit);
+    const base = has(role.permissions, bit);
+    if (stance === "allow") {
+      return base ? "Allowed here" : `Allowed here, though ${role.name} does not have it elsewhere`;
+    }
+    if (stance === "deny") {
+      return base ? `Denied here, though ${role.name} has it elsewhere` : "Denied here";
+    }
+    return base
+      ? `${role.name} has this, so it applies here`
+      : `${role.name} does not have this${about ? "" : ""}`;
+  }
+
+  function stanceOf(channelID: string, roleID: string, bit: number): Stance {
+    const entry = listFor(channelID).find((e) => e.target_id === roleID);
+    if (!entry) return "inherit";
+    if (has(entry.allow, bit)) return "allow";
+    if (has(entry.deny, bit)) return "deny";
+    return "inherit";
+  }
+
+  async function setStance(channelID: string, roleID: string, bit: number, next: Stance) {
+    const held = listFor(channelID).find((e) => e.target_id === roleID);
+    const was = {
+      allow: held?.allow ?? 0,
+      deny: held?.deny ?? 0,
+    };
+    const allow = next === "allow" ? was.allow | bit : was.allow & ~bit;
+    const deny = next === "deny" ? was.deny | bit : was.deny & ~bit;
+
+    const before = listFor(channelID);
+    const after =
+      allow === 0 && deny === 0
+        ? before.filter((e) => e.target_id !== roleID)
+        : before.some((e) => e.target_id === roleID)
+          ? before.map((e) =>
+              e.target_id === roleID ? { ...e, allow, deny } : e,
+            )
+          : [
+              ...before,
+              {
+                channel_id: channelID,
+                target_id: roleID,
+                target_type: "role",
+                allow,
+                deny,
+              },
+            ];
+    setSheets((held) => ({ ...held, [channelID]: after }));
+
+    try {
+      if (allow === 0 && deny === 0) await api.clearOverwrite(channelID, roleID);
+      else await api.setOverwrite(channelID, roleID, allow, deny);
+    } catch {
+      setSheets((held) => ({ ...held, [channelID]: before }));
+      setTrouble("That channel rule was not changed.");
+    }
+  }
+
+  const wanted = filter.trim().toLowerCase();
+  const shown = wanted
+    ? PERMISSIONS.filter(
+        (entry) =>
+          entry.name.toLowerCase().includes(wanted) ||
+          entry.about.toLowerCase().includes(wanted),
+      )
+    : PERMISSIONS;
 
   async function attempt(what: string, run: () => Promise<void>) {
     try {
@@ -138,13 +295,11 @@ export function ServerSettings({
               return [channel.id, list] as [string, Overwrite[]];
             }),
         );
-        const shut: Record<string, boolean> = {};
+        const held: Record<string, Overwrite[]> = {};
         for (const [id, list] of pairs) {
-          shut[id] = list.some(
-            (o) => o.target_type === "role" && (o.deny & VIEW_CHANNEL) !== 0,
-          );
+          held[id] = list.filter((entry) => entry.target_type === "role");
         }
-        setHidden(shut);
+        setSheets(held);
       }
       if (tab === "people") setMembers(await api.members(guild.id));
       if (tab === "bans") setBans(await api.bans(guild.id));
@@ -270,66 +425,117 @@ export function ServerSettings({
               )
             }
           />
-          <div className="matrix">
-            <div className="matrix-row">
-              <span className="matrix-cell matrix-head">Permission</span>
-              {ranked.map((role, at) => (
-                <span className="matrix-cell matrix-role" key={role.id}>
-                  <span className="matrix-role-name">{role.name}</span>
-                  {canRoles && !role.is_default && (
-                    <span className="matrix-role-tools">
-                      <IconButton
-                        name="arrow-up"
-                        size={13}
-                        label={`Raise ${role.name}`}
-                        disabled={at === 0}
-                        onClick={() => void move(role, -1)}
-                      />
-                      <IconButton
-                        name="arrow-down"
-                        size={13}
-                        label={`Lower ${role.name}`}
-                        disabled={at === ranked.filter((r) => !r.is_default).length - 1}
-                        onClick={() => void move(role, 1)}
-                      />
-                      <IconButton
-                        name="pencil-simple"
-                        size={13}
-                        label={`Rename ${role.name}`}
-                        onClick={() => setNaming({ role, name: role.name })}
-                      />
-                      <IconButton
-                        name="trash"
-                        size={13}
-                        state="danger"
-                        label={`Delete ${role.name}`}
-                        onClick={() => setDropping(role)}
-                      />
-                    </span>
-                  )}
-                </span>
-              ))}
-            </div>
-            {PERMISSIONS.map((entry) => (
-              <div className="matrix-row" key={entry.bit}>
-                <span className="matrix-cell matrix-head">{entry.name}</span>
+          {ranked.length === 0 ? (
+            load !== "ready" ? (
+              <Waiting load={load} what="roles" onRetry={openTab} />
+            ) : null
+          ) : (
+            <div className="roles">
+              <div className="roles-list">
                 {ranked.map((role) => (
-                  <span className="matrix-cell" key={role.id}>
-                    <Toggle
-                      on={allows(role.permissions, entry.bit)}
-                      label={`${entry.name} for ${role.name}`}
-                      disabled={!canRoles}
-                      onChange={(on) => void setPermission(role, entry.bit, on)}
-                    />
-                  </span>
+                  <button
+                    key={role.id}
+                    type="button"
+                    className="role-row"
+                    data-active={picked?.id === role.id}
+                    onClick={() => setPickedID(role.id)}
+                  >
+                    <span className="role-row-text">
+                      <span className="role-row-name">{role.name}</span>
+                      <span className="role-row-meta">
+                        {role.is_default ? "Everybody" : summarise(role.permissions)}
+                      </span>
+                    </span>
+                  </button>
                 ))}
               </div>
-            ))}
-            {load !== "ready" && <Waiting load={load} what="roles" onRetry={openTab} />}
-          </div>
+
+              {picked && (
+                <div className="role-detail">
+                  <div className="role-detail-head">
+                    <span className="role-detail-text">
+                      <span className="role-detail-name">{picked.name}</span>
+                      <span className="role-detail-meta">
+                        {picked.is_default
+                          ? "Everybody who joins has this, and it cannot be removed."
+                          : `Rank ${rankOf(picked) + 1} of ${rankable.length}`}
+                      </span>
+                    </span>
+                    {canRoles && !picked.is_default && (
+                      <span className="role-detail-tools">
+                        <IconButton
+                          name="arrow-up"
+                          size={13}
+                          label={`Raise ${picked.name}`}
+                          disabled={rankOf(picked) === 0}
+                          onClick={() => void move(picked, -1)}
+                        />
+                        <IconButton
+                          name="arrow-down"
+                          size={13}
+                          label={`Lower ${picked.name}`}
+                          disabled={rankOf(picked) === rankable.length - 1}
+                          onClick={() => void move(picked, 1)}
+                        />
+                        <IconButton
+                          name="pencil-simple"
+                          size={13}
+                          label={`Rename ${picked.name}`}
+                          onClick={() => setNaming({ role: picked, name: picked.name })}
+                        />
+                        <IconButton
+                          name="trash"
+                          size={13}
+                          state="danger"
+                          label={`Delete ${picked.name}`}
+                          onClick={() => setDropping(picked)}
+                        />
+                      </span>
+                    )}
+                  </div>
+
+                  <input
+                    className="input role-filter"
+                    value={filter}
+                    placeholder="Search permissions"
+                    onChange={(event) => setFilter(event.target.value)}
+                  />
+
+                  <div className="perm-list">
+                    {shown.length === 0 ? (
+                      <span className="perm-empty">Nothing matches that.</span>
+                    ) : (
+                      shown.map((entry) => {
+                        const held = has(picked.permissions, entry.bit);
+                        const implied =
+                          !held &&
+                          entry.bit !== ADMINISTRATOR &&
+                          has(picked.permissions, ADMINISTRATOR);
+                        return (
+                          <div className="perm-row" key={entry.bit} data-implied={implied}>
+                            <span className="perm-text">
+                              <span className="perm-name">{entry.name}</span>
+                              <span className="perm-about">
+                                {implied ? "Administrator already grants this" : entry.about}
+                              </span>
+                            </span>
+                            <Toggle
+                              on={held}
+                              label={`${entry.name} for ${picked.name}`}
+                              disabled={!canRoles}
+                              onChange={(on) => void setPermission(picked, entry.bit, on)}
+                            />
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
-
       {tab === "people" && (
         <>
           <SettingsHead
@@ -371,43 +577,205 @@ export function ServerSettings({
         <>
           <SettingsHead
             title="Channel access"
-            note="Toggle who can see each channel. Off means private, invite only."
+            note="What each role may do in one channel. Inherit leaves it to whatever the role already grants; an allow here beats a deny from another role."
           />
-          <div className="access-list">
-            {channels
-              .filter((channel) => channel.kind !== "category")
-              .map((channel) => (
-                <div className="access-row" key={channel.id}>
-                  <span className="access-name">{channel.name}</span>
-                  <Toggle
-                    on={!hidden[channel.id]}
-                    label={`Everyone can see ${channel.name}`}
-                    disabled={!canRoles}
-                    onChange={async (on) => {
-                      const everyone = roles.find((role) => role.is_default);
-                      if (!everyone) return;
-                      setHidden((was) => ({ ...was, [channel.id]: !on }));
-                      try {
-                        if (on) {
-                          await api.clearOverwrite(channel.id, everyone.id);
-                        } else {
-                          await api.setOverwrite(channel.id, everyone.id, 0, VIEW_CHANNEL);
-                        }
-                      } catch {
-                        setHidden((was) => ({ ...was, [channel.id]: on }));
-                        setTrouble(`Who can see ${channel.name} was not changed.`);
-                      }
-                    }}
-                  />
-                </div>
-              ))}
-            {load !== "ready" && (
+          {bypasses && (
+            <p className="access-note">
+              None of this applies to you. The owner and anybody holding Administrator keep
+              every permission in every channel, so changing a rule here will not change what
+              you can do — only what everybody else can.
+            </p>
+          )}
+          {openable.length === 0 ? (
+            load !== "ready" ? (
               <Waiting load={load} what="channel access" onRetry={openTab} />
-            )}
-          </div>
+            ) : (
+              <span className="perm-empty">There are no channels yet.</span>
+            )
+          ) : (
+            <div className="roles">
+              <div className="channel-column">
+                {targetPick && (
+                  <div className="unseen-switch">
+                    <span className="unseen-switch-text">
+                      {unseen.length === 0
+                        ? `${targetPick.name} can see every channel`
+                        : `${targetPick.name} cannot see ${unseen.length} of ${openable.length}`}
+                    </span>
+                    <Toggle
+                      on={hideUnseen}
+                      label={`Hide what ${targetPick.name} cannot see`}
+                      disabled={unseen.length === 0}
+                      onChange={setHideUnseen}
+                    />
+                  </div>
+                )}
+                <div className="roles-list">
+                  {listed.map((channel) => {
+                    const seen = canSee(channel.id, targetPick);
+                    return (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        className="role-row"
+                        data-active={channelPick?.id === channel.id}
+                        data-unseen={targetPick ? !seen : undefined}
+                        onClick={() => setPickedChannel(channel.id)}
+                      >
+                        <span className="channel-glyph">
+                          <Icon
+                            name={
+                              targetPick && !seen
+                                ? "eye-slash"
+                                : channel.kind === "voice"
+                                  ? "speaker-high"
+                                  : "hash"
+                            }
+                            size={13}
+                          />
+                        </span>
+                        <span className="role-row-text">
+                          <span className="role-row-name">{channel.name}</span>
+                          <span className="role-row-meta">
+                            {targetPick && !seen ? "Hidden from this role" : shapedBy(channel.id)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {listed.length === 0 && (
+                    <span className="perm-empty">Every channel is hidden from this role.</span>
+                  )}
+                </div>
+              </div>
+
+              {channelPick && (
+                <div className="role-detail">
+                  <div className="role-detail-head">
+                    <span className="role-detail-text">
+                      <span className="role-detail-name">{channelPick.name}</span>
+                      <span className="role-detail-meta">{shapedBy(channelPick.id)}</span>
+                    </span>
+                  </div>
+
+                  <div className="visibility">
+                    <div className="visibility-head">
+                      <span className="visibility-text">
+                        <span className="visibility-title">Private channel</span>
+                        <span className="visibility-note">
+                          {shutTo(channelPick.id)
+                            ? "Only the roles ticked below can see it."
+                            : "Anybody who can see the server can see this channel."}
+                        </span>
+                      </span>
+                      <Toggle
+                        on={shutTo(channelPick.id)}
+                        label={`Make ${channelPick.name} private`}
+                        disabled={!canRoles}
+                        onChange={(shut) => void setPrivate(channelPick.id, shut)}
+                      />
+                    </div>
+                    {shutTo(channelPick.id) && (
+                      <div className="visibility-roles">
+                        {ranked.filter((role) => !role.is_default).length === 0 ? (
+                          <span className="visibility-empty">
+                            There are no other roles yet, so nobody can see it.
+                          </span>
+                        ) : (
+                          ranked
+                            .filter((role) => !role.is_default)
+                            .map((role) => {
+                              const inside = letIn(channelPick.id, role.id);
+                              return (
+                                <button
+                                  key={role.id}
+                                  type="button"
+                                  className="visibility-role"
+                                  data-on={inside}
+                                  disabled={!canRoles}
+                                  onClick={() =>
+                                    void setStance(
+                                      channelPick.id,
+                                      role.id,
+                                      VIEW_CHANNEL,
+                                      inside ? "inherit" : "allow",
+                                    )
+                                  }
+                                >
+                                  <Icon name={inside ? "check" : "plus"} size={12} />
+                                  {role.name}
+                                </button>
+                              );
+                            })
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="target-row">
+                    {targets.map((role) => (
+                      <button
+                        key={role.id}
+                        type="button"
+                        className="target-chip"
+                        data-active={targetPick?.id === role.id}
+                        onClick={() => setPickedTarget(role.id)}
+                      >
+                        {role.name}
+                        {carries(channelPick.id, role.id) && <span className="target-mark" />}
+                      </button>
+                    ))}
+                    {canRoles && spare.length > 0 && (
+                      <DropdownMenu.Root modal={false}>
+                        <DropdownMenu.Trigger asChild>
+                          <button type="button" className="target-chip target-add">
+                            Add a role
+                          </button>
+                        </DropdownMenu.Trigger>
+                        <Menu align="start">
+                          {spare.map((role) => (
+                            <MenuItem
+                              key={role.id}
+                              label={role.name}
+                              onClick={() => setPickedTarget(role.id)}
+                            />
+                          ))}
+                        </Menu>
+                      </DropdownMenu.Root>
+                    )}
+                  </div>
+
+                  {targetPick && (
+                    <div className="perm-list">
+                      {PERMISSIONS.map((entry) => {
+                        const stance = stanceOf(channelPick.id, targetPick.id, entry.bit);
+                        return (
+                          <div className="perm-row" key={entry.bit}>
+                            <span className="perm-text">
+                              <span className="perm-name">{entry.name}</span>
+                              <span className="perm-about" data-stance={stance}>
+                                {effect(targetPick, channelPick.id, entry.bit, entry.about)}
+                              </span>
+                            </span>
+                            <TriState
+                              value={stance}
+                              label={`${entry.name} for ${targetPick.name} in ${channelPick.name}`}
+                              disabled={!canRoles}
+                              onChange={(next) =>
+                                void setStance(channelPick.id, targetPick.id, entry.bit, next)
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
-
       {tab === "bans" && (
         <>
           <SettingsHead
