@@ -81,12 +81,17 @@
 }
 
 .button[data-kind="primary"] {
-  border-color: var(--color-accent-600);
-  color: var(--color-accent-200);
+  border-color: transparent;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
 }
 
 .button[data-kind="primary"]:hover:not(:disabled) {
-  background: var(--color-accent-900);
+  background: var(--accent-fill-hover);
+}
+
+.button[data-kind="primary"]:active:not(:disabled) {
+  background: var(--accent-fill-press);
 }
 
 .button[data-kind="quiet"] {

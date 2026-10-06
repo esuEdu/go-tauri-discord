@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 80px 40px 40px;
-  background: rgb(11 13 22 / 0.72);
+  background: color-mix(in srgb, var(--bg-ground) 72%, transparent);
   backdrop-filter: blur(18px) saturate(0.9);
   -webkit-backdrop-filter: blur(18px) saturate(0.9);
 }
@@ -21,7 +21,7 @@
   justify-content: space-between;
   height: 56px;
   padding: 0 20px;
-  background: rgb(20 21 28 / 0.85);
+  background: color-mix(in srgb, var(--bg-ground) 85%, transparent);
 }
 
 .lightbox-who {
