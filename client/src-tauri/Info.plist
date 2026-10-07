@@ -4,5 +4,7 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Vocalis uses your microphone so you can talk in voice channels.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Vocalis shares the screen or application you pick with the people in your voice channel.</string>
 </dict>
 </plist>
