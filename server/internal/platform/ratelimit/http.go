@@ -25,6 +25,12 @@ func Method(method, prefix string) func(*http.Request) bool {
 	}
 }
 
+func MethodExact(method, path string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		return r.Method == method && r.URL.Path == path
+	}
+}
+
 func MethodSuffix(method, prefix, suffix string) func(*http.Request) bool {
 	return func(r *http.Request) bool {
 		return r.Method == method &&

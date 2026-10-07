@@ -1,7 +1,9 @@
 .context-menu {
-  position: fixed;
   z-index: 70;
   display: flex;
+  max-height: var(--radix-dropdown-menu-content-available-height, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 4px;
   padding: 6px;
@@ -74,7 +76,7 @@
   width: 2px;
   height: 8px;
   border-radius: 1px;
-  background: #5c6170;
+  background: var(--ink-600);
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -95,14 +97,14 @@
   background: linear-gradient(
     to right,
     var(--color-accent) 0 var(--fill),
-    #343743 var(--fill) 100%
+    var(--bg-raised) var(--fill) 100%
   );
 }
 
 .volume-input::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: #343743;
+  background: var(--bg-raised);
 }
 
 .volume-input::-moz-range-progress {

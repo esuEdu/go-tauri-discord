@@ -217,7 +217,9 @@ function paint(source: HTMLImageElement, place: Placement, side: number) {
   canvas.height = side;
   const paper = canvas.getContext("2d");
   if (!paper) return null;
-  paper.fillStyle = "#161826";
+  paper.fillStyle = getComputedStyle(document.documentElement)
+    .getPropertyValue("--bg-base")
+    .trim() || "#191816";
   paper.fillRect(0, 0, side, side);
   const covered = cover(source, place.zoom);
   const ratio = side / SQUARE;

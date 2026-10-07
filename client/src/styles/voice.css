@@ -46,11 +46,11 @@
   justify-content: center;
   overflow: hidden;
   border-radius: 16px;
-  background: rgb(235 235 242 / 0.18);
+  background: color-mix(in srgb, var(--text-default) 18%, transparent);
   box-shadow:
     0 0 0 2px rgb(255 255 255 / 0.25),
     0 8px 20px rgb(0 0 0 / 0.45);
-  color: #fff;
+  color: var(--text-strong);
   font-weight: 500;
 }
 
@@ -75,9 +75,9 @@
   overflow: hidden;
   padding: 7px 11px 7px 8px;
   border-radius: 12px;
-  background: rgb(22 24 38 / 0.5);
+  background: color-mix(in srgb, var(--bg-base) 50%, transparent);
   box-shadow:
-    inset 0 0 0 1px rgb(233 233 237 / 0.14),
+    inset 0 0 0 1px color-mix(in srgb, var(--text-default) 14%, transparent),
     0 10px 30px rgb(0 0 0 / 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -123,7 +123,7 @@
   border-radius: 10px;
   background: var(--color-accent-800);
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
-  color: #fff;
+  color: var(--text-strong);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -152,9 +152,9 @@
   gap: 5px;
   padding: 6px;
   border-radius: var(--radius-lg);
-  background: rgb(22 24 38 / 0.5);
+  background: color-mix(in srgb, var(--bg-base) 50%, transparent);
   box-shadow:
-    inset 0 0 0 1px rgb(233 233 237 / 0.14),
+    inset 0 0 0 1px color-mix(in srgb, var(--text-default) 14%, transparent),
     0 10px 30px rgb(0 0 0 / 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -188,7 +188,7 @@
   border-radius: var(--radius-lg);
   background: var(--color-accent-800);
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
-  color: #fff;
+  color: var(--text-strong);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -215,7 +215,7 @@
 }
 
 .control:hover {
-  background: rgb(233 233 237 / 0.08);
+  background: color-mix(in srgb, var(--text-default) 8%, transparent);
 }
 
 .control[data-active="true"] {
@@ -231,7 +231,7 @@
   width: 1px;
   height: 22px;
   flex-shrink: 0;
-  background: rgb(233 233 237 / 0.16);
+  background: color-mix(in srgb, var(--text-default) 16%, transparent);
 }
 
 .control-anchor {
@@ -414,7 +414,7 @@
   background: linear-gradient(
     to right,
     var(--color-accent) var(--fill),
-    rgb(233 233 237 / 0.18) var(--fill)
+    color-mix(in srgb, var(--text-default) 18%, transparent) var(--fill)
   );
   cursor: pointer;
   appearance: none;
@@ -435,17 +435,17 @@
   position: absolute;
   right: 28px;
   bottom: 36px;
-  background: rgb(22 24 38 / 0.5);
+  background: color-mix(in srgb, var(--bg-base) 50%, transparent);
   pointer-events: auto;
   box-shadow:
-    inset 0 0 0 1px rgb(233 233 237 / 0.14),
+    inset 0 0 0 1px color-mix(in srgb, var(--text-default) 14%, transparent),
     0 10px 30px rgb(0 0 0 / 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
 .stream-volume-button:hover {
-  background: rgb(41 44 62 / 0.7);
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
 }
 
 .call-state {

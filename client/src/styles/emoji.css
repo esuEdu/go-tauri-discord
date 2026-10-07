@@ -69,7 +69,8 @@
   grid-template-columns: repeat(8, 1fr);
   gap: 2px;
   width: 300px;
-  max-height: 150px;
+  max-height: 268px;
+  align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -83,6 +84,21 @@
   border-radius: 4px;
   background: var(--color-neutral-800);
   background-clip: content-box;
+}
+
+.emoji-quick {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  width: 300px;
+}
+
+.emoji-empty {
+  grid-column: 1 / -1;
+  padding: 18px 0;
+  color: var(--text-faint);
+  font: var(--body-sm);
+  text-align: center;
 }
 
 .emoji-cell {
