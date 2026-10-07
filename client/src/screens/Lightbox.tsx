@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useEffect, useState } from "react";
 import type { Attachment } from "../types/events.gen";
 import { mediaURL } from "../server";
@@ -81,34 +82,27 @@ export function Lightbox({
           </a>
           <span className="lightbox-divider" />
           <div className="lightbox-action-wrap">
-            <button
-              type="button"
-              className="lightbox-action"
-              aria-label="More"
-              title="More"
-              onClick={() => setMenuOpen((was) => !was)}
-            >
-              <Icon name="dots-three" size={18} />
-            </button>
-            {menuOpen && (
-              <div className="lightbox-menu">
-                <Menu>
-                  <MenuItem icon="copy" label="Copy Image" onClick={() => void copyImage()} />
-                  <MenuItem icon="copy" label="Copy Link" onClick={() => void copyLink()} />
-                  <MenuItem
-                    icon="download"
-                    label="Save Image As"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      const link = document.createElement("a");
-                      link.href = mediaURL(attachment.url);
-                      link.download = attachment.filename;
-                      link.click();
-                    }}
-                  />
-                </Menu>
-              </div>
-            )}
+            <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" className="lightbox-action" aria-label="More" title="More">
+                  <Icon name="dots-three" size={18} />
+                </button>
+              </DropdownMenu.Trigger>
+              <Menu style={{ width: 190 }}>
+                <MenuItem icon="copy" label="Copy Image" onClick={() => void copyImage()} />
+                <MenuItem icon="copy" label="Copy Link" onClick={() => void copyLink()} />
+                <MenuItem
+                  icon="download"
+                  label="Save Image As"
+                  onClick={() => {
+                    const link = document.createElement("a");
+                    link.href = mediaURL(attachment.url);
+                    link.download = attachment.filename;
+                    link.click();
+                  }}
+                />
+              </Menu>
+            </DropdownMenu.Root>
           </div>
           <span className="lightbox-divider" />
           <button

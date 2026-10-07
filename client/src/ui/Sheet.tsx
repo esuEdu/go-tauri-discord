@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useState, type ReactNode } from "react";
 
 export function Sheet({
   title,
@@ -15,33 +16,47 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const described = subtitle ? {} : { "aria-describedby": undefined };
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
 
   return (
-    <div className="scrim" onPointerDown={onClose}>
-      <div
-        className={className ? `sheet ${className}` : "sheet"}
-        role="dialog"
-        aria-label={title}
-        style={width ? { width } : undefined}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        {subtitle ? (
-          <div className="sheet-head">
-            <span className="sheet-title">{title}</span>
-            <span className="sheet-subtitle">{subtitle}</span>
-          </div>
-        ) : (
-          <span className="sheet-title">{title}</span>
-        )}
-        {children}
-      </div>
-    </div>
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="sheet-scrim" />
+        <Dialog.Content
+          className={className ? `sheet ${className}` : "sheet"}
+          style={width ? { width } : undefined}
+          aria-modal="true"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            opener?.focus?.();
+          }}
+          {...described}
+        >
+          {subtitle ? (
+            <div className="sheet-head">
+              <Dialog.Title asChild>
+                <span className="sheet-title">{title}</span>
+              </Dialog.Title>
+              <Dialog.Description asChild>
+                <span className="sheet-subtitle">{subtitle}</span>
+              </Dialog.Description>
+            </div>
+          ) : (
+            <Dialog.Title asChild>
+              <span className="sheet-title">{title}</span>
+            </Dialog.Title>
+          )}
+          {children}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

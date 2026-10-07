@@ -536,7 +536,7 @@
   gap: 10px;
   border: 2px dashed var(--color-accent-600);
   border-radius: 12px;
-  background: rgb(43 39 65 / 0.86);
+  background: color-mix(in srgb, var(--rose-900) 86%, transparent);
   color: var(--color-accent-100);
   font: var(--title-card);
   pointer-events: none;

@@ -38,6 +38,15 @@ button {
   color: inherit;
 }
 
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
 .app {
   display: flex;
   gap: 10px;
@@ -171,7 +180,7 @@ button {
   overflow: hidden;
   border: 1.5px solid var(--color-accent-600);
   border-radius: var(--radius-lg);
-  background: #333645;
+  background: var(--bg-raised);
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
   color: var(--color-neutral-400);
   font-family: var(--font);
@@ -413,9 +422,9 @@ button {
   gap: 8px;
   height: 40px;
   padding: 0 8px;
-  border: 1px solid rgb(145 132 217 / 0.35);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 35%, transparent);
   border-radius: var(--radius-md);
-  background: rgb(66 58 106 / 0.55);
+  background: color-mix(in srgb, var(--rose-800) 55%, transparent);
 }
 
 .watching-avatar {
@@ -436,7 +445,7 @@ button {
   height: 22px;
   overflow: hidden;
   border-radius: 6px;
-  background: #403b6b;
+  background: var(--rose-800);
   color: var(--color-neutral-100);
   font-family: var(--font);
   font-size: 9px;
@@ -788,10 +797,22 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(11 13 22 / 0.62);
+  background: color-mix(in srgb, var(--bg-ground) 62%, transparent);
+}
+
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg-ground) 62%, transparent);
 }
 
 .sheet {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 41;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -932,7 +953,8 @@ button {
 }
 
 .input:focus {
-  border-color: var(--color-accent-600);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 22%, transparent);
   outline: none;
 }
 
@@ -1058,7 +1080,7 @@ button {
   padding: 0 10px;
   border: 1.5px dashed var(--color-accent-600);
   border-radius: var(--radius-md);
-  background: #333645;
+  background: var(--bg-raised);
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
   color: var(--color-neutral-100);
   font-family: var(--font);
