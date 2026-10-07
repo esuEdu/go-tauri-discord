@@ -81,7 +81,7 @@ func (l *limits) authedMiddleware() func(http.Handler) http.Handler {
 		{Match: ratelimit.MethodContains(http.MethodPut, "/reactions/"), Limiter: l.reactions},
 		{Match: ratelimit.MethodContains(http.MethodDelete, "/reactions/"), Limiter: l.reactions},
 		{Match: ratelimit.MethodSuffix(http.MethodPost, "/api/v1/guilds/", "/invites"), Limiter: l.inviteMint},
-		{Match: ratelimit.Method(http.MethodPost, "/api/v1/guilds"), Limiter: l.guildCreate},
+		{Match: ratelimit.MethodExact(http.MethodPost, "/api/v1/guilds"), Limiter: l.guildCreate},
 		{Match: ratelimit.Any("/api/"), Limiter: l.authedOther},
 	})
 }

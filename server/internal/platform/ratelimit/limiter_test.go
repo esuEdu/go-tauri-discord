@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"sync"
 	"testing"
@@ -199,5 +200,39 @@ func TestParsePrefixesAcceptsBareAddresses(t *testing.T) {
 	}
 	if !got[0].Contains(netip.MustParseAddr("127.0.0.1")) {
 		t.Error("bare address did not become a host prefix")
+	}
+}
+
+func TestMethodMatchesByPrefixAndExactDoesNot(t *testing.T) {
+	prefix := Method(http.MethodPost, "/api/v1/guilds")
+	exact := MethodExact(http.MethodPost, "/api/v1/guilds")
+
+	cases := []struct {
+		path       string
+		wantPrefix bool
+		wantExact  bool
+	}{
+		{"/api/v1/guilds", true, true},
+		{"/api/v1/guilds/abc/roles", true, false},
+		{"/api/v1/guilds/abc/channels", true, false},
+		{"/api/v1/guildsomething", true, false},
+	}
+
+	for _, c := range cases {
+		r := httptest.NewRequest(http.MethodPost, c.path, nil)
+		if got := prefix(r); got != c.wantPrefix {
+			t.Errorf("Method on %q = %v, want %v", c.path, got, c.wantPrefix)
+		}
+		if got := exact(r); got != c.wantExact {
+			t.Errorf("MethodExact on %q = %v, want %v", c.path, got, c.wantExact)
+		}
+	}
+}
+
+func TestMethodExactIgnoresOtherMethods(t *testing.T) {
+	exact := MethodExact(http.MethodPost, "/api/v1/guilds")
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/guilds", nil)
+	if exact(r) {
+		t.Error("MethodExact matched a GET when it was built for POST")
 	}
 }
