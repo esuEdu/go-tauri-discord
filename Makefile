@@ -142,8 +142,15 @@ client-check: ## Typecheck and build the client
 	cd $(CLIENT_DIR) && npm run build
 
 .PHONY: client-build
-client-build: require-rust ## Bundle the desktop app (needs Rust)
-	cd $(CLIENT_DIR) && npm run tauri build
+# Which server a bundled desktop app talks to. Without it the bundle points at
+# localhost and is useless to anybody but the builder, so it is defaulted rather
+# than left to whoever remembers to export it.
+VITE_API_URL ?= https://147-15-15-86.nip.io
+
+client-build: require-rust ## Bundle the desktop app (VITE_API_URL, APPLE_SIGNING_IDENTITY)
+	@test -n "$$APPLE_SIGNING_IDENTITY" || echo "APPLE_SIGNING_IDENTITY unset — the bundle will be ad-hoc signed, and macOS will forget its screen-recording permission on every build."
+	@echo "bundling against $(VITE_API_URL)"
+	cd $(CLIENT_DIR) && VITE_API_URL=$(VITE_API_URL) npm run tauri build
 
 .PHONY: desktop-check
 desktop-check: require-rust ## Compile and bundle the desktop app unoptimised (for CI)
