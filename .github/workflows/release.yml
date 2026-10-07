@@ -70,13 +70,26 @@ jobs:
             Neither installer is signed, so both operating systems will object
             the first time.
 
-            **macOS** — the .dmg opens, but the app is refused on first launch.
-            Right-click it in Applications and choose Open, then Open again in
-            the dialog. Only needed once. If macOS calls it damaged instead,
-            run: `xattr -dr com.apple.quarantine /Applications/Vocalis.app`
+            **macOS** — the app is refused on first launch with "Apple could not
+            verify Vocalis is free of malware".
+
+            On macOS 15 and later, right-clicking and choosing Open **no longer
+            works** — Apple removed that bypass. Instead: open it once and
+            dismiss the warning, then go to **System Settings → Privacy &
+            Security**, scroll to **Security**, and click **Open Anyway** next to
+            the line about Vocalis. Only needed once per install.
+
+            In a terminal instead, if you prefer:
+            `xattr -dr com.apple.quarantine /Applications/Vocalis.app`
+
+            Screen sharing and the microphone ask for permission separately, and
+            because the app is unsigned macOS does not remember the answers
+            between versions — you will be asked again after each update. Remove
+            the old entry under Privacy & Security before granting it again, or
+            the stale one sits there doing nothing.
 
             **Windows** — SmartScreen shows a blue box. Click *More info*, then
             *Run anyway*.
 
-            Signing removes both, and needs a paid certificate from Apple and
-            from a Windows CA.
+            All of this goes away with signing, which needs a paid certificate
+            from Apple and from a Windows CA.
