@@ -150,7 +150,21 @@ VITE_API_URL ?= https://147-15-15-86.nip.io
 client-build: require-rust ## Bundle the desktop app (VITE_API_URL, APPLE_SIGNING_IDENTITY)
 	@test -n "$$APPLE_SIGNING_IDENTITY" || echo "APPLE_SIGNING_IDENTITY unset — the bundle will be ad-hoc signed, and macOS will forget its screen-recording permission on every build."
 	@echo "bundling against $(VITE_API_URL)"
-	cd $(CLIENT_DIR) && VITE_API_URL=$(VITE_API_URL) npm run tauri build
+	@for v in /Volumes/dmg.*; do \
+		test -d "$$v" || continue; \
+		echo "detaching $$v left by an earlier bundle run"; \
+		hdiutil detach "$$v" -quiet || true; \
+	done
+	@rm -f $(CLIENT_DIR)/src-tauri/target/release/bundle/macos/rw.*.dmg
+	@cd $(CLIENT_DIR) && if [ -n "$$TAURI_SIGNING_PRIVATE_KEY" ]; then \
+		VITE_API_URL=$(VITE_API_URL) npm run tauri build; \
+	else \
+		echo "No release key, so building the .app alone: the .dmg and the updater"; \
+		echo "artifacts are things only a published release needs, and bundling a .dmg"; \
+		echo "drives Finder through AppleScript, which fails every few runs."; \
+		VITE_API_URL=$(VITE_API_URL) npm run tauri build -- --bundles app \
+			--config '{"bundle":{"createUpdaterArtifacts":false}}'; \
+	fi
 
 .PHONY: desktop-check
 desktop-check: require-rust ## Compile and bundle the desktop app unoptimised (for CI)
